@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.local
+.git
+src
+*.spr
+*.dat
+*.otb
+*.otbm

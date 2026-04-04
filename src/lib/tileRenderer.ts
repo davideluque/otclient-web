@@ -1,8 +1,9 @@
 import { Container, Sprite, Texture, BufferImageSource, Rectangle } from 'pixi.js';
 import type { TileMap, ResolvedTile } from './tileMap';
-import type { DatFile } from './dat';
+import type { DatFile, ThingType } from './dat';
 import { SPRITE_SIZE } from './spr';
-import { computeAtlasLayout, ATLAS_SIZE } from './atlas';
+import type { SpriteLocation } from './atlas';
+import { ATLAS_SIZE } from './atlas';
 
 const TILE_SIZE = 32;
 
@@ -34,7 +35,7 @@ export function createAtlasTextures(pages: Uint8Array[]): AtlasTextures {
 export function getSpriteTexture(
   spriteId: number,
   atlasTextures: AtlasTextures,
-  layout: Map<number, { page: number; x: number; y: number }>,
+  layout: Map<number, SpriteLocation>,
 ): Texture | null {
   const loc = layout.get(spriteId);
   if (!loc || loc.page >= atlasTextures.pages.length) return null;
@@ -46,19 +47,29 @@ export function getSpriteTexture(
   });
 }
 
+/** Build an O(1) lookup from client item ID → ThingType. */
+export function buildDatIndex(dat: DatFile): Map<number, ThingType> {
+  const index = new Map<number, ThingType>();
+  for (const thing of dat.items) {
+    index.set(thing.id, thing);
+  }
+  return index;
+}
+
 /**
  * Render a rectangular region of tiles into a PixiJS Container.
  * Each tile's items are stacked in order (ground first, then items on top).
+ *
+ * `datIndex` and `layout` should be pre-computed once and reused across frames.
  */
 export function renderTileRegion(
   tileMap: TileMap,
-  dat: DatFile,
+  datIndex: Map<number, ThingType>,
   atlasTextures: AtlasTextures,
-  spriteCount: number,
+  layout: Map<number, SpriteLocation>,
   x1: number, y1: number, x2: number, y2: number, z: number,
 ): Container {
   const container = new Container();
-  const layout = computeAtlasLayout(spriteCount);
 
   // Cache textures to avoid recreating for the same sprite ID
   const textureCache = new Map<number, Texture | null>();
@@ -71,7 +82,7 @@ export function renderTileRegion(
   }
 
   for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
-    renderTile(tile, container, dat, getTexture, x1, y1);
+    renderTile(tile, container, datIndex, getTexture, x1, y1);
   }
 
   return container;
@@ -80,7 +91,7 @@ export function renderTileRegion(
 function renderTile(
   tile: ResolvedTile,
   container: Container,
-  dat: DatFile,
+  datIndex: Map<number, ThingType>,
   getTexture: (spriteId: number) => Texture | null,
   originX: number,
   originY: number,
@@ -89,8 +100,7 @@ function renderTile(
   const screenY = (tile.y - originY) * TILE_SIZE;
 
   for (const item of tile.items) {
-    // Look up the thing type in .dat to get its sprite IDs
-    const thingType = dat.items.find(t => t.id === item.clientId);
+    const thingType = datIndex.get(item.clientId);
     if (!thingType) continue;
 
     const spriteId = thingType.frameGroup.spriteIds[0];

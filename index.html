@@ -8,11 +8,54 @@
     <title>OTClient Web</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
       canvas { display: block; }
+
+      #loader {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: #1a1a2e; color: #e0e0e0; z-index: 10;
+      }
+      #loader h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+      #loader p { color: #888; margin-bottom: 2rem; font-size: 0.9rem; }
+
+      #drop-zone {
+        width: 320px; padding: 2rem;
+        border: 2px dashed #555; border-radius: 12px;
+        text-align: center; cursor: pointer;
+        transition: border-color 0.2s, background 0.2s;
+      }
+      #drop-zone.dragover { border-color: #7c5cbf; background: rgba(124, 92, 191, 0.1); }
+      #drop-zone p { margin: 0.5rem 0; }
+      #drop-zone .hint { font-size: 0.75rem; color: #666; }
+
+      #file-input { display: none; }
+
+      #status {
+        margin-top: 1.5rem; font-size: 0.85rem; color: #888;
+        min-height: 1.2em; text-align: center;
+      }
+      #status.error { color: #e55; }
+
+      .file-list {
+        margin-top: 1rem; text-align: left; font-size: 0.8rem;
+        color: #aaa; list-style: none;
+      }
+      .file-list li::before { content: "✓ "; color: #5a5; }
     </style>
   </head>
   <body>
+    <div id="loader">
+      <h1>OTClient Web</h1>
+      <p>Load your Tibia 7.6 client files to view the map</p>
+      <div id="drop-zone">
+        <p>Drop files here</p>
+        <p class="hint">Tibia.dat, Tibia.spr, items.otb, map.otbm</p>
+      </div>
+      <input type="file" id="file-input" multiple accept=".dat,.spr,.otb,.otbm" />
+      <div id="status"></div>
+      <ul class="file-list" id="file-list"></ul>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

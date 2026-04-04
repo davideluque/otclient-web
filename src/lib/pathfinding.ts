@@ -23,7 +23,7 @@ function heuristic(ax: number, ay: number, bx: number, by: number): number {
 /**
  * Check if a tile is walkable. A tile is not walkable if:
  * - It doesn't exist in the tile map (no ground)
- * - Any of its items has the NotWalkable attribute in .dat
+ * - Any of its items has the NotWalkable or NotPathable attribute in .dat
  */
 export function isTileWalkable(
   x: number, y: number, z: number,
@@ -35,7 +35,7 @@ export function isTileWalkable(
 
   for (const item of tile.items) {
     const thingType = datIndex.get(item.clientId);
-    if (thingType && thingType.attrs.has(DatAttr.NotWalkable)) {
+    if (thingType && (thingType.attrs.has(DatAttr.NotWalkable) || thingType.attrs.has(DatAttr.NotPathable))) {
       return false;
     }
   }
@@ -100,7 +100,7 @@ export function findPath(
 
       const tentativeG = current.g + 1;
 
-      if (tentativeG >= MAX_PATH_LENGTH) continue;
+      if (tentativeG > MAX_PATH_LENGTH) continue;
 
       const prevG = gScore.get(neighborKey);
       if (prevG !== undefined && tentativeG >= prevG) continue;

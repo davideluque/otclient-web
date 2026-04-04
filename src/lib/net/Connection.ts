@@ -100,32 +100,26 @@ export class Connection {
    * Handle incoming data: buffer, extract framed packets, decrypt, dispatch.
    */
   private handleData(data: Uint8Array): void {
-    // Append to receive buffer
-    const combined = new Uint8Array(this.receiveBuffer.length + data.length);
-    combined.set(this.receiveBuffer);
-    combined.set(data, this.receiveBuffer.length);
-    this.receiveBuffer = combined;
+    // Append to receive buffer — reuse capacity when possible
+    if (this.receiveBuffer.length === 0) {
+      this.receiveBuffer = new Uint8Array(data);
+    } else {
+      const combined = new Uint8Array(this.receiveBuffer.length + data.length);
+      combined.set(this.receiveBuffer);
+      combined.set(data, this.receiveBuffer.length);
+      this.receiveBuffer = combined;
+    }
 
     // Extract complete packets
-    while (this.receiveBuffer.length >= 2) {
-      const view = new DataView(
-        this.receiveBuffer.buffer,
-        this.receiveBuffer.byteOffset,
-        this.receiveBuffer.byteLength,
-      );
-      const packetLen = view.getUint16(0, true);
+    let offset = 0;
+    while (offset + 2 <= this.receiveBuffer.length) {
+      const packetLen = this.receiveBuffer[offset] | (this.receiveBuffer[offset + 1] << 8);
 
-      if (this.receiveBuffer.length < 2 + packetLen) break; // incomplete
+      if (offset + 2 + packetLen > this.receiveBuffer.length) break; // incomplete
 
       // Extract packet data
-      const packetData = new Uint8Array(this.receiveBuffer.buffer, 2, packetLen).slice();
-
-      // Advance buffer
-      this.receiveBuffer = new Uint8Array(
-        this.receiveBuffer.buffer,
-        2 + packetLen,
-        this.receiveBuffer.length - 2 - packetLen,
-      ).slice();
+      const packetData = this.receiveBuffer.slice(offset + 2, offset + 2 + packetLen);
+      offset += 2 + packetLen;
 
       // Decrypt if key is set (must be multiple of 8 for XTEA block cipher)
       if (this.xteaKey && packetData.length >= 8 && packetData.length % 8 === 0) {
@@ -135,6 +129,13 @@ export class Connection {
       // Dispatch to handler
       const packet = new InputPacket(packetData.buffer);
       this.onPacket?.(packet);
+    }
+
+    // Trim consumed bytes from buffer
+    if (offset > 0) {
+      this.receiveBuffer = offset < this.receiveBuffer.length
+        ? this.receiveBuffer.slice(offset)
+        : new Uint8Array(0);
     }
   }
 }

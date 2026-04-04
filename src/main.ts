@@ -145,28 +145,44 @@ async function startApp() {
   });
 
   let tileContainer: Container | null = null;
+  let lastVisibleKey = '';
 
-  function render() {
+  function rebuildTiles() {
     if (tileContainer) {
       app.stage.removeChild(tileContainer);
       tileContainer.destroy({ children: true });
     }
 
     const visible = viewport.getVisibleTiles();
+    lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
+
     tileContainer = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, visible.y2, 7,
     );
 
+    app.stage.addChild(tileContainer);
+  }
+
+  function updateTransform() {
+    if (!tileContainer) return;
     const offset = viewport.getContainerOffset();
     tileContainer.x = offset.x;
     tileContainer.y = offset.y;
     tileContainer.scale.set(viewport.zoom);
-
-    app.stage.addChild(tileContainer);
   }
 
-  render();
+  function render(forceRebuild = false) {
+    const visible = viewport.getVisibleTiles();
+    const key = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
+
+    if (forceRebuild || key !== lastVisibleKey) {
+      rebuildTiles();
+    }
+    updateTransform();
+  }
+
+  render(true);
 
   // --- Touch/mouse controls ---
 

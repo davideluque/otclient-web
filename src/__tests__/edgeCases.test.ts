@@ -151,6 +151,7 @@ describe('player sprite index edge cases', () => {
   it('handles negative direction input', () => {
     const fg = makeFrameGroup();
     // -1 should be clamped to 0
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const id = getCreatureSpriteId(fg, -1 as any, 0);
     expect(id).toBe(1); // spriteIds[0]
   });

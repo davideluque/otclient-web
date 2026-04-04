@@ -39,6 +39,9 @@ export function decodeSprite(spr: SprFile, spriteId: number): Uint8Array | null 
   const view = new DataView(spr.buffer);
   let pos = offset;
 
+  // Validate offset has enough room for header (3 color key + 2 data length)
+  if (offset + 5 > spr.buffer.byteLength) return null;
+
   // Skip 3-byte color key (RGB transparency color, unused — we use alpha)
   pos += 3;
 
@@ -56,6 +59,7 @@ export function decodeSprite(spr: SprFile, spriteId: number): Uint8Array | null 
     const transparentCount = view.getUint16(pos, true);
     pos += 2;
     pixelIndex += transparentCount;
+    if (pixelIndex >= SPRITE_PIXELS) break;
 
     // Colored pixel count
     const coloredCount = view.getUint16(pos, true);

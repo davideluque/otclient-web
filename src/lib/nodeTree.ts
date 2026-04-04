@@ -52,6 +52,7 @@ export function skipNode(data: Uint8Array, offset: number): number {
     const byte = data[i];
     if (byte === ESCAPE_CHAR) {
       i += 2;
+      if (i > data.length) break; // escape at buffer end
       continue;
     }
     if (byte === NODE_START) depth++;

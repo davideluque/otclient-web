@@ -48,10 +48,10 @@ export function getCreatureSpriteId(
   const patY = fg.numPatternY;
   const patZ = fg.numPatternZ;
 
-  // Clamp values to valid ranges
-  const dir = Math.min(direction, patX - 1);
-  const phase = Math.min(animationPhase, fg.animationPhases - 1);
-  const l = Math.min(layer, layers - 1);
+  // Clamp values to valid ranges (enforce minimum 0)
+  const dir = Math.max(0, Math.min(direction, patX - 1));
+  const phase = Math.max(0, Math.min(animationPhase, fg.animationPhases - 1));
+  const l = Math.max(0, Math.min(layer, layers - 1));
 
   // Sprite index for single-tile creatures (w=1, h=1, patY=1, patZ=1)
   // Full formula: ((((phase * patZ) * patY) * patX + dir) * layers + layer) * h * w

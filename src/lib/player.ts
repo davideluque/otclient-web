@@ -53,9 +53,9 @@ export function getCreatureSpriteId(
   const phase = Math.min(animationPhase, fg.animationPhases - 1);
   const l = Math.min(layer, layers - 1);
 
-  // Sprite index calculation
-  const index =
-    (((((((phase * patZ + 0) * patY + 0) * patX + dir) * layers + l) * h) + 0) * w) + 0;
+  // Sprite index for single-tile creatures (w=1, h=1, patY=1, patZ=1)
+  // Full formula: ((((phase * patZ) * patY) * patX + dir) * layers + layer) * h * w
+  const index = (((phase * patZ * patY) * patX + dir) * layers + l) * h * w;
 
   return fg.spriteIds[index] ?? 0;
 }

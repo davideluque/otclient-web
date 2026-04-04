@@ -82,7 +82,9 @@ export interface OtbFile {
  * Returns the unescaped data and the new offset (after NODE_END or next NODE_START).
  */
 function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Array; nextOffset: number } {
-  const result: number[] = [];
+  // Pre-allocate at the remaining size (worst case: no escapes)
+  const buf = new Uint8Array(data.length - start);
+  let len = 0;
   let i = start;
 
   while (i < data.length) {
@@ -95,15 +97,15 @@ function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Array; nex
     if (byte === ESCAPE_CHAR) {
       i++;
       if (i < data.length) {
-        result.push(data[i]);
+        buf[len++] = data[i];
       }
     } else {
-      result.push(byte);
+      buf[len++] = byte;
     }
     i++;
   }
 
-  return { bytes: new Uint8Array(result), nextOffset: i };
+  return { bytes: buf.subarray(0, len), nextOffset: i };
 }
 
 /**
@@ -146,7 +148,7 @@ function parseVersion(bytes: Uint8Array): OtbVersion {
   const buildNumber = reader.getU32();
 
   // CSD version: 128-byte null-terminated string
-  const csdBytes = new Uint8Array(bytes.buffer, bytes.byteOffset + reader.position, 128);
+  const csdBytes = bytes.subarray(reader.position, reader.position + 128);
   const nullIdx = csdBytes.indexOf(0);
   const csdVersion = new TextDecoder().decode(csdBytes.subarray(0, nullIdx >= 0 ? nullIdx : 128));
 
@@ -190,7 +192,7 @@ function parseItem(bytes: Uint8Array): OtbItem {
         item.minimapColor = reader.getU16();
         break;
       case OtbAttr.Name: {
-        const nameBytes = new Uint8Array(bytes.buffer, bytes.byteOffset + attrStart, attrLen);
+        const nameBytes = bytes.subarray(attrStart, attrStart + attrLen);
         item.name = new TextDecoder().decode(nameBytes);
         reader.skip(attrLen);
         break;
@@ -216,6 +218,9 @@ export function parseOtb(buffer: ArrayBuffer): OtbFile {
   let offset = 0;
 
   // File starts with 4 zero bytes (identifier), then NODE_START
+  if (data.length < 5) {
+    throw new Error('Invalid OTB file: buffer too small');
+  }
   offset += 4;
 
   // Expect NODE_START for root

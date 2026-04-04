@@ -1,10 +1,5 @@
 import { BinaryReader } from './BinaryReader';
-
-// --- Node tree markers ---
-
-const NODE_START = 0xfe;
-const NODE_END = 0xff;
-const ESCAPE_CHAR = 0xfd;
+import { NODE_START, NODE_END, readNodeData, skipNode } from './nodeTree';
 
 // --- Item attribute types ---
 
@@ -75,64 +70,10 @@ export interface OtbFile {
   serverToClient: Map<number, number>;
 }
 
-// --- Node tree reader ---
-
-/**
- * Read unescaped node data from a raw buffer starting at `offset`.
- * Returns the unescaped data and the new offset (after NODE_END or next NODE_START).
- */
-function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Array; nextOffset: number } {
-  // Pre-allocate at the remaining size (worst case: no escapes)
-  const buf = new Uint8Array(data.length - start);
-  let len = 0;
-  let i = start;
-
-  while (i < data.length) {
-    const byte = data[i];
-
-    if (byte === NODE_START || byte === NODE_END) {
-      break;
-    }
-
-    if (byte === ESCAPE_CHAR) {
-      i++;
-      if (i < data.length) {
-        buf[len++] = data[i];
-      }
-    } else {
-      buf[len++] = byte;
-    }
-    i++;
-  }
-
-  return { bytes: buf.subarray(0, len), nextOffset: i };
-}
-
-/**
- * Skip past a node and all its children until we reach the matching NODE_END.
- */
-function skipNode(data: Uint8Array, offset: number): number {
-  let depth = 1;
-  let i = offset;
-
-  while (i < data.length && depth > 0) {
-    const byte = data[i];
-    if (byte === ESCAPE_CHAR) {
-      i += 2; // skip escaped byte
-      continue;
-    }
-    if (byte === NODE_START) depth++;
-    if (byte === NODE_END) depth--;
-    i++;
-  }
-
-  return i;
-}
-
 // --- Parsers ---
 
 function parseVersion(bytes: Uint8Array): OtbVersion {
-  const reader = new BinaryReader((bytes.buffer as ArrayBuffer).slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const reader = new BinaryReader(bytes.buffer as ArrayBuffer);
   // Root node starts with a type byte (0x00), skip it
   reader.skip(1);
 
@@ -156,7 +97,7 @@ function parseVersion(bytes: Uint8Array): OtbVersion {
 }
 
 function parseItem(bytes: Uint8Array): OtbItem {
-  const reader = new BinaryReader((bytes.buffer as ArrayBuffer).slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const reader = new BinaryReader(bytes.buffer as ArrayBuffer);
 
   // First byte is node type (item group type), skip it
   reader.skip(1);

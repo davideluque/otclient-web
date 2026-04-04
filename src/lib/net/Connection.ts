@@ -54,6 +54,8 @@ export class Connection {
       };
 
       this.ws.onclose = () => {
+        this.ws = null;
+        this.receiveBuffer = new Uint8Array(0);
         this.onClose?.();
       };
 
@@ -77,7 +79,11 @@ export class Connection {
 
     let payload = packet.toUint8Array();
 
-    if (encrypt && this.xteaKey) {
+    if (encrypt) {
+      if (!this.xteaKey) {
+        console.error('Cannot encrypt: no XTEA key set');
+        return;
+      }
       payload = xteaEncrypt(payload, this.xteaKey);
     }
 
@@ -121,8 +127,8 @@ export class Connection {
         this.receiveBuffer.length - 2 - packetLen,
       ).slice();
 
-      // Decrypt if key is set
-      if (this.xteaKey && packetData.length >= 8) {
+      // Decrypt if key is set (must be multiple of 8 for XTEA block cipher)
+      if (this.xteaKey && packetData.length >= 8 && packetData.length % 8 === 0) {
         xteaDecrypt(packetData, this.xteaKey);
       }
 

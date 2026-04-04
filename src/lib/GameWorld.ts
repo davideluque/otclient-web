@@ -148,15 +148,20 @@ export class GameWorld {
 
   private handleCreatureMove(packet: InputPacket): void {
     const event = parseCreatureMove(packet);
-    // Find creature at the from position
     const fromTile = this.getTile(event.fromX, event.fromY, event.fromZ);
     if (fromTile && fromTile.creatures.length > event.fromStack) {
-      const creature = fromTile.creatures[event.fromStack];
+      // Remove creature from source tile
+      const [creature] = fromTile.creatures.splice(event.fromStack, 1);
       const wc = this.creatures.get(creature.id);
       if (wc) {
         wc.x = event.toX;
         wc.y = event.toY;
         wc.z = event.toZ;
+      }
+      // Add creature to destination tile
+      const toTile = this.getTile(event.toX, event.toY, event.toZ);
+      if (toTile) {
+        toTile.creatures.push(creature);
       }
     }
     this.onChange?.();

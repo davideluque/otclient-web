@@ -26,6 +26,10 @@ export function parseSpr(buffer: ArrayBuffer): SprFile {
   return { signature, spriteCount, offsets, buffer };
 }
 
+export function releaseSprBuffer(spr: SprFile): void {
+  spr.buffer = new ArrayBuffer(0);
+}
+
 /**
  * Decode a single sprite into a 32x32 RGBA Uint8Array (4096 bytes).
  * Returns null for empty sprites (offset 0).

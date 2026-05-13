@@ -3,11 +3,11 @@ export { parseDat } from './dat';
 export type { DatFile, ThingType, FrameGroup, Light, MarketData } from './dat';
 export { DatAttr, ThingCategory, ITEM_ID_OFFSET } from './dat';
 
-export { parseSpr, decodeSprite, SPRITE_SIZE, SPRITE_PIXELS, SPRITE_DATA_SIZE } from './spr';
+export { parseSpr, decodeSprite, releaseSprBuffer, SPRITE_SIZE, SPRITE_PIXELS, SPRITE_DATA_SIZE } from './spr';
 export type { SprFile } from './spr';
 
-export { buildAtlasPages, computeAtlasLayout, ATLAS_SIZE, SPRITES_PER_ROW, SPRITES_PER_PAGE } from './atlas';
-export type { SpriteLocation } from './atlas';
+export { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout, ATLAS_SIZE, SPRITES_PER_ROW, SPRITES_PER_PAGE } from './atlas';
+export type { AtlasPages, SpriteLocation } from './atlas';
 
 // Map file parsers
 export { parseOtb } from './otb';

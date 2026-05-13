@@ -1,9 +1,9 @@
 import { Application, Container } from 'pixi.js';
 import { parseDat } from './lib/dat';
-import { parseSpr } from './lib/spr';
+import { parseSpr, releaseSprBuffer } from './lib/spr';
 import { parseOtb } from './lib/otb';
 import { parseOtbm } from './lib/otbm';
-import { buildAtlasPages, computeAtlasLayout } from './lib/atlas';
+import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, buildDatIndex } from './lib/tileRenderer';
 import { Viewport } from './lib/viewport';
@@ -14,22 +14,15 @@ import {
   DAY_AMBIENT,
   type LightingOptions,
 } from './lib/lighting';
+import { createFileLoader } from './lib/fileLoader';
 import type { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
 import type { OtbmFile } from './lib/otbm';
+import type { CompleteLoadedFiles } from './lib/fileLoader';
 
 // --- File loading UI ---
-
-interface LoadedFiles {
-  dat?: ArrayBuffer;
-  spr?: ArrayBuffer;
-  otb?: ArrayBuffer;
-  otbm?: ArrayBuffer;
-}
-
-const loaded: LoadedFiles = {};
 const dropZone = document.getElementById('drop-zone')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const statusEl = document.getElementById('status')!;
@@ -47,38 +40,12 @@ function addFileToList(name: string) {
   fileListEl.appendChild(li);
 }
 
-function classifyFile(name: string): keyof LoadedFiles | null {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.dat')) return 'dat';
-  if (lower.endsWith('.spr')) return 'spr';
-  if (lower.endsWith('.otb')) return 'otb';
-  if (lower.endsWith('.otbm')) return 'otbm';
-  return null;
-}
-
-async function handleFiles(files: FileList | File[]) {
-  for (const file of files) {
-    const type = classifyFile(file.name);
-    if (!type) continue;
-
-    loaded[type] = await file.arrayBuffer();
-    addFileToList(`${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
-  }
-
-  const allLoaded = loaded.dat && loaded.spr && loaded.otb && loaded.otbm;
-  if (allLoaded) {
-    setStatus('Loading assets...');
-    try {
-      await startApp();
-    } catch (e) {
-      setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`, true);
-      console.error(e);
-    }
-  } else {
-    const missing = (['dat', 'spr', 'otb', 'otbm'] as const).filter(k => !loaded[k]);
-    setStatus(`Still need: ${missing.map(k => '.' + k).join(', ')}`);
-  }
-}
+const handleFiles = createFileLoader({
+  setStatus,
+  addFileToList,
+  startApp,
+  onError: console.error,
+});
 
 // Drag and drop
 dropZone.addEventListener('dragover', (e) => {
@@ -104,24 +71,28 @@ fileInput.addEventListener('change', () => {
 
 // --- App startup ---
 
-async function startApp() {
-  const dat: DatFile = parseDat(loaded.dat!);
+async function startApp(loaded: CompleteLoadedFiles) {
+  const dat: DatFile = parseDat(loaded.dat);
   setStatus('Parsed .dat...');
 
-  const spr: SprFile = parseSpr(loaded.spr!);
+  const spr: SprFile = parseSpr(loaded.spr);
   setStatus('Parsed .spr...');
 
-  const otb: OtbFile = parseOtb(loaded.otb!);
+  const otb: OtbFile = parseOtb(loaded.otb);
   setStatus('Parsed .otb...');
 
-  const otbm: OtbmFile = parseOtbm(loaded.otbm!);
+  const otbm: OtbmFile = parseOtbm(loaded.otbm);
   setStatus('Parsed .otbm...');
 
   setStatus('Building texture atlas...');
-  const atlasPages = buildAtlasPages(spr);
+  const referencedSpriteIds = collectReferencedSpriteIds(dat, otb, otbm);
+  const atlasPages = buildAtlasPages(spr, referencedSpriteIds);
+  releaseSprBuffer(spr);
   const atlasTextures = createAtlasTextures(atlasPages);
-  const layout = computeAtlasLayout(spr.spriteCount);
+  const layout = computeAtlasLayout(spr.spriteCount, referencedSpriteIds);
   const datIndex = buildDatIndex(dat);
+  const atlasBytes = [...atlasPages.values()].reduce((sum, page) => sum + page.byteLength, 0);
+  console.log(`Atlas CPU buffers: ${(atlasBytes / 1024 / 1024).toFixed(1)} MB across ${atlasPages.size} page(s)`);
 
   setStatus('Building tile map...');
   const tileMap = new TileMap(otbm, otb);

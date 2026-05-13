@@ -2,21 +2,21 @@ import { Container, Sprite, Texture, BufferImageSource, Rectangle } from 'pixi.j
 import type { TileMap, ResolvedTile } from './tileMap';
 import type { DatFile, ThingType } from './dat';
 import { SPRITE_SIZE } from './spr';
-import type { SpriteLocation } from './atlas';
+import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
 
 const TILE_SIZE = 32;
 
 export interface AtlasTextures {
-  pages: Texture[];
+  pages: Map<number, Texture>;
 }
 
 /**
  * Create PixiJS base textures from raw RGBA atlas page buffers.
  */
-export function createAtlasTextures(pages: Uint8Array[]): AtlasTextures {
-  const textures: Texture[] = [];
-  for (const rgba of pages) {
+export function createAtlasTextures(pages: AtlasPages): AtlasTextures {
+  const textures = new Map<number, Texture>();
+  for (const [pageIndex, rgba] of pages) {
     const source = new BufferImageSource({
       resource: rgba,
       width: ATLAS_SIZE,
@@ -25,7 +25,7 @@ export function createAtlasTextures(pages: Uint8Array[]): AtlasTextures {
       alphaMode: 'premultiply-alpha-on-upload',
       scaleMode: 'nearest',
     });
-    textures.push(new Texture({ source }));
+    textures.set(pageIndex, new Texture({ source }));
   }
   return { pages: textures };
 }
@@ -39,9 +39,11 @@ export function getSpriteTexture(
   layout: Map<number, SpriteLocation>,
 ): Texture | null {
   const loc = layout.get(spriteId);
-  if (!loc || loc.page >= atlasTextures.pages.length) return null;
+  if (!loc) return null;
 
-  const base = atlasTextures.pages[loc.page];
+  const base = atlasTextures.pages.get(loc.page);
+  if (!base) return null;
+
   return new Texture({
     source: base.source,
     frame: new Rectangle(loc.x, loc.y, SPRITE_SIZE, SPRITE_SIZE),

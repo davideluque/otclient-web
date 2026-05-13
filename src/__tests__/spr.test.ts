@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSpr, decodeSprite, SPRITE_DATA_SIZE } from '../lib/spr';
+import { parseSpr, decodeSprite, releaseSprBuffer, SPRITE_DATA_SIZE } from '../lib/spr';
 
 /** Helper: write little-endian U16 */
 function pushU16(bytes: number[], value: number) {
@@ -190,5 +190,15 @@ describe('parseSpr', () => {
 
     const s3 = decodeSprite(spr, 3)!;
     expect(s3[1]).toBe(255); // green
+  });
+
+  it('releases the original SPR buffer', () => {
+    const spr = parseSpr(buildSpr([[{ transparent: 0, pixels: [[255, 0, 0]] }]]));
+    expect(spr.buffer.byteLength).toBeGreaterThan(0);
+
+    releaseSprBuffer(spr);
+
+    expect(spr.buffer.byteLength).toBe(0);
+    expect(decodeSprite(spr, 1)).toBeNull();
   });
 });

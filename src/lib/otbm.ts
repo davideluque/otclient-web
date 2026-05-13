@@ -4,7 +4,7 @@ import { NODE_START, NODE_END, readNodeData } from './nodeTree';
 // --- Node types ---
 
 export const OtbmNode = {
-  RootV1: 0x01,
+  RootV1: 0x00,
   MapData: 0x02,
   TileArea: 0x04,
   Tile: 0x05,

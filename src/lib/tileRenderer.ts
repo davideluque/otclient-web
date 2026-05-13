@@ -82,7 +82,7 @@ export function renderTileRegion(
   }
 
   for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
-    renderTile(tile, container, datIndex, getTexture, x1, y1);
+    renderTile(tile, container, datIndex, getTexture);
   }
 
   return container;
@@ -93,11 +93,9 @@ function renderTile(
   container: Container,
   datIndex: Map<number, ThingType>,
   getTexture: (spriteId: number) => Texture | null,
-  originX: number,
-  originY: number,
 ): void {
-  const screenX = (tile.x - originX) * TILE_SIZE;
-  const screenY = (tile.y - originY) * TILE_SIZE;
+  const screenX = tile.x * TILE_SIZE;
+  const screenY = tile.y * TILE_SIZE;
 
   for (const item of tile.items) {
     const thingType = datIndex.get(item.clientId);

@@ -94,6 +94,9 @@ function renderTile(
   datIndex: Map<number, ThingType>,
   getTexture: (spriteId: number) => Texture | null,
 ): void {
+  const screenX = tile.x * TILE_SIZE;
+  const screenY = tile.y * TILE_SIZE;
+
   for (const item of tile.items) {
     const thingType = datIndex.get(item.clientId);
     if (!thingType) continue;
@@ -103,19 +106,19 @@ function renderTile(
     // For static rendering we use the first layer/pattern/animation of each (w, h) cell.
     const perCell = layers * numPatternX * numPatternY * numPatternZ * animationPhases;
 
-    for (let h = 0; h < height; h++) {
-      for (let w = 0; w < width; w++) {
+    // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-algorithm
+    // ordering places the anchor on top of pieces extending up and to the left.
+    for (let h = height - 1; h >= 0; h--) {
+      for (let w = width - 1; w >= 0; w--) {
         const spriteId = spriteIds[(h * width + w) * perCell];
         if (!spriteId) continue;
 
         const texture = getTexture(spriteId);
         if (!texture) continue;
 
-        // Multi-tile things are anchored at the bottom-right cell. spriteIds[0]
-        // is the anchor itself; increasing h/w indexes pieces extending up/left.
         const sprite = new Sprite(texture);
-        sprite.x = (tile.x - w) * TILE_SIZE;
-        sprite.y = (tile.y - h) * TILE_SIZE;
+        sprite.x = screenX - w * TILE_SIZE;
+        sprite.y = screenY - h * TILE_SIZE;
         container.addChild(sprite);
       }
     }

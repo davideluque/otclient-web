@@ -7,6 +7,14 @@ import { buildAtlasPages, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, buildDatIndex } from './lib/tileRenderer';
 import { Viewport } from './lib/viewport';
+import {
+  buildIlluminationOverlay,
+  createLightMaskTexture,
+  NIGHT_AMBIENT,
+  DAY_AMBIENT,
+  type LightingOptions,
+} from './lib/lighting';
+import type { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
@@ -146,20 +154,40 @@ async function startApp() {
 
   let tileContainer: Container | null = null;
   let lastVisibleKey = '';
+  let ambient: LightingOptions = NIGHT_AMBIENT;
+  let illuminationTexture: RenderTexture | null = null;
+  const lightMask = createLightMaskTexture();
 
   function rebuildTiles() {
     if (tileContainer) {
       app.stage.removeChild(tileContainer);
       tileContainer.destroy({ children: true });
     }
+    if (illuminationTexture) {
+      illuminationTexture.destroy(true);
+      illuminationTexture = null;
+    }
 
     const visible = viewport.getVisibleTiles();
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
-    tileContainer = renderTileRegion(
+    const tiles = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, visible.y2, 7,
     );
+
+    tileContainer = new Container();
+    tileContainer.addChild(tiles);
+
+    if (ambient.enabled) {
+      const { sprite, texture } = buildIlluminationOverlay(
+        app, tileMap, datIndex, lightMask,
+        visible.x1, visible.y1, visible.x2, visible.y2, 7,
+        ambient,
+      );
+      tileContainer.addChild(sprite);
+      illuminationTexture = texture;
+    }
 
     app.stage.addChild(tileContainer);
   }
@@ -252,6 +280,14 @@ async function startApp() {
     viewport.screenWidth = window.innerWidth;
     viewport.screenHeight = window.innerHeight;
     render();
+  });
+
+  // N toggles night/day so you can see the difference
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'n' || e.key === 'N') {
+      ambient = ambient === NIGHT_AMBIENT ? DAY_AMBIENT : NIGHT_AMBIENT;
+      render(true);
+    }
   });
 
   console.log(`Map loaded: ${tileMap.size} tiles, center at (${centerX}, ${centerY})`);

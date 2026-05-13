@@ -23,6 +23,7 @@ export function createAtlasTextures(pages: Uint8Array[]): AtlasTextures {
       height: ATLAS_SIZE,
       format: 'rgba8unorm',
       alphaMode: 'premultiply-alpha-on-upload',
+      scaleMode: 'nearest',
     });
     textures.push(new Texture({ source }));
   }

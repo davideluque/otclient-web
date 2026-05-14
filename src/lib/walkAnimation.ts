@@ -26,6 +26,11 @@ export interface WalkState {
    *  for one frame at every tile boundary, which produced a visible "front
    *  and back" oscillation on east/west walks. */
   walkPhase: 1 | 2;
+  /** Called immediately after a step lands on (toX, toY), before the next
+   *  step is queued. Used by callers to react to floor-change tiles (stair,
+   *  hole, ladder) — the callback can mutate `walk.path` to abort the
+   *  remaining path before the next step starts. */
+  onStepLand?: (x: number, y: number) => void;
 }
 
 /**
@@ -35,6 +40,7 @@ export function startWalk(
   player: PlayerState,
   path: PathNode[],
   now: number,
+  onStepLand?: (x: number, y: number) => void,
 ): WalkState | null {
   if (path.length === 0) return null;
 
@@ -52,6 +58,7 @@ export function startWalk(
     startTime: now,
     active: true,
     walkPhase: 1,
+    onStepLand,
   };
 }
 
@@ -78,6 +85,12 @@ export function updateWalk(
     // Step completed — move player to destination tile
     player.x = walk.toX;
     player.y = walk.toY;
+
+    // Fire the step-land callback before deciding whether to continue.
+    // Callers (main.ts) use this to detect floor-change tiles and may
+    // clear walk.path to stop the remaining steps before they fire —
+    // matches TFS behaviour where landing on a stair completes the move.
+    walk.onStepLand?.(walk.toX, walk.toY);
 
     // Start next step if path continues
     if (walk.path.length > 0) {

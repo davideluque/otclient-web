@@ -7,12 +7,16 @@ import type { OtbFile } from '../lib/otb';
 import type { ThingType } from '../lib/dat';
 import { ThingCategory } from '../lib/dat';
 
-function makeOtb(mappings: [number, number][]): OtbFile {
+function makeOtb(mappings: [number, number][], flagsBySid: Record<number, number> = {}): OtbFile {
+  const serverIdToFlags = new Map<number, number>();
+  for (const [sid, flags] of Object.entries(flagsBySid)) {
+    serverIdToFlags.set(Number(sid), flags);
+  }
   return {
     version: { version: 0, majorVersion: 3, minorVersion: 760, buildNumber: 0, csdVersion: '' },
     items: [],
     serverToClient: new Map(mappings),
-    serverIdToFlags: new Map(),
+    serverIdToFlags,
   };
 }
 
@@ -62,6 +66,17 @@ describe('isTileWalkable', () => {
   it('returns false for non-existent tiles', () => {
     const tileMap = new TileMap(makeOtbm([]), otb);
     expect(isTileWalkable(0, 0, 7, tileMap, datIndex)).toBe(false);
+  });
+
+  it('returns true for floor-change tiles even when the item flags NotWalkable in .dat', () => {
+    // Stair items often have both BlockSolid and a FloorChange* bit set
+    // — the floor-change flag overrides for pathfinding purposes.
+    const FLOOR_DOWN = 1 << 8;
+    const otb = makeOtb([[2, 200]], { 2: FLOOR_DOWN });
+    const wall = makeDatItem(200, false); // NotWalkable in .dat
+    const datIndex = buildDatIndex([wall]);
+    const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [2])]), otb);
+    expect(isTileWalkable(0, 0, 7, tileMap, datIndex)).toBe(true);
   });
 });
 

@@ -24,6 +24,12 @@ function heuristic(ax: number, ay: number, bx: number, by: number): number {
  * Check if a tile is walkable. A tile is not walkable if:
  * - It doesn't exist in the tile map (no ground)
  * - Any of its items has the NotWalkable or NotPathable attribute in .dat
+ *
+ * Exception: tiles carrying a floor-change flag (stairs, holes, ladders)
+ * are always walkable, even when the stair item also flags NotWalkable
+ * in .dat — they're the entry point to the next floor. TFS treats them
+ * the same way (`Tile::queryDestination` resolves the next floor's
+ * position rather than blocking on the stair item itself).
  */
 export function isTileWalkable(
   x: number, y: number, z: number,
@@ -32,6 +38,11 @@ export function isTileWalkable(
 ): boolean {
   const tile = tileMap.getTile(x, y, z);
   if (!tile) return false;
+
+  // Floor-change tiles short-circuit the block check.
+  for (const item of tile.items) {
+    if (item.floorChange) return true;
+  }
 
   for (const item of tile.items) {
     const thingType = datIndex.get(item.clientId);

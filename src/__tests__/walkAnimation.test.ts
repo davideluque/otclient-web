@@ -111,4 +111,45 @@ describe('updateWalk', () => {
     expect(offset.offsetX).toBe(0);
     expect(offset.offsetY).toBeCloseTo(16);
   });
+
+  describe('onStepLand callback', () => {
+    it('fires once per completed step with the landed tile coords', () => {
+      const player = createPlayer(10, 10, 7, outfit);
+      const calls: Array<{ x: number; y: number }> = [];
+      const walk = startWalk(
+        player,
+        [{ x: 11, y: 10 }, { x: 12, y: 10 }],
+        0,
+        (x, y) => { calls.push({ x, y }); },
+      )!;
+
+      updateWalk(walk, player, WALK_DURATION_MS);
+      expect(calls).toEqual([{ x: 11, y: 10 }]);
+
+      updateWalk(walk, player, WALK_DURATION_MS * 2);
+      expect(calls).toEqual([{ x: 11, y: 10 }, { x: 12, y: 10 }]);
+    });
+
+    it('stops the walk if the callback clears walk.path', () => {
+      const player = createPlayer(10, 10, 7, outfit);
+      const walk = startWalk(
+        player,
+        [{ x: 11, y: 10 }, { x: 12, y: 10 }, { x: 13, y: 10 }],
+        0,
+        () => { walk!.path = []; }, // abort after the first step lands
+      )!;
+
+      updateWalk(walk, player, WALK_DURATION_MS);
+      expect(player.x).toBe(11);
+      expect(walk.active).toBe(false);
+    });
+
+    it('is optional — no callback works identically to before', () => {
+      const player = createPlayer(10, 10, 7, outfit);
+      const walk = startWalk(player, [{ x: 11, y: 10 }], 0)!;
+      updateWalk(walk, player, WALK_DURATION_MS);
+      expect(player.x).toBe(11);
+      expect(walk.active).toBe(false);
+    });
+  });
 });

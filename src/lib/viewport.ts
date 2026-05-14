@@ -15,6 +15,10 @@ export const LANDSCAPE_PLAY_TILES_X = 21;
  * devices see roughly the same play area.
  */
 export function computePlayZoom(screenWidth: number, screenHeight: number): number {
+  // Guard against transient zero/negative dimensions during init / orientation
+  // change — without this, the result is Infinity or NaN and propagates
+  // through every viewport calc.
+  if (screenWidth <= 0 || screenHeight <= 0) return 1;
   const isLandscape = screenWidth > screenHeight;
   const target = isLandscape ? LANDSCAPE_PLAY_TILES_X : PORTRAIT_PLAY_TILES_X;
   return screenWidth / (target * TILE_SIZE);

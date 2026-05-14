@@ -286,7 +286,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     e.preventDefault();
     if (!zoomUnlocked) return;
     viewport.zoomBy(e.deltaY > 0 ? 0.9 : 1.1);
-    render(true);
+    render();
   }, { passive: false });
 
   let lastPinchDist = 0;
@@ -305,7 +305,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (lastPinchDist > 0) {
       viewport.zoomBy(dist / lastPinchDist);
-      render(true);
+      render();
     }
     lastPinchDist = dist;
   }, { passive: false });
@@ -313,7 +313,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   // Zoom toggle in the corner — shipping unconditionally for now since we're
   // the only user. Easy to gate behind import.meta.env.DEV later if needed.
+  // If startApp runs twice (shouldn't happen with the file-loader guard, but
+  // defensive against future re-entry), drop the old button first.
+  document.getElementById('zoom-toggle')?.remove();
   const zoomBtn = document.createElement('button');
+  zoomBtn.id = 'zoom-toggle';
   zoomBtn.type = 'button';
   zoomBtn.textContent = 'Zoom: locked';
   zoomBtn.title = 'Toggle zoom (pinch / wheel)';
@@ -344,7 +348,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     viewport.screenWidth = window.innerWidth;
     viewport.screenHeight = window.innerHeight;
     viewport.applyPlayZoom(computePlayZoom(window.innerWidth, window.innerHeight));
-    render(true);
+    render();
   });
 
   // N toggles night/day so you can see the difference

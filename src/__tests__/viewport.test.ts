@@ -98,6 +98,12 @@ describe('Viewport', () => {
       expect(tilesX).toBeCloseTo(PORTRAIT_PLAY_TILES_X, 5);
     });
 
+    it('returns a finite fallback for zero/negative screen dimensions', () => {
+      expect(computePlayZoom(0, 800)).toBe(1);
+      expect(computePlayZoom(800, 0)).toBe(1);
+      expect(computePlayZoom(-5, 800)).toBe(1);
+    });
+
     it('fits LANDSCAPE_PLAY_TILES_X tiles across in landscape', () => {
       const screenW = 844;
       const screenH = 390;

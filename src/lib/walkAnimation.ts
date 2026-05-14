@@ -20,6 +20,11 @@ export interface WalkState {
   startTime: number;
   /** Is the walk in progress? */
   active: boolean;
+  /** The walking sprite phase for this step (1 or 2 — alternates per step).
+   *  Held constant across the step so the gait doesn't snap to idle pose
+   *  for one frame at every tile boundary, which produced a visible "front
+   *  and back" oscillation on east/west walks. */
+  walkPhase: 1 | 2;
 }
 
 /**
@@ -45,6 +50,7 @@ export function startWalk(
     progress: 0,
     startTime: now,
     active: true,
+    walkPhase: 1,
   };
 }
 
@@ -62,15 +68,15 @@ export function updateWalk(
   const elapsed = now - walk.startTime;
   walk.progress = Math.min(elapsed / WALK_DURATION_MS, 1);
 
-  // Cycle animation phase (1 and 2 are walk frames, 0 is idle)
-  const phaseTime = elapsed % (WALK_DURATION_MS * 2);
-  player.animationPhase = phaseTime < WALK_DURATION_MS ? 1 : 2;
+  // Hold this step's walk phase for its entire duration; phase alternates
+  // at step boundaries (below) so the gait flows continuously instead of
+  // snapping to idle each frame the step crosses.
+  player.animationPhase = walk.walkPhase;
 
   if (walk.progress >= 1) {
     // Step completed — move player to destination tile
     player.x = walk.toX;
     player.y = walk.toY;
-    player.animationPhase = 0;
 
     // Start next step if path continues
     if (walk.path.length > 0) {
@@ -82,11 +88,13 @@ export function updateWalk(
       walk.toY = next.y;
       walk.progress = 0;
       walk.startTime = now;
+      walk.walkPhase = walk.walkPhase === 1 ? 2 : 1;
 
       const dir = computeDirection(player.x, player.y, next.x, next.y);
       if (dir !== null) player.direction = dir;
     } else {
       walk.active = false;
+      player.animationPhase = 0;
     }
 
     return { offsetX: 0, offsetY: 0 };

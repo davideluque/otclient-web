@@ -11,6 +11,11 @@ import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
 import type { PlayerState } from './lib/player';
+import { screenToTile } from './lib/input';
+import { findPath } from './lib/pathfinding';
+import { startWalk, updateWalk } from './lib/walkAnimation';
+import type { WalkState } from './lib/walkAnimation';
+import type { Sprite } from 'pixi.js';
 import {
   buildIlluminationOverlay,
   createLightMaskTexture,
@@ -157,13 +162,30 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   let tileContainer: Container | null = null;
   let lastVisibleKey = '';
+  let lastRenderRow = Number.NaN;
+  let lastPlayerX = Number.NaN;
+  let lastPlayerY = Number.NaN;
   let ambient: LightingOptions = NIGHT_AMBIENT;
   let illuminationTexture: RenderTexture | null = null;
   let animatedSprites: AnimatedSprite[] = [];
+  // Reference to the player Container currently in tileContainer, so the
+  // walk ticker can move it mid-step without waiting for a tile rebuild.
+  let currentPlayerSprite: Container | Sprite | null = null;
+  let walkState: WalkState | null = null;
   const lightMask = createLightMaskTexture();
   // Tinted-outfit cache lives across rebuilds — same outfit + direction
   // re-uses the texture. Cleared on app teardown, never during runtime.
   const tintedOutfitCache: TintedTextureCache = new Map();
+
+  // Row to render the player against. During a south walk we render the
+  // player as part of the destination row so its body (which extends into
+  // that tile mid-step) isn't painted over by that row's tiles.
+  function computeRenderRow(): number {
+    if (walkState?.active && walkState.toY > walkState.fromY) {
+      return walkState.toY;
+    }
+    return Math.floor(player.y);
+  }
 
   function rebuildTiles() {
     if (tileContainer) {
@@ -183,7 +205,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // behind it) but behind items south (trees, fences). Including the
     // player's own row in `above` means the floor and items on the player's
     // tile draw BEHIND the player sprite — which is what we want.
-    const playerRow = Math.floor(player.y);
+    const playerRow = computeRenderRow();
+    lastRenderRow = playerRow;
+    lastPlayerX = player.x;
+    lastPlayerY = player.y;
     const above = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, Math.min(playerRow, visible.y2), renderZ,
@@ -197,7 +222,17 @@ async function startApp(loaded: CompleteLoadedFiles) {
     tileContainer = new Container();
     tileContainer.addChild(above.container);
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, atlasPages, layout, tintedOutfitCache);
-    if (playerSprite) tileContainer.addChild(playerSprite);
+    if (playerSprite) {
+      // Apply the current walk offset on creation so a mid-walk rebuild
+      // doesn't briefly snap the player back to its rest position before
+      // the walk ticker re-applies the offset.
+      if (walkState?.active) {
+        playerSprite.x = (walkState.toX - walkState.fromX) * walkState.progress * 32;
+        playerSprite.y = (walkState.toY - walkState.fromY) * walkState.progress * 32;
+      }
+      tileContainer.addChild(playerSprite);
+    }
+    currentPlayerSprite = playerSprite;
     tileContainer.addChild(below.container);
 
     if (ambient.enabled) {
@@ -224,8 +259,15 @@ async function startApp(loaded: CompleteLoadedFiles) {
   function render(forceRebuild = false) {
     const visible = viewport.getVisibleTiles();
     const key = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
+    const renderRow = computeRenderRow();
 
-    if (forceRebuild || key !== lastVisibleKey) {
+    if (
+      forceRebuild
+      || key !== lastVisibleKey
+      || renderRow !== lastRenderRow
+      || player.x !== lastPlayerX
+      || player.y !== lastPlayerY
+    ) {
       rebuildTiles();
     }
     updateTransform();
@@ -252,20 +294,60 @@ async function startApp(loaded: CompleteLoadedFiles) {
     }
   });
 
-  // --- Touch/mouse controls ---
+  // --- Walk animation ticker ---
+  // Drives the player along its computed A* path. Smoothly interpolates
+  // both the player sprite position and the camera so the view follows
+  // the player without jitter at tile boundaries.
+  app.ticker.add(() => {
+    if (!walkState || !walkState.active) return;
+    const offset = updateWalk(walkState, player, performance.now());
 
-  let isDragging = false;
+    // Smooth camera follow — viewport.centerX is in tile coords, so the
+    // fractional progress between fromX→toX is exactly the camera target.
+    viewport.centerX = walkState.fromX + (walkState.toX - walkState.fromX) * walkState.progress;
+    viewport.centerY = walkState.fromY + (walkState.toY - walkState.fromY) * walkState.progress;
+
+    // Render BEFORE applying the offset. render() may rebuild the tile
+    // container (when the visible region key changes mid-walk), which
+    // creates a fresh player container at (0, 0). Applying the offset
+    // afterward guarantees the new sprite lands at the correct
+    // interpolated position before PixiJS draws the frame.
+    render();
+
+    if (currentPlayerSprite) {
+      currentPlayerSprite.x = offset.offsetX;
+      currentPlayerSprite.y = offset.offsetY;
+    }
+  });
+
+  // --- Touch/mouse controls — tap-to-walk + drag-to-pan ---
+  // A tap (small total movement between pointerdown and pointerup) sends
+  // the player to the tapped tile via A*. A drag (movement above the
+  // threshold) pans the camera as before.
+
+  const TAP_MAX_DISTANCE_PX = 8;
+  let pointerDownX = 0;
+  let pointerDownY = 0;
   let lastX = 0;
   let lastY = 0;
+  let dragMode: 'idle' | 'pending' | 'dragging' = 'idle';
 
   app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
-    isDragging = true;
+    pointerDownX = e.clientX;
+    pointerDownY = e.clientY;
     lastX = e.clientX;
     lastY = e.clientY;
+    dragMode = 'pending';
   });
 
   window.addEventListener('pointermove', (e: PointerEvent) => {
-    if (!isDragging) return;
+    if (dragMode === 'idle') return;
+    if (dragMode === 'pending') {
+      const totalDx = e.clientX - pointerDownX;
+      const totalDy = e.clientY - pointerDownY;
+      if (totalDx * totalDx + totalDy * totalDy < TAP_MAX_DISTANCE_PX * TAP_MAX_DISTANCE_PX) return;
+      dragMode = 'dragging';
+    }
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     lastX = e.clientX;
@@ -274,8 +356,23 @@ async function startApp(loaded: CompleteLoadedFiles) {
     render();
   });
 
-  window.addEventListener('pointerup', () => {
-    isDragging = false;
+  window.addEventListener('pointerup', (e: PointerEvent) => {
+    if (dragMode === 'pending') {
+      // Was a tap — convert to tile, run A*, start walk. If already walking,
+      // plan from the tile we're walking TO and just replace the queued
+      // remainder so the current step finishes smoothly — no camera snap.
+      const tile = screenToTile(e.clientX, e.clientY, viewport);
+      const startX = walkState?.active ? walkState.toX : player.x;
+      const startY = walkState?.active ? walkState.toY : player.y;
+      const path = findPath(startX, startY, tile.x, tile.y, renderZ, tileMap, datIndex);
+      if (path !== null && walkState?.active) {
+        walkState.path = path;
+      } else if (path && path.length > 0) {
+        walkState = startWalk(player, path, performance.now());
+        render(true); // pick up the new facing direction immediately
+      }
+    }
+    dragMode = 'idle';
   });
 
   // Zoom: locked to playZoom by default for fairness. The dev-only toggle

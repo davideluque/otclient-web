@@ -61,7 +61,7 @@ describe('updateWalk', () => {
     expect(walk.toX).toBe(12);
   });
 
-  it('cycles animation phase during walk', () => {
+  it('holds the walk phase for the duration of a step', () => {
     const player = createPlayer(10, 10, 7, outfit);
     const walk = startWalk(player, [{ x: 11, y: 10 }], 0)!;
 
@@ -69,6 +69,27 @@ describe('updateWalk', () => {
     expect(player.animationPhase).toBe(1);
 
     updateWalk(walk, player, WALK_DURATION_MS * 0.75);
+    expect(player.animationPhase).toBe(1);
+  });
+
+  it('alternates walk phase between steps so the gait does not snap', () => {
+    const player = createPlayer(10, 10, 7, outfit);
+    const walk = startWalk(player, [{ x: 11, y: 10 }, { x: 12, y: 10 }, { x: 13, y: 10 }], 0)!;
+
+    // Step 1: phase 1
+    updateWalk(walk, player, WALK_DURATION_MS * 0.5);
+    expect(player.animationPhase).toBe(1);
+
+    // After step 1 completes, we should be on step 2 with phase 2
+    updateWalk(walk, player, WALK_DURATION_MS);
+    expect(player.x).toBe(11);
+    updateWalk(walk, player, WALK_DURATION_MS + 50);
+    expect(player.animationPhase).toBe(2);
+
+    // After step 2 completes, step 3 with phase 1 again
+    updateWalk(walk, player, WALK_DURATION_MS * 2);
+    expect(player.x).toBe(12);
+    updateWalk(walk, player, WALK_DURATION_MS * 2 + 50);
     expect(player.animationPhase).toBe(1);
   });
 

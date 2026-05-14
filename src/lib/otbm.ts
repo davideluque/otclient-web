@@ -89,7 +89,7 @@ function makeReader(bytes: Uint8Array): BinaryReader {
  * Parse item attributes from a BinaryReader at the current position.
  * Reads attributes until the reader is exhausted.
  */
-function parseItemAttrs(reader: BinaryReader, item: OtbmItem): void {
+export function parseItemAttrs(reader: BinaryReader, item: OtbmItem): void {
   while (reader.position < reader.length) {
     const attrType = reader.getU8();
 

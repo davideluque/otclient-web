@@ -2,16 +2,16 @@ import { Application, Container } from 'pixi.js';
 import { parseDat } from './lib/dat';
 import { parseSpr } from './lib/spr';
 import { parseOtb } from './lib/otb';
-import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
-import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, buildDatIndex } from './lib/tileRenderer';
 import { Viewport } from './lib/viewport';
+import { buildOtbmIndex, parseTilesInTileArea } from './lib/otbmIndex';
+import { ChunkManager } from './lib/chunkManager';
+import type { OtbmIndex, OtbmTileAreaEntry } from './lib/otbmIndex';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
-import type { OtbmFile, OtbmRegion } from './lib/otbm';
 
 // --- File loading UI ---
 
@@ -23,7 +23,9 @@ interface LoadedFiles {
 }
 
 const loaded: LoadedFiles = {};
-const INITIAL_REGION_RADIUS = 100;
+const SPAWN_FLOOR = 7;
+const CHUNK_LOAD_RADIUS = 200;
+const CHUNK_RECHECK_TILES = 4;
 const dropZone = document.getElementById('drop-zone')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const statusEl = document.getElementById('status')!;
@@ -108,13 +110,11 @@ async function startApp() {
   const otb: OtbFile = parseOtb(loaded.otb!);
   setStatus('Parsed .otb...');
 
-  let initialRegion = getStandardRegion();
-  let otbm: OtbmFile = parseOtbmRegion(loaded.otbm!, initialRegion);
-  if (otbm.tiles.length === 0) {
-    initialRegion = getInitialRegion(loaded.otbm!);
-    otbm = parseOtbmRegion(loaded.otbm!, initialRegion);
-  }
-  setStatus(`Loaded ${otbm.tiles.length} tiles around (${initialRegion.centerX}, ${initialRegion.centerY})`);
+  setStatus('Indexing .otbm...');
+  const otbmBuffer = loaded.otbm!;
+  const otbmIndex: OtbmIndex = buildOtbmIndex(otbmBuffer);
+  const spawn = pickSpawn(otbmBuffer, otbmIndex);
+  setStatus(`Indexed ${otbmIndex.tileAreas.length} chunks`);
 
   setStatus('Building texture atlas...');
   const atlasPages = buildAtlasPages(spr);
@@ -122,9 +122,11 @@ async function startApp() {
   const layout = computeAtlasLayout(spr.spriteCount);
   const datIndex = buildDatIndex(dat);
 
-  setStatus('Building tile map...');
-  const tileMap = new TileMap(otbm, otb);
-  setStatus(`Loaded ${tileMap.size} tiles around (${initialRegion.centerX}, ${initialRegion.centerY})`);
+  setStatus('Loading initial chunks...');
+  const tileMap = new TileMap({ header: otbmIndex.header, tiles: [], towns: otbmIndex.towns }, otb);
+  const chunkManager = new ChunkManager(otbmBuffer, otb, otbmIndex, tileMap);
+  chunkManager.ensureChunksAround(spawn.x, spawn.y, spawn.z, CHUNK_LOAD_RADIUS);
+  setStatus(`Loaded ${chunkManager.loadedChunkCount}/${chunkManager.totalChunkCount} chunks (${tileMap.size} tiles) around (${spawn.x}, ${spawn.y})`);
 
   // Initialize PixiJS
   const app = new Application();
@@ -141,13 +143,15 @@ async function startApp() {
   document.body.appendChild(app.canvas);
 
   const viewport = new Viewport({
-    centerX: initialRegion.centerX,
-    centerY: initialRegion.centerY,
+    centerX: spawn.x,
+    centerY: spawn.y,
     screenWidth: window.innerWidth,
     screenHeight: window.innerHeight,
     zoom: 1,
   });
-  const renderZ = initialRegion.z ?? 7;
+  const renderZ = spawn.z;
+  let lastChunkCheckX = spawn.x;
+  let lastChunkCheckY = spawn.y;
 
   let tileContainer: Container | null = null;
   let lastVisibleKey = '';
@@ -177,11 +181,29 @@ async function startApp() {
     tileContainer.scale.set(viewport.zoom);
   }
 
+  function ensureChunksIfMoved(): boolean {
+    const dx = viewport.centerX - lastChunkCheckX;
+    const dy = viewport.centerY - lastChunkCheckY;
+    if (dx * dx + dy * dy < CHUNK_RECHECK_TILES * CHUNK_RECHECK_TILES) return false;
+    lastChunkCheckX = viewport.centerX;
+    lastChunkCheckY = viewport.centerY;
+    const cx = Math.round(viewport.centerX);
+    const cy = Math.round(viewport.centerY);
+    const added = chunkManager.ensureChunksAround(cx, cy, renderZ, CHUNK_LOAD_RADIUS);
+    console.log(
+      `chunk check @ (${cx}, ${cy}): +${added} new — `
+      + `${chunkManager.loadedChunkCount}/${chunkManager.totalChunkCount} loaded, `
+      + `${tileMap.size} tiles in map`,
+    );
+    return added > 0;
+  }
+
   function render(forceRebuild = false) {
+    const chunksChanged = ensureChunksIfMoved();
     const visible = viewport.getVisibleTiles();
     const key = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
-    if (forceRebuild || key !== lastVisibleKey) {
+    if (forceRebuild || chunksChanged || key !== lastVisibleKey) {
       rebuildTiles();
     }
     updateTransform();
@@ -259,117 +281,43 @@ async function startApp() {
     render();
   });
 
-  console.log(`Map loaded: ${tileMap.size} tiles, center at (${initialRegion.centerX}, ${initialRegion.centerY})`);
+  console.log(`Map loaded: ${tileMap.size} tiles streamed in ${chunkManager.loadedChunkCount}/${chunkManager.totalChunkCount} chunks, spawn at (${spawn.x}, ${spawn.y}, z=${spawn.z})`);
 }
 
-function getStandardRegion(): OtbmRegion {
-  return { centerX: 32100, centerY: 32100, radius: INITIAL_REGION_RADIUS, z: 7 };
-}
+interface Spawn { x: number; y: number; z: number }
 
-function getInitialRegion(buffer: ArrayBuffer): OtbmRegion {
-  const tile = findFirstTile(buffer);
-  if (!tile) {
-    return getStandardRegion();
-  }
+// Land in the densest floor-7 chunk we can find. Byte size of a TileArea's
+// children block is roughly proportional to how many tile/item nodes are in
+// it, so "largest chunk by bytes" almost always points at a city or town —
+// which is where the player wants to start.
+function pickSpawn(buffer: ArrayBuffer, index: OtbmIndex): Spawn {
+  const sorted: OtbmTileAreaEntry[] = [];
+  for (const e of index.tileAreas) if (e.baseZ === SPAWN_FLOOR) sorted.push(e);
+  sorted.sort((a, b) => (b.childrenEnd - b.childrenStart) - (a.childrenEnd - a.childrenStart));
 
-  return {
-    centerX: tile.x,
-    centerY: tile.y,
-    radius: INITIAL_REGION_RADIUS,
-    z: tile.z,
-  };
-}
+  for (const entry of sorted) {
+    const tiles = parseTilesInTileArea(buffer, entry).filter(t => t.items.length > 0);
+    if (tiles.length === 0) continue;
 
-function findFirstTile(buffer: ArrayBuffer): { x: number; y: number; z: number } | null {
-  const data = new Uint8Array(buffer);
-  let offset = 4;
-  const scanEnd = Math.min(data.length, 1024 * 1024);
-  let areaBaseX = 0;
-  let areaBaseY = 0;
-  let areaBaseZ = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (const t of tiles) { sumX += t.position.x; sumY += t.position.y; }
+    const cx = sumX / tiles.length;
+    const cy = sumY / tiles.length;
 
-  if (data[offset] !== NODE_START) return null;
-  offset++;
-
-  const root = readNodeData(data, offset);
-  offset = root.nextOffset;
-
-  function walk(depth = 0): { x: number; y: number; z: number } | null {
-    if (depth > 8) return null;
-
-    while (offset < scanEnd && offset < data.length) {
-      const marker = data[offset];
-
-      if (marker === NODE_END) {
-        offset++;
-        return null;
-      }
-
-      if (marker !== NODE_START) {
-        offset++;
-        continue;
-      }
-
-      offset++;
-      const node = readNodeData(data, offset);
-      offset = node.nextOffset;
-      if (node.bytes.length === 0) {
-        const found = walk(depth + 1);
-        if (found) return found;
-        continue;
-      }
-
-      const nodeType = node.bytes[0];
-      if (nodeType === OtbmNode.TileArea) {
-        areaBaseX = node.bytes[1] | (node.bytes[2] << 8);
-        areaBaseY = node.bytes[3] | (node.bytes[4] << 8);
-        areaBaseZ = node.bytes[5];
-        if (areaBaseZ !== 7) {
-          offset = skipNode(data, offset);
-          continue;
-        }
-        const found = walk(depth + 1);
-        if (found) return found;
-      } else if (nodeType === OtbmNode.Tile || nodeType === OtbmNode.HouseTile) {
-        if (tileNodeHasItems(node.bytes) || data[offset] === NODE_START) {
-          return {
-            x: areaBaseX + node.bytes[1],
-            y: areaBaseY + node.bytes[2],
-            z: areaBaseZ,
-          };
-        }
-        offset = skipNode(data, offset);
-      } else if (nodeType === OtbmNode.MapData || nodeType === OtbmNode.Towns) {
-        const found = walk(depth + 1);
-        if (found) return found;
-      } else {
-        offset = skipNode(data, offset);
-      }
+    let best = tiles[0];
+    let bestDist = Infinity;
+    for (const t of tiles) {
+      const dx = t.position.x - cx;
+      const dy = t.position.y - cy;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; best = t; }
     }
-
-    return null;
+    return { x: best.position.x, y: best.position.y, z: best.position.z };
   }
 
-  return walk();
-}
-
-function tileNodeHasItems(bytes: Uint8Array): boolean {
-  let offset = bytes[0] === OtbmNode.HouseTile ? 7 : 3;
-
-  while (offset < bytes.length) {
-    const attrType = bytes[offset];
-    offset++;
-
-    if (attrType === OtbmAttr.Item) return true;
-    if (attrType === OtbmAttr.TileFlags) {
-      offset += 4;
-    } else if (attrType === OtbmAttr.Description) {
-      const len = bytes[offset] | (bytes[offset + 1] << 8);
-      offset += 2 + len;
-    } else {
-      break;
-    }
-  }
-
-  return false;
+  // Last resort: any chunk on any floor.
+  const fallback = index.tileAreas[0];
+  if (fallback) return { x: fallback.baseX + 128, y: fallback.baseY + 128, z: fallback.baseZ };
+  return { x: 32100, y: 32100, z: SPAWN_FLOOR };
 }

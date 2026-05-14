@@ -102,4 +102,27 @@ describe('TileMap', () => {
     );
     expect(tileMap.size).toBe(2);
   });
+
+  describe('addTiles', () => {
+    it('merges additional tiles and updates bounds', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(50, 60, 7, [100])]), otb);
+      expect(tileMap.size).toBe(1);
+      expect(tileMap.minX).toBe(50);
+
+      tileMap.addTiles([makeTile(10, 20, 7, [101]), makeTile(80, 90, 7, [102])], otb);
+      expect(tileMap.size).toBe(3);
+      expect(tileMap.minX).toBe(10);
+      expect(tileMap.minY).toBe(20);
+      expect(tileMap.maxX).toBe(80);
+      expect(tileMap.maxY).toBe(90);
+      expect(tileMap.getTile(10, 20, 7)?.items[0].clientId).toBe(201);
+    });
+
+    it('overwrites existing tiles at the same position', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(5, 5, 7, [100])]), otb);
+      tileMap.addTiles([makeTile(5, 5, 7, [101, 102])], otb);
+      expect(tileMap.size).toBe(1);
+      expect(tileMap.getTile(5, 5, 7)?.items.map(i => i.clientId)).toEqual([201, 202]);
+    });
+  });
 });

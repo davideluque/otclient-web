@@ -14,9 +14,14 @@ export { parseOtb } from './otb';
 export type { OtbFile, OtbItem, OtbVersion } from './otb';
 export { OtbAttr, OtbFlags } from './otb';
 
-export { parseOtbm, parseOtbmRegion } from './otbm';
+export { parseOtbm, parseOtbmRegion, parseItemAttrs } from './otbm';
 export type { OtbmFile, OtbmTile, OtbmItem, OtbmTown, OtbmHeader, OtbmRegion, Position } from './otbm';
 export { OtbmNode, OtbmAttr } from './otbm';
+
+export { buildOtbmIndex, parseTilesInTileArea } from './otbmIndex';
+export type { OtbmIndex, OtbmTileAreaEntry } from './otbmIndex';
+
+export { ChunkManager } from './chunkManager';
 
 // Rendering
 export { TileMap } from './tileMap';

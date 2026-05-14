@@ -26,7 +26,16 @@ export class TileMap {
   private _maxY = -Infinity;
 
   constructor(otbm: OtbmFile, otb: OtbFile) {
-    for (const tile of otbm.tiles) {
+    this.addTiles(otbm.tiles, otb);
+  }
+
+  /**
+   * Merge tiles parsed from an OTBM region/chunk into this map. Resolves
+   * server IDs through `otb`, overwrites any existing entry at the same
+   * position, and expands the recorded bounds.
+   */
+  addTiles(tiles: OtbmTile[], otb: OtbFile): void {
+    for (const tile of tiles) {
       const resolved = this.resolveTile(tile, otb);
       if (resolved.items.length === 0) continue;
 

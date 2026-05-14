@@ -88,6 +88,14 @@ export function renderPlayer(
   const phase = Math.max(0, Math.min(player.animationPhase, fg.animationPhases - 1));
   const hasMask = fg.layers >= 2;
 
+  // Creatures declare a pixel displacement so the sprite's visible body
+  // sits over the tile origin instead of jutting into the bottom-right
+  // corner. Tibia 7.6 creatures typically use (8, 8). Without subtracting
+  // this, the citizen renders shifted down-and-right.
+  const displacement = creature.attrs.get(DatAttr.Displacement);
+  const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
+  const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
+
   const container = new Container();
   let drew = false;
 
@@ -111,8 +119,8 @@ export function renderPlayer(
       if (!texture) continue;
 
       const sprite = new Sprite(texture);
-      sprite.x = (player.x - w) * TILE_SIZE;
-      sprite.y = (player.y - h) * TILE_SIZE;
+      sprite.x = (player.x - w) * TILE_SIZE - dispX;
+      sprite.y = (player.y - h) * TILE_SIZE - dispY;
       container.addChild(sprite);
       drew = true;
     }

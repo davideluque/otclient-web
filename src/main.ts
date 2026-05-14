@@ -125,13 +125,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
     spawn.x,
     spawn.y,
     spawn.z,
-    // Default outfit: lookType 128 (citizen). Community-recommended retro
-    // citizen palette per outfit-tool tradition:
-    //   head 114 → (36, 36, 36)     dark — reads as near-black/very-dark-brown hair
-    //   body 2   → (255, 234, 191)  beige tunic
-    //   legs 65  → (64, 191, 149)   greenish pants
-    //   feet 19  → (218, 218, 218)  light grey shoes
-    { lookType: 128, headColor: 114, bodyColor: 2, legsColor: 65, feetColor: 19 },
+    // Default outfit: lookType 128 (citizen). Brown + blue look —
+    // tuning the exact palette indices is tracked in issue #57.
+    //   58 → (191, 106, 64)   medium brown
+    //   87 → (0, 85, 255)     Tibia shirt blue
+    { lookType: 128, headColor: 58, bodyColor: 87, legsColor: 58, feetColor: 58 },
   );
 
   // Initialize PixiJS

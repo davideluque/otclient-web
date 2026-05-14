@@ -3,6 +3,7 @@ import { parseDat } from './lib/dat';
 import { parseSpr, releaseSprBuffer } from './lib/spr';
 import { parseOtb } from './lib/otb';
 import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
+import { OtbmParser } from './lib/otbmParser';
 import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
@@ -113,8 +114,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
   }
   const spawn: Position = pickedSpawn ?? { x: 0, y: 0, z: 7 };
 
+  // Spin up the OTBM worker and transfer ownership of the raw buffer.
+  // From here on, the main thread no longer holds the .otbm bytes —
+  // every parse goes through otbmParser. (The metadata + findFirstTile
+  // passes above ran synchronously before the transfer, when the
+  // buffer was still here.)
+  const otbmParser = new OtbmParser();
+  otbmParser.setBuffer(loaded.otbm);
+
   const initialRegion: OtbmRegion = regionAround(spawn);
-  const otbm: OtbmFile = parseOtbmRegion(loaded.otbm, initialRegion);
+  const otbm: OtbmFile = await otbmParser.parseRegion(initialRegion);
   setStatus(`Loaded ${otbm.tiles.length} tiles around (${spawn.x}, ${spawn.y})`);
 
   setStatus('Building texture atlas...');
@@ -326,29 +335,41 @@ async function startApp(loaded: CompleteLoadedFiles) {
     return `${bk}@${region.centerX},${region.centerY}`;
   }
 
-  function tryExpand(visible: ViewRect): boolean {
+  // Pending-expansion flag — the worker is single-threaded and we don't
+  // want a backlog of duplicate region parses queued behind it. While
+  // one is in flight, tryExpand short-circuits.
+  let pendingExpansion = false;
+
+  function tryExpand(visible: ViewRect): void {
     const now = performance.now();
-    if (now - lastExpansionTime < EXPANSION_COOLDOWN_MS) return false;
+    if (now - lastExpansionTime < EXPANSION_COOLDOWN_MS) return;
+    if (pendingExpansion) return;
 
     const currentBounds = tileMap.getBounds(renderZ);
     const region = needsExpansion(currentBounds, visible, renderZ, 30);
-    if (!region) return false;
+    if (!region) return;
 
     const ek = expansionKey(currentBounds, region);
-    if (exhaustedDirections.has(ek)) return false;
+    if (exhaustedDirections.has(ek)) return;
 
-    const prevSize = tileMap.size;
-    const expanded = parseOtbmRegion(loaded.otbm, region);
-    tileMap.merge(expanded);
     lastExpansionTime = now;
-
-    if (tileMap.size > prevSize) {
-      exhaustedDirections.clear(); // bounds grew — all directions worth retrying
-      console.log('[map] expanded →', tileMap.getBounds(renderZ));
-      return true;
-    }
-    exhaustedDirections.add(ek);
-    return false;
+    pendingExpansion = true;
+    const prevSize = tileMap.size;
+    otbmParser.parseRegion(region).then(expanded => {
+      pendingExpansion = false;
+      tileMap.merge(expanded);
+      if (tileMap.size > prevSize) {
+        exhaustedDirections.clear(); // bounds grew — all directions worth retrying
+        console.log('[map] expanded →', tileMap.getBounds(renderZ));
+        render(true); // tiles changed; rebuild
+      } else {
+        exhaustedDirections.add(ek);
+      }
+    }).catch(err => {
+      pendingExpansion = false;
+      console.error('[map] expansion failed:', err);
+    });
+    return;
   }
 
   function render(forceRebuild = false) {
@@ -356,10 +377,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const key = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
     const renderRow = computeRenderRow();
 
-    const expanded = tryExpand(visible);
+    // Fire-and-forget — if expansion lands, the worker callback will
+    // call render(true) on its own. We don't wait here.
+    tryExpand(visible);
     if (
       forceRebuild
-      || expanded
       || key !== lastVisibleKey
       || renderRow !== lastRenderRow
       || player.x !== lastPlayerX
@@ -417,35 +439,52 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // shift when the destination tile is itself a directional up-stair
   // (the partner side of a bidirectional stair) so the player doesn't
   // land on top of it and instantly re-trigger going back up.
-  function handleFloorChange(fc: FloorChange) {
+  async function handleFloorChange(fc: FloorChange) {
+    // Compute the new (x, y, z) and direction *without* mutating
+    // player state yet — we want to wait for tile data before showing
+    // the new floor, otherwise a void flash appears for the ~100ms the
+    // worker takes to parse.
+    let newZ = renderZ;
+    let newX = player.x;
+    let newY = player.y;
+    let newDir = player.direction;
     if (fc === 'down') {
-      renderZ++;
-      player.z = renderZ;
-      ensureLoadedAt(player.x, player.y, renderZ);
-      const partner = tileMap.getFloorChange(player.x, player.y, renderZ);
-      if (partner === 'up-north') player.y++;
-      else if (partner === 'up-south') player.y--;
-      else if (partner === 'up-east') player.x--;
-      else if (partner === 'up-west') player.x++;
+      newZ++;
     } else {
-      renderZ--;
-      if (fc === 'up-north') { player.y--; player.direction = Direction.North; }
-      else if (fc === 'up-east') { player.x++; player.direction = Direction.East; }
-      else if (fc === 'up-south') { player.y++; player.direction = Direction.South; }
-      else if (fc === 'up-west') { player.x--; player.direction = Direction.West; }
-      player.z = renderZ;
-      ensureLoadedAt(player.x, player.y, renderZ);
+      newZ--;
+      if (fc === 'up-north') { newY--; newDir = Direction.North; }
+      else if (fc === 'up-east') { newX++; newDir = Direction.East; }
+      else if (fc === 'up-south') { newY++; newDir = Direction.South; }
+      else if (fc === 'up-west') { newX--; newDir = Direction.West; }
     }
+
+    await ensureLoadedAt(newX, newY, newZ);
+
+    if (fc === 'down') {
+      // Bidirectional-stair inverse shift, evaluated against the
+      // freshly-loaded destination floor.
+      const partner = tileMap.getFloorChange(newX, newY, newZ);
+      if (partner === 'up-north') newY++;
+      else if (partner === 'up-south') newY--;
+      else if (partner === 'up-east') newX--;
+      else if (partner === 'up-west') newX++;
+    }
+
+    renderZ = newZ;
+    player.x = newX;
+    player.y = newY;
+    player.z = newZ;
+    player.direction = newDir;
     exhaustedDirections.clear();
     viewport.centerX = player.x;
     viewport.centerY = player.y;
     render(true);
   }
 
-  function ensureLoadedAt(x: number, y: number, z: number) {
+  async function ensureLoadedAt(x: number, y: number, z: number): Promise<void> {
     if (tileMap.getTile(x, y, z)) return;
     const region: OtbmRegion = { centerX: x, centerY: y, radius: 25, z };
-    tileMap.merge(parseOtbmRegion(loaded.otbm, region));
+    tileMap.merge(await otbmParser.parseRegion(region));
   }
 
   const onStepLand = (x: number, y: number) => {
@@ -576,7 +615,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     dragMode = 'idle';
   }
 
-  window.addEventListener('pointerup', (e: PointerEvent) => {
+  window.addEventListener('pointerup', async (e: PointerEvent) => {
     if (e.pointerId !== activePointerId) return;
     if (dragMode === 'pending') {
       // Was a tap — convert to tile, run A*, start walk. If already walking,
@@ -588,9 +627,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
       const tile = screenToTile(e.clientX, e.clientY, viewport);
 
       // Anticipatory expansion: if the tap destination is near or outside
-      // loaded bounds, expand the map toward it before pathfinding.
-      // Reuses exhaustedDirections from viewport expansion to avoid
-      // repeated expensive OTBM parses for taps in areas with no data.
+      // loaded bounds, expand the map toward it before pathfinding. We
+      // await this so findPath sees the merged tilemap below. Reuses
+      // exhaustedDirections from viewport expansion to avoid repeated
+      // expensive OTBM parses for taps in areas with no data.
       const currentBounds = tileMap.getBounds(renderZ);
       const destRegion = needsExpansionForDestination(
         currentBounds, tile.x, tile.y, renderZ, 30,
@@ -599,16 +639,20 @@ async function startApp(loaded: CompleteLoadedFiles) {
         const ek = expansionKey(currentBounds, destRegion);
         if (!exhaustedDirections.has(ek)) {
           const prevSize = tileMap.size;
-          const expanded = parseOtbmRegion(loaded.otbm, destRegion);
-          tileMap.merge(expanded);
-          if (tileMap.size > prevSize) {
-            exhaustedDirections.clear();
-            if (import.meta.env.DEV) {
-              console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
+          try {
+            const expanded = await otbmParser.parseRegion(destRegion);
+            tileMap.merge(expanded);
+            if (tileMap.size > prevSize) {
+              exhaustedDirections.clear();
+              if (import.meta.env.DEV) {
+                console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
+              }
+              render(true);
+            } else {
+              exhaustedDirections.add(ek);
             }
-            render(true);
-          } else {
-            exhaustedDirections.add(ek);
+          } catch (err) {
+            console.error('[map] walk-expand failed:', err);
           }
         }
       }

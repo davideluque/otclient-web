@@ -230,13 +230,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   // Drive item animation (torches, lights, fire). 500 ms per frame matches
   // OTClient's ITEM_TICKS_PER_FRAME for Tibia 7.6-style items (per-phase
-  // durations weren't stored in the .dat until ~10.50+). Pre-resolved
-  // textures live on each AnimatedSprite, so this is just a reference
-  // swap — no allocation in the hot loop.
+  // durations weren't stored in the .dat until ~10.50+). The ticker fires
+  // at 60 Hz; skip work on the ~30 frames in a row where the animation
+  // frame index hasn't actually advanced.
   const ANIMATION_FRAME_MS = 500;
+  let lastFrame = -1;
   app.ticker.add(() => {
     if (animatedSprites.length === 0) return;
     const frame = Math.floor(performance.now() / ANIMATION_FRAME_MS);
+    if (frame === lastFrame) return;
+    lastFrame = frame;
     for (const a of animatedSprites) {
       const phase = frame % a.texturesByPhase.length;
       const tex = a.texturesByPhase[phase];

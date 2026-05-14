@@ -442,6 +442,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
       player.z = renderZ;
       ensureLoadedAt(player.x, player.y, renderZ);
     }
+    // expansionKey doesn't include z, so an exhausted-direction entry
+    // from the old floor would wrongly suppress retries on the new
+    // floor. Clear the set on every floor change.
+    exhaustedDirections.clear();
     viewport.centerX = player.x;
     viewport.centerY = player.y;
     render(true);

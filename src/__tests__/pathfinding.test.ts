@@ -78,6 +78,19 @@ describe('isTileWalkable', () => {
     const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [2])]), otb);
     expect(isTileWalkable(0, 0, 7, tileMap, datIndex)).toBe(true);
   });
+
+  it('still blocks when a NON-floor-change item on the same tile flags NotWalkable', () => {
+    // A stair stacked alongside a wall (server-id 3, no FloorChange flag,
+    // NotWalkable in .dat) should remain non-walkable — the floor-change
+    // override applies to the stair's own flags only, not the whole tile.
+    const FLOOR_DOWN = 1 << 8;
+    const otb = makeOtb([[2, 200], [3, 300]], { 2: FLOOR_DOWN });
+    const stair = makeDatItem(200, false); // NotWalkable in .dat
+    const wall = makeDatItem(300, false);  // NotWalkable in .dat
+    const datIndex = buildDatIndex([stair, wall]);
+    const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [2, 3])]), otb);
+    expect(isTileWalkable(0, 0, 7, tileMap, datIndex)).toBe(false);
+  });
 });
 
 describe('findPath', () => {

@@ -264,15 +264,28 @@ async function startApp(loaded: CompleteLoadedFiles) {
   }
 
   // --- Dynamic region expansion ---
+  // Tracks the bounds snapshot from the last expansion attempt that found
+  // no new tiles. If bounds haven't grown since, we skip the expensive
+  // OTBM re-parse — the file won't have new data in that direction.
   let lastExpansionTime = 0;
+  let lastFailedBoundsKey = '';
   const EXPANSION_COOLDOWN_MS = 500;
+
+  function boundsKey(b: import('./lib/tileMap').Bounds | null): string {
+    return b ? `${b.minX},${b.minY},${b.maxX},${b.maxY}` : '';
+  }
 
   function tryExpand(visible: ViewRect): boolean {
     const now = performance.now();
     if (now - lastExpansionTime < EXPANSION_COOLDOWN_MS) return false;
 
-    const region = needsExpansion(tileMap.getBounds(renderZ), visible, renderZ, 30);
+    const currentBounds = tileMap.getBounds(renderZ);
+    const region = needsExpansion(currentBounds, visible, renderZ, 30);
     if (!region) return false;
+
+    // If bounds haven't changed since our last fruitless parse, don't rescan
+    const bk = boundsKey(currentBounds);
+    if (bk === lastFailedBoundsKey) return false;
 
     const prevSize = tileMap.size;
     const expanded = parseOtbmRegion(loaded.otbm, region);
@@ -280,9 +293,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastExpansionTime = now;
 
     if (tileMap.size > prevSize) {
+      lastFailedBoundsKey = ''; // bounds grew — reset the failure gate
       console.log('[map] expanded →', tileMap.getBounds(renderZ));
       return true;
     }
+    // No new tiles found — remember this bounds so we don't rescan
+    lastFailedBoundsKey = bk;
     return false;
   }
 

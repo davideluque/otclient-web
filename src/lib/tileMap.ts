@@ -102,10 +102,9 @@ export class TileMap {
 
   private globalBound(field: keyof Bounds, fallback: number): number {
     let result = fallback;
+    const isMin = field.startsWith('min');
     for (const b of this.zBounds.values()) {
-      result = field.startsWith('min')
-        ? Math.min(result, b[field])
-        : Math.max(result, b[field]);
+      result = isMin ? Math.min(result, b[field]) : Math.max(result, b[field]);
     }
     return result;
   }

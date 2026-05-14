@@ -22,7 +22,7 @@ import type { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
-import type { OtbmFile, OtbmRegion } from './lib/otbm';
+import type { OtbmFile, OtbmRegion, Position } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
 
 // --- File loading UI ---
@@ -88,6 +88,21 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   let initialRegion = getStandardRegion();
   let otbm: OtbmFile = parseOtbmRegion(loaded.otbm, initialRegion);
+
+  // Prefer the map's declared Rookgaard temple (every 7.6 server stores it
+  // in the towns list). The hardcoded canonical coordinate above is just
+  // the default — if this specific OTBM disagrees, re-parse around it.
+  const rookgaard = findRookgaardTemple(otbm.towns);
+  if (rookgaard && (rookgaard.x !== initialRegion.centerX || rookgaard.y !== initialRegion.centerY || rookgaard.z !== initialRegion.z)) {
+    initialRegion = {
+      centerX: rookgaard.x,
+      centerY: rookgaard.y,
+      radius: INITIAL_REGION_RADIUS,
+      z: rookgaard.z,
+    };
+    otbm = parseOtbmRegion(loaded.otbm, initialRegion);
+  }
+
   if (otbm.tiles.length === 0) {
     initialRegion = getInitialRegion(loaded.otbm);
     otbm = parseOtbmRegion(loaded.otbm, initialRegion);
@@ -267,8 +282,24 @@ async function startApp(loaded: CompleteLoadedFiles) {
   console.log(`Map loaded: ${tileMap.size} tiles, center at (${initialRegion.centerX}, ${initialRegion.centerY})`);
 }
 
+// Rookgaard temple — the level-1 starting point in real Tibia 7.6. Used as
+// the default spawn when the OTBM doesn't declare its own Rookgaard town.
+const ROOKGAARD_TEMPLE = { x: 32097, y: 32219, z: 7 };
+
 function getStandardRegion(): OtbmRegion {
-  return { centerX: 32100, centerY: 32100, radius: INITIAL_REGION_RADIUS, z: 7 };
+  return {
+    centerX: ROOKGAARD_TEMPLE.x,
+    centerY: ROOKGAARD_TEMPLE.y,
+    radius: INITIAL_REGION_RADIUS,
+    z: ROOKGAARD_TEMPLE.z,
+  };
+}
+
+function findRookgaardTemple(towns: OtbmFile['towns']): Position | null {
+  for (const town of towns) {
+    if (/rookgaard/i.test(town.name)) return town.templePosition;
+  }
+  return null;
 }
 
 function getInitialRegion(buffer: ArrayBuffer): OtbmRegion {

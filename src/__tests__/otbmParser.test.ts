@@ -129,6 +129,34 @@ describe('OtbmParser', () => {
     await expect(promise).rejects.toThrow('destroyed');
   });
 
+  it('parseRegion after destroy returns a rejected promise immediately', async () => {
+    const mock = new MockWorker();
+    const parser = new OtbmParser({ workerFactory: () => mock });
+    parser.destroy();
+    const region: OtbmRegion = { centerX: 0, centerY: 0, radius: 10, z: 7 };
+    // Without the destroyed guard the Promise would never resolve because
+    // there's no worker to respond. The guard makes the contract explicit.
+    await expect(parser.parseRegion(region)).rejects.toThrow('destroyed');
+  });
+
+  it('setBuffer after destroy throws', () => {
+    const mock = new MockWorker();
+    const parser = new OtbmParser({ workerFactory: () => mock });
+    parser.destroy();
+    expect(() => parser.setBuffer(new ArrayBuffer(8))).toThrow('destroyed');
+  });
+
+  it('destroy() is idempotent — calling twice does not re-terminate', () => {
+    const mock = new MockWorker();
+    const parser = new OtbmParser({ workerFactory: () => mock });
+    parser.destroy();
+    expect(mock.terminated).toBe(true);
+    // Reset and re-call destroy — the second call should be a no-op.
+    mock.terminated = false;
+    parser.destroy();
+    expect(mock.terminated).toBe(false);
+  });
+
   it('keeps unused vitest spy ergonomics for future-proofing', () => {
     // Anchor test: if vi changes its public surface and we wire spy-based
     // tests later, this ensures the import path is still good.

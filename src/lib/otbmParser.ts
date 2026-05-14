@@ -38,6 +38,7 @@ export class OtbmParser {
     reject: (err: Error) => void;
   }>();
   private nextId = 0;
+  private destroyed = false;
 
   constructor(opts: OtbmParserOpts = {}) {
     this.worker = (opts.workerFactory ?? defaultWorkerFactory)();
@@ -52,6 +53,7 @@ export class OtbmParser {
    * here on. Call once at startup before any parseRegion.
    */
   setBuffer(buffer: ArrayBuffer): void {
+    if (this.destroyed) throw new Error('OtbmParser destroyed');
     this.worker.postMessage({ type: 'init', buffer }, [buffer]);
   }
 
@@ -60,8 +62,13 @@ export class OtbmParser {
    * parsed OtbmFile or rejects with the worker's error message.
    * Multiple parseRegion calls are safe in flight at once — each gets a
    * unique id and the worker processes them in order it received them.
+   * Returns a rejected Promise immediately if the parser was destroyed
+   * (the worker is gone, so the Promise would otherwise never resolve).
    */
   parseRegion(region: OtbmRegion): Promise<OtbmFile> {
+    if (this.destroyed) {
+      return Promise.reject(new Error('OtbmParser destroyed'));
+    }
     return new Promise<OtbmFile>((resolve, reject) => {
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
@@ -69,8 +76,10 @@ export class OtbmParser {
     });
   }
 
-  /** Terminate the worker and reject any in-flight requests. */
+  /** Terminate the worker and reject any in-flight requests. Idempotent. */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.worker.terminate();
     for (const p of this.pending.values()) p.reject(new Error('OtbmParser destroyed'));
     this.pending.clear();

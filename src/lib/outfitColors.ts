@@ -48,7 +48,7 @@ export function outfitIndexToRgb(index: number): OutfitRGB {
   if (intensity === 0) return { r: 0, g: 0, b: 0 };
 
   if (saturation === 0) {
-    const v = Math.round(intensity * 255);
+    const v = Math.floor(intensity * 255);
     return { r: v, g: v, b: v };
   }
 
@@ -83,8 +83,8 @@ export function outfitIndexToRgb(index: number): OutfitRGB {
   }
 
   return {
-    r: Math.round(red * 255),
-    g: Math.round(green * 255),
-    b: Math.round(blue * 255),
+    r: Math.floor(red * 255),
+    g: Math.floor(green * 255),
+    b: Math.floor(blue * 255),
   };
 }

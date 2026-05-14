@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { outfitIndexToRgb } from '../lib/outfitColors';
 
 describe('outfitIndexToRgb', () => {
-  it('returns black for index 0', () => {
-    // hue=0 branch, intensity = 1 - 0/19/7 = 1, saturation = 0 → white grey at full intensity
+  it('returns white for index 0', () => {
+    // hue=0 branch, intensity = 1 - 0/19/7 = 1, saturation = 0 → full-intensity grey == white
     expect(outfitIndexToRgb(0)).toEqual({ r: 255, g: 255, b: 255 });
   });
 
@@ -16,7 +16,7 @@ describe('outfitIndexToRgb', () => {
     expect(c.r).toBeLessThan(240);
   });
 
-  it('returns black for index 133+ (out of range maps to 0 then to white)', () => {
+  it('returns white for index 133+ (out of range maps to 0 then to white)', () => {
     // OTClient's contract: out-of-range index becomes 0 (which gives full-intensity grey, i.e. white)
     expect(outfitIndexToRgb(200)).toEqual({ r: 255, g: 255, b: 255 });
     expect(outfitIndexToRgb(-1)).toEqual({ r: 255, g: 255, b: 255 });

@@ -118,8 +118,16 @@ export function buildIlluminationOverlay(
   ambient.rect(0, 0, w, h).fill({ color: opts.ambientColor });
   scene.addChild(ambient);
 
-  // Each light additively brightens the framebuffer in its area.
-  for (const light of gatherLights(tileMap, datIndex, x1, y1, x2, y2, z)) {
+  // Each light additively brightens the framebuffer in its area. Expand the
+  // gather rect by MAX_INTENSITY tiles so a light just outside the visible
+  // rectangle still contributes when its bubble reaches in — otherwise the
+  // screen edges go dark and torches pop in as the viewport pans.
+  for (const light of gatherLights(
+    tileMap, datIndex,
+    x1 - MAX_INTENSITY, y1 - MAX_INTENSITY,
+    x2 + MAX_INTENSITY, y2 + MAX_INTENSITY,
+    z,
+  )) {
     const sprite = new Sprite(mask);
     sprite.anchor.set(0.5);
     sprite.x = (light.x - x1) * TILE_SIZE + TILE_SIZE / 2;

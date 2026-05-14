@@ -272,14 +272,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     // Collect positions where the current floor has a FullGround item —
     // these completely cover the floor below and should be occluded.
-    let fullGroundPositions: Set<string> | undefined;
+    // Bit-pack (x, y) into a single number for fast Set lookups.
+    // Tibia coords are 16-bit, so (x << 16) | y fits in 32 bits.
+    let fullGroundPositions: Set<number> | undefined;
     if (renderZ <= 7) {
       fullGroundPositions = new Set();
       for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
         for (const item of tile.items) {
           const tt = datIndex.get(item.clientId);
           if (tt?.attrs.has(DatAttr.FullGround)) {
-            fullGroundPositions.add(`${tile.x}:${tile.y}`);
+            fullGroundPositions.add((tile.x << 16) | tile.y);
             break;
           }
         }
@@ -304,9 +306,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, Math.max(playerRow + 1, visible.y1), visible.x2, visible.y2, renderZ,
     );
-    animatedSprites = [...above.animated, ...below.animated];
-
     tileContainer = new Container();
+
+    // Collect all animated sprites in one pass at the end.
+    const allAnimated: typeof animatedSprites = [];
 
     if (renderZ <= 7) {
       const floorBelow = renderTileRegion(
@@ -316,8 +319,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
       );
       floorBelow.container.alpha = FLOOR_BELOW_ALPHA;
       tileContainer.addChild(floorBelow.container);
-      animatedSprites = [...floorBelow.animated, ...animatedSprites];
+      allAnimated.push(...floorBelow.animated);
     }
+    allAnimated.push(...above.animated, ...below.animated);
+    animatedSprites = allAnimated;
 
     tileContainer.addChild(above.container);
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, atlasPages, layout, tintedOutfitCache);

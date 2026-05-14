@@ -20,6 +20,9 @@ export interface DevControlsHandle {
 }
 
 export function createDevControls(toggles: DevToggle[]): DevControlsHandle {
+  // Guard against re-entry: remove any prior instance.
+  document.querySelector('.dev-controls')?.remove();
+
   const root = document.createElement('div');
   root.className = 'dev-controls';
   root.style.cssText = [

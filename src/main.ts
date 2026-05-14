@@ -461,9 +461,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const keyboard = createKeyboard({
     onToggle: (id) => {
       if (id === 'night') {
-        const isNight = ambient !== NIGHT_AMBIENT;
-        ambient = isNight ? NIGHT_AMBIENT : DAY_AMBIENT;
-        devControls?.setToggle('Night', isNight);
+        const willBeNight = ambient !== NIGHT_AMBIENT;
+        ambient = willBeNight ? NIGHT_AMBIENT : DAY_AMBIENT;
+        devControls?.setToggle('Night', willBeNight);
         render(true);
       }
     },
@@ -565,8 +565,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const dy = e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
-    if (dragToPanEnabled) viewport.pan(dx, dy);
-    render();
+    if (dragToPanEnabled) {
+      viewport.pan(dx, dy);
+      render();
+    }
   });
 
   function endGesture() {

@@ -125,12 +125,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
     spawn.x,
     spawn.y,
     spawn.z,
-    // Default outfit: lookType 128 (citizen). Classic Tibia 7.x/8.x newbie
-    // — brown hair, blue shirt, brown trousers/shoes. Palette indices
-    // chosen by tracing through outfitIndexToRgb:
-    //   116 → (128, 85, 0)   dark brown (multiples of 19 are grayscale!)
-    //   88  → (0, 0, 255)    pure blue
-    { lookType: 128, headColor: 116, bodyColor: 88, legsColor: 116, feetColor: 116 },
+    // Default outfit: lookType 128 (citizen). Trying user-supplied "classic
+    // 7.2 citizen" palette values: 124/114/38/94. Note: tracing these
+    // through OTClient's getColor algorithm gives unexpected results
+    // (teal / near-black / grey / red rather than the stated brown / beige
+    // / green / grey), but applying them so we can see the visual outcome.
+    { lookType: 128, headColor: 124, bodyColor: 114, legsColor: 38, feetColor: 94 },
   );
 
   // Initialize PixiJS

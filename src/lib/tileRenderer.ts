@@ -158,6 +158,13 @@ function renderTile(
     const thingType = datIndex.get(item.clientId);
     if (!thingType) continue;
 
+    // Pixel offset applied to every cell of this item — walls and door frames
+    // use it to sit flush against the tile edge, wall-mounted fixtures use it
+    // to overhang properly. Reads {x, y} from dat; both default to 0.
+    const displacement = thingType.attrs.get(DatAttr.Displacement);
+    const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
+    const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
+
     const { width, height, spriteIds } = thingType.frameGroup;
     // DAT sprite layout (matches OTClient reference):
     //   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
@@ -180,8 +187,8 @@ function renderTile(
         if (!texture) continue;
 
         const sprite = new Sprite(texture);
-        sprite.x = screenX - w * TILE_SIZE;
-        sprite.y = screenY - h * TILE_SIZE - elevation;
+        sprite.x = screenX - w * TILE_SIZE - dispX;
+        sprite.y = screenY - h * TILE_SIZE - elevation - dispY;
         container.addChild(sprite);
       }
     }

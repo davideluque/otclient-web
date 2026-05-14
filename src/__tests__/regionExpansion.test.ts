@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { needsExpansion } from '../lib/regionExpansion';
+import { needsExpansion, needsExpansionForDestination } from '../lib/regionExpansion';
 import type { Bounds } from '../lib/tileMap';
 
 const bounds: Bounds = { minX: 100, maxX: 300, minY: 100, maxY: 300 };
@@ -48,5 +48,42 @@ describe('needsExpansion', () => {
     const visible = { x1: 105, y1: 180, x2: 150, y2: 220 };
     const region = needsExpansion(bounds, visible, 5, 30);
     expect(region!.z).toBe(5);
+  });
+});
+
+describe('needsExpansionForDestination', () => {
+  it('returns null when destination is comfortably inside bounds', () => {
+    expect(needsExpansionForDestination(bounds, 200, 200, 7, 30)).toBeNull();
+  });
+
+  it('triggers when destination is near left edge', () => {
+    const region = needsExpansionForDestination(bounds, 110, 200, 7, 30);
+    expect(region).not.toBeNull();
+    expect(region!.z).toBe(7);
+    expect(region!.radius).toBeGreaterThanOrEqual(100);
+  });
+
+  it('triggers when destination is outside bounds entirely', () => {
+    const region = needsExpansionForDestination(bounds, 500, 200, 7, 30);
+    expect(region).not.toBeNull();
+    // Radius should be large enough to cover the gap
+    expect(region!.radius).toBeGreaterThan(100);
+  });
+
+  it('returns null when bounds are null', () => {
+    expect(needsExpansionForDestination(null, 200, 200, 7, 30)).toBeNull();
+  });
+
+  it('uses dynamic radius based on distance', () => {
+    // Near edge: smaller radius
+    const near = needsExpansionForDestination(bounds, 120, 200, 7, 30);
+    // Far outside: larger radius
+    const far = needsExpansionForDestination(bounds, 600, 200, 7, 30);
+    expect(far!.radius).toBeGreaterThan(near!.radius);
+  });
+
+  it('triggers when destination is near bottom edge', () => {
+    const region = needsExpansionForDestination(bounds, 200, 290, 7, 30);
+    expect(region).not.toBeNull();
   });
 });

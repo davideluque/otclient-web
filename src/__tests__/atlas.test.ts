@@ -10,8 +10,6 @@ import {
 import { ThingCategory } from '../lib/dat';
 import { SPRITE_SIZE, parseSpr } from '../lib/spr';
 import type { DatFile } from '../lib/dat';
-import type { OtbFile } from '../lib/otb';
-import type { OtbmFile } from '../lib/otbm';
 
 function pushU16(bytes: number[], value: number) {
   bytes.push(value & 0xff, (value >> 8) & 0xff);
@@ -129,7 +127,7 @@ describe('buildAtlasPages', () => {
 });
 
 describe('collectReferencedSpriteIds', () => {
-  it('collects sprite IDs from OTBM server IDs through OTB and DAT mappings', () => {
+  it('collects all item sprite IDs from the dat', () => {
     const dat = {
       signature: 0,
       itemCount: 101,
@@ -142,15 +140,9 @@ describe('collectReferencedSpriteIds', () => {
           category: ThingCategory.Item,
           attrs: new Map(),
           frameGroup: {
-            width: 1,
-            height: 1,
-            exactSize: 32,
-            layers: 1,
-            numPatternX: 1,
-            numPatternY: 1,
-            numPatternZ: 1,
-            animationPhases: 1,
-            spriteIds: [11],
+            width: 1, height: 1, exactSize: 32, layers: 1,
+            numPatternX: 1, numPatternY: 1, numPatternZ: 1,
+            animationPhases: 1, spriteIds: [11],
           },
         },
         {
@@ -158,15 +150,9 @@ describe('collectReferencedSpriteIds', () => {
           category: ThingCategory.Item,
           attrs: new Map(),
           frameGroup: {
-            width: 1,
-            height: 1,
-            exactSize: 32,
-            layers: 1,
-            numPatternX: 1,
-            numPatternY: 1,
-            numPatternZ: 1,
-            animationPhases: 2,
-            spriteIds: [0, 22],
+            width: 1, height: 1, exactSize: 32, layers: 1,
+            numPatternX: 1, numPatternY: 1, numPatternZ: 1,
+            animationPhases: 2, spriteIds: [0, 22],
           },
         },
       ],
@@ -175,31 +161,11 @@ describe('collectReferencedSpriteIds', () => {
       missiles: [],
     } satisfies DatFile;
 
-    const otb = {
-      version: { version: 1, majorVersion: 1, minorVersion: 1, buildNumber: 1, csdVersion: '' },
-      items: [],
-      serverToClient: new Map([
-        [2000, 100],
-        [2001, 101],
-      ]),
-    } satisfies OtbFile;
-
-    const otbm = {
-      header: { version: 1, width: 1, height: 1, majorVersionItems: 1, minorVersionItems: 1 },
-      tiles: [
-        {
-          position: { x: 100, y: 100, z: 7 },
-          flags: 0,
-          items: [{ id: 2000 }, { id: 2001 }, { id: 9999 }],
-        },
-      ],
-      towns: [],
-    } satisfies OtbmFile;
-
-    expect(collectReferencedSpriteIds(dat, otb, otbm)).toEqual(new Set([11, 22]));
+    // All non-zero sprite IDs from all items, regardless of map content
+    expect(collectReferencedSpriteIds(dat)).toEqual(new Set([11, 22]));
   });
 
-  it('includes every creature sprite from the dat regardless of OTBM contents', () => {
+  it('includes all creature sprites from the dat', () => {
     const dat = {
       signature: 0,
       itemCount: 100,
@@ -213,15 +179,9 @@ describe('collectReferencedSpriteIds', () => {
           category: ThingCategory.Creature,
           attrs: new Map(),
           frameGroup: {
-            width: 1,
-            height: 1,
-            exactSize: 32,
-            layers: 1,
-            numPatternX: 4,
-            numPatternY: 1,
-            numPatternZ: 1,
-            animationPhases: 1,
-            spriteIds: [50, 51, 52, 53],
+            width: 1, height: 1, exactSize: 32, layers: 1,
+            numPatternX: 4, numPatternY: 1, numPatternZ: 1,
+            animationPhases: 1, spriteIds: [50, 51, 52, 53],
           },
         },
         {
@@ -229,15 +189,9 @@ describe('collectReferencedSpriteIds', () => {
           category: ThingCategory.Creature,
           attrs: new Map(),
           frameGroup: {
-            width: 1,
-            height: 1,
-            exactSize: 32,
-            layers: 1,
-            numPatternX: 1,
-            numPatternY: 1,
-            numPatternZ: 1,
-            animationPhases: 1,
-            spriteIds: [99],
+            width: 1, height: 1, exactSize: 32, layers: 1,
+            numPatternX: 1, numPatternY: 1, numPatternZ: 1,
+            animationPhases: 1, spriteIds: [99],
           },
         },
       ],
@@ -245,18 +199,6 @@ describe('collectReferencedSpriteIds', () => {
       missiles: [],
     } satisfies DatFile;
 
-    const otb = {
-      version: { version: 1, majorVersion: 1, minorVersion: 1, buildNumber: 1, csdVersion: '' },
-      items: [],
-      serverToClient: new Map(),
-    } satisfies OtbFile;
-
-    const otbm = {
-      header: { version: 1, width: 1, height: 1, majorVersionItems: 1, minorVersionItems: 1 },
-      tiles: [],
-      towns: [],
-    } satisfies OtbmFile;
-
-    expect(collectReferencedSpriteIds(dat, otb, otbm)).toEqual(new Set([50, 51, 52, 53, 99]));
+    expect(collectReferencedSpriteIds(dat)).toEqual(new Set([50, 51, 52, 53, 99]));
   });
 });

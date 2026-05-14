@@ -2,8 +2,6 @@ import { SPRITE_SIZE } from './spr';
 import type { SprFile } from './spr';
 import { decodeSprite } from './spr';
 import type { DatFile } from './dat';
-import type { OtbFile } from './otb';
-import type { OtbmFile } from './otbm';
 
 /** Maximum atlas texture dimension (most GPUs support at least 2048). */
 export const ATLAS_SIZE = 2048;
@@ -57,34 +55,20 @@ function* denseSpriteIds(spriteCount: number): Generator<number> {
 }
 
 /**
- * Build the set of sprite IDs the atlas needs to contain for the loaded
- * world. Includes:
- *   1. Every item the OTBM places on the map (resolved server→client via OTB).
- *   2. Every creature defined in the .dat — players, NPCs, monsters all
- *      come over the wire at runtime, never from the OTBM, so we can't
- *      pre-filter by map data. Tibia 7.6 has ~600 creature types and they
- *      take a handful of atlas pages; the sparse-atlas storage means
- *      pages without any referenced sprites still aren't allocated.
+ * Build the set of sprite IDs the atlas needs to contain. Includes
+ * every item and creature sprite in the .dat — not just those placed
+ * by the initial OTBM region. This ensures dynamically expanded regions
+ * render correctly without runtime atlas rebuilds.
  *
- * Effects and missiles are dynamic too but are deliberately left out for
- * now — we don't render them yet, and skipping them keeps the atlas
- * tighter. Easy to add when we wire those up.
+ * Effects and missiles are deliberately left out for now — we don't
+ * render them yet. Easy to add when we wire those up.
  */
-export function collectReferencedSpriteIds(dat: DatFile, otb: OtbFile, otbm: OtbmFile): Set<number> {
-  const datItemsByClientId = new Map(dat.items.map(item => [item.id, item]));
+export function collectReferencedSpriteIds(dat: DatFile): Set<number> {
   const referenced = new Set<number>();
 
-  for (const tile of otbm.tiles) {
-    for (const item of tile.items) {
-      const clientId = otb.serverToClient.get(item.id);
-      if (clientId === undefined) continue;
-
-      const thingType = datItemsByClientId.get(clientId);
-      if (!thingType) continue;
-
-      for (const spriteId of thingType.frameGroup.spriteIds) {
-        if (spriteId > 0) referenced.add(spriteId);
-      }
+  for (const item of dat.items) {
+    for (const spriteId of item.frameGroup.spriteIds) {
+      if (spriteId > 0) referenced.add(spriteId);
     }
   }
 

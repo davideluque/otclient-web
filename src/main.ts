@@ -116,7 +116,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   setStatus(`Loaded ${otbm.tiles.length} tiles around (${spawn.x}, ${spawn.y})`);
 
   setStatus('Building texture atlas...');
-  const referencedSpriteIds = collectReferencedSpriteIds(dat, otb, otbm);
+  const referencedSpriteIds = collectReferencedSpriteIds(dat);
   const atlasPages = buildAtlasPages(spr, referencedSpriteIds);
   releaseSprBuffer(spr);
   const atlasTextures = createAtlasTextures(atlasPages);
@@ -299,8 +299,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     const prevSize = tileMap.size;
     const expanded = parseOtbmRegion(loaded.otbm, region);
-    // TODO: tiles whose sprites aren't in the initial atlas render blank.
-    // Follow-up: rebuild atlas on merge, or pre-load all item sprites.
     tileMap.merge(expanded);
     lastExpansionTime = now;
 

@@ -251,12 +251,65 @@ async function startApp(loaded: CompleteLoadedFiles) {
     isDragging = false;
   });
 
-  // Block native pinch / wheel zoom on the canvas so the locked play zoom
-  // is enforced even against system-level gestures.
-  app.canvas.addEventListener('wheel', (e: WheelEvent) => { e.preventDefault(); }, { passive: false });
+  // Zoom: locked to playZoom by default for fairness. The dev-only toggle
+  // below widens the bounds so we can pinch/wheel to inspect the map.
+  let zoomUnlocked = false;
+
+  app.canvas.addEventListener('wheel', (e: WheelEvent) => {
+    e.preventDefault();
+    if (!zoomUnlocked) return;
+    viewport.zoomBy(e.deltaY > 0 ? 0.9 : 1.1);
+    render(true);
+  }, { passive: false });
+
+  let lastPinchDist = 0;
+  app.canvas.addEventListener('touchstart', (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+    }
+  }, { passive: true });
   app.canvas.addEventListener('touchmove', (e: TouchEvent) => {
     if (e.touches.length > 1) e.preventDefault();
+    if (!zoomUnlocked || e.touches.length !== 2) return;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (lastPinchDist > 0) {
+      viewport.zoomBy(dist / lastPinchDist);
+      render(true);
+    }
+    lastPinchDist = dist;
   }, { passive: false });
+  app.canvas.addEventListener('touchend', () => { lastPinchDist = 0; }, { passive: true });
+
+  // Zoom toggle in the corner — shipping unconditionally for now since we're
+  // the only user. Easy to gate behind import.meta.env.DEV later if needed.
+  const zoomBtn = document.createElement('button');
+  zoomBtn.type = 'button';
+  zoomBtn.textContent = 'Zoom: locked';
+  zoomBtn.title = 'Toggle zoom (pinch / wheel)';
+  zoomBtn.style.cssText = 'position:fixed;top:12px;right:12px;padding:6px 10px;'
+    + 'background:#3a3a3a;color:#ddd;border:1px solid #555;border-radius:4px;'
+    + 'font:12px system-ui,sans-serif;cursor:pointer;z-index:100;opacity:0.85';
+  zoomBtn.addEventListener('click', () => {
+    zoomUnlocked = !zoomUnlocked;
+    if (zoomUnlocked) {
+      viewport.minZoom = viewport.playZoom * 0.1;
+      viewport.maxZoom = viewport.playZoom * 5;
+      zoomBtn.textContent = 'Zoom: free';
+      zoomBtn.style.background = '#5a4a90';
+    } else {
+      viewport.minZoom = viewport.playZoom;
+      viewport.maxZoom = viewport.playZoom;
+      viewport.setZoom(viewport.playZoom);
+      zoomBtn.textContent = 'Zoom: locked';
+      zoomBtn.style.background = '#3a3a3a';
+      render(true);
+    }
+  });
+  document.body.appendChild(zoomBtn);
 
   // Handle window resize / orientation change: recompute the play zoom for
   // the new screen so the visible play area stays consistent across devices.

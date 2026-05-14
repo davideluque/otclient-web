@@ -75,10 +75,7 @@ export function renderPlayer(
   layout: Map<number, SpriteLocation>,
 ): Container | null {
   const creature = creatureIndex.get(player.outfit.lookType);
-  if (!creature) {
-    console.warn(`[player] lookType ${player.outfit.lookType} not found in creature index (creatures available: ${creatureIndex.size})`);
-    return null;
-  }
+  if (!creature) return null;
 
   const fg = creature.frameGroup;
   const dir = Math.max(0, Math.min(player.direction, fg.numPatternX - 1));
@@ -86,8 +83,6 @@ export function renderPlayer(
 
   const container = new Container();
   let drew = false;
-  let textureMisses = 0;
-  let emptySpriteIds = 0;
 
   // Sprite index layout: ((phase * patZ * patY * patX + dir) * layers + layer) * h * w + (h * w + w)
   // Iterate every layer and every (w, h) cell of the creature's footprint.
@@ -97,9 +92,9 @@ export function renderPlayer(
     for (let h = fg.height - 1; h >= 0; h--) {
       for (let w = fg.width - 1; w >= 0; w--) {
         const spriteId = fg.spriteIds[base + h * fg.width + w];
-        if (!spriteId) { emptySpriteIds++; continue; }
+        if (!spriteId) continue;
         const texture = getSpriteTexture(spriteId, atlasTextures, layout);
-        if (!texture) { textureMisses++; continue; }
+        if (!texture) continue;
 
         const sprite = new Sprite(texture);
         sprite.x = (player.x - w) * TILE_SIZE;
@@ -108,12 +103,6 @@ export function renderPlayer(
         drew = true;
       }
     }
-  }
-
-  if (!drew) {
-    console.warn(`[player] lookType ${player.outfit.lookType} resolved but nothing drew. `
-      + `fg: w=${fg.width} h=${fg.height} layers=${fg.layers} patX=${fg.numPatternX} patY=${fg.numPatternY} patZ=${fg.numPatternZ} phases=${fg.animationPhases} spriteIds.length=${fg.spriteIds.length}. `
-      + `${emptySpriteIds} empty sprite IDs, ${textureMisses} texture lookups missed.`);
   }
 
   return drew ? container : null;

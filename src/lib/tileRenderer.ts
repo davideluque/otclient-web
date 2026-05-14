@@ -158,16 +158,22 @@ function renderTile(
     const thingType = datIndex.get(item.clientId);
     if (!thingType) continue;
 
-    const { width, height, layers, numPatternX, numPatternY, numPatternZ, animationPhases, spriteIds } = thingType.frameGroup;
-    // Sprites are laid out (h, w, layer, patternX, patternY, patternZ, anim) with anim innermost.
-    // For static rendering we use the first layer/pattern/animation of each (w, h) cell.
-    const perCell = layers * numPatternX * numPatternY * numPatternZ * animationPhases;
-
+    const { width, height, spriteIds } = thingType.frameGroup;
+    // DAT sprite layout (matches OTClient reference):
+    //   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
+    // For the static-render case we pick phase=0, layer=0, every pattern=0,
+    // which collapses the whole prefix to zero and leaves just `h*width + w`.
+    // A previous version multiplied by layers*patX*patY*patZ*anim per cell,
+    // which assumed (h, w) were the outermost dimensions — that picked the
+    // wrong frame for multi-tile items whose creature/wall/lamp definitions
+    // also declare multiple animation phases or patterns (e.g. lamp heads
+    // would draw the wrong sprite and look like the base).
+    //
     // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-algorithm
     // ordering places the anchor on top of pieces extending up and to the left.
     for (let h = height - 1; h >= 0; h--) {
       for (let w = width - 1; w >= 0; w--) {
-        const spriteId = spriteIds[(h * width + w) * perCell];
+        const spriteId = spriteIds[h * width + w];
         if (!spriteId) continue;
 
         const texture = getTexture(spriteId);

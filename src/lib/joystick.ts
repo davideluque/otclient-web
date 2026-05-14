@@ -55,13 +55,22 @@ export function directionFromKnob(
     candidate = dy > 0 ? Direction.South : Direction.North;
   }
 
-  // If we already have a direction, require clear dominance to switch.
-  // This prevents flips when the finger wobbles near a diagonal.
+  // If we already have a direction, require clear dominance to switch
+  // axes. This prevents flips when the finger wobbles near a diagonal.
+  // 180° flips on the same axis (East↔West, North↔South) are always
+  // allowed — the user clearly reversed direction.
   if (currentDir !== null && candidate !== currentDir) {
-    const dominantAxis = absDx >= absDy ? absDx : absDy;
-    const secondaryAxis = absDx >= absDy ? absDy : absDx;
-    if (dominantAxis < secondaryAxis * AXIS_DOMINANCE_RATIO) {
-      return currentDir; // Not dominant enough — keep current
+    const isOpposite =
+      (currentDir === Direction.East && candidate === Direction.West)
+      || (currentDir === Direction.West && candidate === Direction.East)
+      || (currentDir === Direction.North && candidate === Direction.South)
+      || (currentDir === Direction.South && candidate === Direction.North);
+    if (!isOpposite) {
+      const dominantAxis = absDx >= absDy ? absDx : absDy;
+      const secondaryAxis = absDx >= absDy ? absDy : absDx;
+      if (dominantAxis < secondaryAxis * AXIS_DOMINANCE_RATIO) {
+        return currentDir; // Not dominant enough — keep current
+      }
     }
   }
 
@@ -131,21 +140,24 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
     emit(null);
   }
 
-  function update(e: PointerEvent) {
-    if (!baseRect) return;
+  /** Compute clamped knob displacement from a pointer event. */
+  function knobDelta(e: PointerEvent): { dx: number; dy: number; r: number } | null {
+    if (!baseRect) return null;
     const cx = baseRect.left + baseRect.width / 2;
     const cy = baseRect.top + baseRect.height / 2;
     let dx = e.clientX - cx;
     let dy = e.clientY - cy;
     const r = baseRect.width / 2;
-    // Clamp to the base circle so the knob never wanders outside the well.
     const dist = Math.hypot(dx, dy);
-    if (dist > r) {
-      dx = (dx / dist) * r;
-      dy = (dy / dist) * r;
-    }
-    setKnob(dx, dy);
-    emit(directionFromKnob(dx, dy, r, currentDir));
+    if (dist > r) { dx = (dx / dist) * r; dy = (dy / dist) * r; }
+    return { dx, dy, r };
+  }
+
+  function update(e: PointerEvent) {
+    const d = knobDelta(e);
+    if (!d) return;
+    setKnob(d.dx, d.dy);
+    emit(directionFromKnob(d.dx, d.dy, d.r, currentDir));
   }
 
   function onDown(e: PointerEvent) {
@@ -156,16 +168,8 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
     base.setPointerCapture(e.pointerId);
     // Don't emit a direction on touch-down — wait for the drag to
     // establish intent. Just move the knob visually.
-    if (baseRect) {
-      const cx = baseRect.left + baseRect.width / 2;
-      const cy = baseRect.top + baseRect.height / 2;
-      let dx = e.clientX - cx;
-      let dy = e.clientY - cy;
-      const r = baseRect.width / 2;
-      const dist = Math.hypot(dx, dy);
-      if (dist > r) { dx = (dx / dist) * r; dy = (dy / dist) * r; }
-      setKnob(dx, dy);
-    }
+    const d = knobDelta(e);
+    if (d) setKnob(d.dx, d.dy);
     e.preventDefault();
   }
 

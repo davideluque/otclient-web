@@ -64,5 +64,12 @@ describe('directionFromKnob', () => {
       expect(directionFromKnob(30, 30, RADIUS, Direction.South)).toBe(Direction.South);
       expect(directionFromKnob(30, 30, RADIUS, Direction.East)).toBe(Direction.East);
     });
+
+    it('allows 180° flips without hysteresis', () => {
+      // Dragging from right to left — should flip immediately to West
+      expect(directionFromKnob(-30, 5, RADIUS, Direction.East)).toBe(Direction.West);
+      // Dragging from down to up — should flip immediately to North
+      expect(directionFromKnob(5, -30, RADIUS, Direction.South)).toBe(Direction.North);
+    });
   });
 });

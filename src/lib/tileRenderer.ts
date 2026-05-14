@@ -165,22 +165,22 @@ function renderTile(
     const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
     const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
 
-    const { width, height, spriteIds } = thingType.frameGroup;
+    const { width, height, numPatternX, numPatternY, spriteIds } = thingType.frameGroup;
     // DAT sprite layout (matches OTClient reference):
     //   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
-    // For the static-render case we pick phase=0, layer=0, every pattern=0,
-    // which collapses the whole prefix to zero and leaves just `h*width + w`.
-    // A previous version multiplied by layers*patX*patY*patZ*anim per cell,
-    // which assumed (h, w) were the outermost dimensions — that picked the
-    // wrong frame for multi-tile items whose creature/wall/lamp definitions
-    // also declare multiple animation phases or patterns (e.g. lamp heads
-    // would draw the wrong sprite and look like the base).
-    //
+    // For static rendering we pick phase=0, layer=0, z-pattern=0, and pick the
+    // (x, y) pattern from the tile's world position. That gives cobblestone
+    // and other ground tiles their natural-looking variation across a stretch
+    // — the cosmetic random Tibia uses to avoid an obvious tiled grid.
+    const patX = ((tile.x % numPatternX) + numPatternX) % numPatternX;
+    const patY = ((tile.y % numPatternY) + numPatternY) % numPatternY;
+    const patternOffset = (patY * numPatternX + patX) * height * width;
+
     // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-algorithm
     // ordering places the anchor on top of pieces extending up and to the left.
     for (let h = height - 1; h >= 0; h--) {
       for (let w = width - 1; w >= 0; w--) {
-        const spriteId = spriteIds[h * width + w];
+        const spriteId = spriteIds[patternOffset + h * width + w];
         if (!spriteId) continue;
 
         const texture = getTexture(spriteId);

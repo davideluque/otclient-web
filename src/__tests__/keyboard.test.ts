@@ -6,11 +6,11 @@ import { createKeyboard } from '../lib/keyboard';
 import { Direction } from '../lib/player';
 import type { KeyboardHandle } from '../lib/keyboard';
 
-function press(key: string) {
-  window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+function press(code: string) {
+  window.dispatchEvent(new KeyboardEvent('keydown', { code }));
 }
-function release(key: string) {
-  window.dispatchEvent(new KeyboardEvent('keyup', { key }));
+function release(code: string) {
+  window.dispatchEvent(new KeyboardEvent('keyup', { code }));
 }
 
 describe('createKeyboard', () => {
@@ -26,23 +26,23 @@ describe('createKeyboard', () => {
     expect(kb.heldDirection).toBeNull();
   });
 
-  it('WASD keys set heldDirection', () => {
+  it('WASD keys set heldDirection (physical key position)', () => {
     kb = createKeyboard();
-    press('a');
+    press('KeyA');
     expect(kb.heldDirection).toBe(Direction.West);
-    release('a');
-    press('d');
+    release('KeyA');
+    press('KeyD');
     expect(kb.heldDirection).toBe(Direction.East);
-    release('d');
+    release('KeyD');
   });
 
   it('last-pressed wins when multiple held', () => {
     kb = createKeyboard();
     press('ArrowUp');
     press('ArrowRight');
-    expect(kb.heldDirection).toBe(Direction.East); // last pressed
+    expect(kb.heldDirection).toBe(Direction.East);
     release('ArrowRight');
-    expect(kb.heldDirection).toBe(Direction.North); // falls back
+    expect(kb.heldDirection).toBe(Direction.North);
     release('ArrowUp');
     expect(kb.heldDirection).toBeNull();
   });
@@ -50,13 +50,22 @@ describe('createKeyboard', () => {
   it('fires onToggle for toggle bindings', () => {
     const toggles: string[] = [];
     kb = createKeyboard({ onToggle: (id) => toggles.push(id) });
-    press('n');
+    press('KeyN');
+    expect(toggles).toEqual(['night']);
+  });
+
+  it('ignores toggle on key repeat', () => {
+    const toggles: string[] = [];
+    kb = createKeyboard({ onToggle: (id) => toggles.push(id) });
+    press('KeyN');
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyN', repeat: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyN', repeat: true }));
     expect(toggles).toEqual(['night']);
   });
 
   it('clears direction on blur', () => {
     kb = createKeyboard();
-    press('w');
+    press('KeyW');
     expect(kb.heldDirection).toBe(Direction.North);
     window.dispatchEvent(new Event('blur'));
     expect(kb.heldDirection).toBeNull();
@@ -64,16 +73,16 @@ describe('createKeyboard', () => {
 
   it('supports custom bindings', () => {
     kb = createKeyboard({
-      bindings: { z: { type: 'move', dir: Direction.South } },
+      bindings: { KeyZ: { type: 'move', dir: Direction.South } },
     });
-    press('z');
+    press('KeyZ');
     expect(kb.heldDirection).toBe(Direction.South);
-    release('z');
+    release('KeyZ');
   });
 
   it('ignores unmapped keys', () => {
     kb = createKeyboard();
-    press('x');
+    press('KeyX');
     expect(kb.heldDirection).toBeNull();
   });
 });

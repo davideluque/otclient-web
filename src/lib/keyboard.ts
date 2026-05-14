@@ -2,7 +2,12 @@ import { Direction } from './player';
 
 // --- Key bindings ---
 
-/** Map from key name (KeyboardEvent.key) to a game action. */
+/**
+ * Map from KeyboardEvent.code (physical key position) to a game action.
+ * Using `code` instead of `key` makes bindings layout-independent —
+ * WASD works on AZERTY (where the physical keys are ZQSD) and isn't
+ * affected by Shift/CapsLock.
+ */
 export type KeyAction = { type: 'move'; dir: Direction } | { type: 'toggle'; id: string };
 
 const DEFAULT_BINDINGS: Record<string, KeyAction> = {
@@ -12,19 +17,14 @@ const DEFAULT_BINDINGS: Record<string, KeyAction> = {
   ArrowDown:  { type: 'move', dir: Direction.South },
   ArrowLeft:  { type: 'move', dir: Direction.West },
 
-  // WASD
-  w: { type: 'move', dir: Direction.North },
-  d: { type: 'move', dir: Direction.East },
-  s: { type: 'move', dir: Direction.South },
-  a: { type: 'move', dir: Direction.West },
-  W: { type: 'move', dir: Direction.North },
-  D: { type: 'move', dir: Direction.East },
-  S: { type: 'move', dir: Direction.South },
-  A: { type: 'move', dir: Direction.West },
+  // WASD (physical position — works on any layout)
+  KeyW: { type: 'move', dir: Direction.North },
+  KeyD: { type: 'move', dir: Direction.East },
+  KeyS: { type: 'move', dir: Direction.South },
+  KeyA: { type: 'move', dir: Direction.West },
 
   // Toggles
-  n: { type: 'toggle', id: 'night' },
-  N: { type: 'toggle', id: 'night' },
+  KeyN: { type: 'toggle', id: 'night' },
 };
 
 // --- Keyboard input handler ---
@@ -79,13 +79,13 @@ export function createKeyboard(opts: KeyboardOptions = {}): KeyboardHandle {
     // Ignore keys when an input/textarea is focused (e.g. chat).
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-    const action = bindings[e.key];
+    const action = bindings[e.code];
     if (!action) return;
 
     if (action.type === 'move') {
-      if (!heldKeys.has(e.key)) {
-        heldKeys.add(e.key);
-        moveStack.push(e.key);
+      if (!heldKeys.has(e.code)) {
+        heldKeys.add(e.code);
+        moveStack.push(e.code);
       }
       recalcDirection();
       e.preventDefault();
@@ -97,9 +97,9 @@ export function createKeyboard(opts: KeyboardOptions = {}): KeyboardHandle {
   }
 
   function onKeyUp(e: KeyboardEvent) {
-    if (!heldKeys.has(e.key)) return;
-    heldKeys.delete(e.key);
-    const idx = moveStack.indexOf(e.key);
+    if (!heldKeys.has(e.code)) return;
+    heldKeys.delete(e.code);
+    const idx = moveStack.indexOf(e.code);
     if (idx !== -1) moveStack.splice(idx, 1);
     recalcDirection();
   }

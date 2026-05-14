@@ -102,4 +102,55 @@ describe('TileMap', () => {
     );
     expect(tileMap.size).toBe(2);
   });
+
+  describe('getBounds', () => {
+    it('returns bounds for a populated z-level', () => {
+      const tileMap = new TileMap(
+        makeOtbm([makeTile(10, 20, 7, [100]), makeTile(50, 80, 7, [101])]),
+        otb,
+      );
+      const b = tileMap.getBounds(7);
+      expect(b).toEqual({ minX: 10, maxX: 50, minY: 20, maxY: 80 });
+    });
+
+    it('returns null for an empty z-level', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(10, 20, 7, [100])]), otb);
+      expect(tileMap.getBounds(6)).toBeNull();
+    });
+  });
+
+  describe('merge', () => {
+    it('adds new tiles from a second OTBM', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [100])]), otb);
+      expect(tileMap.size).toBe(1);
+
+      tileMap.merge(makeOtbm([makeTile(10, 10, 7, [101])]));
+      expect(tileMap.size).toBe(2);
+      expect(tileMap.getTile(10, 10, 7)).toBeDefined();
+    });
+
+    it('replaces existing tile on collision (new wins)', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(5, 5, 7, [100])]), otb);
+      expect(tileMap.getTile(5, 5, 7)!.items[0].clientId).toBe(200);
+
+      tileMap.merge(makeOtbm([makeTile(5, 5, 7, [101])]));
+      expect(tileMap.size).toBe(1);
+      expect(tileMap.getTile(5, 5, 7)!.items[0].clientId).toBe(201);
+    });
+
+    it('is idempotent for identical content', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(5, 5, 7, [100])]), otb);
+      tileMap.merge(makeOtbm([makeTile(5, 5, 7, [100])]));
+      expect(tileMap.size).toBe(1);
+    });
+
+    it('expands bounds after merge', () => {
+      const tileMap = new TileMap(makeOtbm([makeTile(10, 10, 7, [100])]), otb);
+      expect(tileMap.getBounds(7)!.maxX).toBe(10);
+
+      tileMap.merge(makeOtbm([makeTile(50, 50, 7, [101])]));
+      expect(tileMap.getBounds(7)!.maxX).toBe(50);
+      expect(tileMap.getBounds(7)!.maxY).toBe(50);
+    });
+  });
 });

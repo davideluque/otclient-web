@@ -14,37 +14,34 @@ export interface ResolvedTile {
   items: ResolvedItem[];
 }
 
+export interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
 /**
  * Spatial index for map tiles. Converts OTBM server item IDs to client IDs
  * and provides fast tile lookups by position.
  */
 export class TileMap {
   private tiles = new Map<string, ResolvedTile>();
-  private _minX = Infinity;
-  private _minY = Infinity;
-  private _maxX = -Infinity;
-  private _maxY = -Infinity;
+  private otb: OtbFile;
+  private zBounds = new Map<number, Bounds>();
 
   constructor(otbm: OtbmFile, otb: OtbFile) {
-    for (const tile of otbm.tiles) {
-      const resolved = this.resolveTile(tile, otb);
-      if (resolved.items.length === 0) continue;
-
-      const key = TileMap.key(tile.position.x, tile.position.y, tile.position.z);
-      this.tiles.set(key, resolved);
-
-      this._minX = Math.min(this._minX, tile.position.x);
-      this._minY = Math.min(this._minY, tile.position.y);
-      this._maxX = Math.max(this._maxX, tile.position.x);
-      this._maxY = Math.max(this._maxY, tile.position.y);
-    }
+    this.otb = otb;
+    this.ingestTiles(otbm.tiles);
   }
 
-  get minX(): number { return this._minX; }
-  get minY(): number { return this._minY; }
-  get maxX(): number { return this._maxX; }
-  get maxY(): number { return this._maxY; }
   get size(): number { return this.tiles.size; }
+
+  // Legacy accessors (global across all z-levels)
+  get minX(): number { return this.globalBound('minX', Infinity); }
+  get minY(): number { return this.globalBound('minY', Infinity); }
+  get maxX(): number { return this.globalBound('maxX', -Infinity); }
+  get maxY(): number { return this.globalBound('maxY', -Infinity); }
 
   static key(x: number, y: number, z: number): string {
     return `${x}:${y}:${z}`;
@@ -52,6 +49,19 @@ export class TileMap {
 
   getTile(x: number, y: number, z: number): ResolvedTile | undefined {
     return this.tiles.get(TileMap.key(x, y, z));
+  }
+
+  /** Return the bounding box for a given floor, or null if empty. */
+  getBounds(z: number): Bounds | null {
+    return this.zBounds.get(z) ?? null;
+  }
+
+  /**
+   * Absorb tiles from another parsed OTBM region. For position collisions
+   * the new tile wins (replace). Idempotent for identical content.
+   */
+  merge(otbm: OtbmFile): void {
+    this.ingestTiles(otbm.tiles);
   }
 
   /** Iterate all tiles within a rectangular region on a given floor. */
@@ -66,10 +76,44 @@ export class TileMap {
     }
   }
 
-  private resolveTile(tile: OtbmTile, otb: OtbFile): ResolvedTile {
+  private ingestTiles(rawTiles: readonly OtbmTile[]): void {
+    for (const tile of rawTiles) {
+      const resolved = this.resolveTile(tile);
+      if (resolved.items.length === 0) continue;
+
+      const key = TileMap.key(tile.position.x, tile.position.y, tile.position.z);
+      this.tiles.set(key, resolved);
+      this.expandBounds(tile.position.x, tile.position.y, tile.position.z);
+    }
+  }
+
+  private expandBounds(x: number, y: number, z: number): void {
+    let b = this.zBounds.get(z);
+    if (!b) {
+      b = { minX: x, maxX: x, minY: y, maxY: y };
+      this.zBounds.set(z, b);
+    } else {
+      b.minX = Math.min(b.minX, x);
+      b.maxX = Math.max(b.maxX, x);
+      b.minY = Math.min(b.minY, y);
+      b.maxY = Math.max(b.maxY, y);
+    }
+  }
+
+  private globalBound(field: keyof Bounds, fallback: number): number {
+    let result = fallback;
+    for (const b of this.zBounds.values()) {
+      result = field.startsWith('min')
+        ? Math.min(result, b[field])
+        : Math.max(result, b[field]);
+    }
+    return result;
+  }
+
+  private resolveTile(tile: OtbmTile): ResolvedTile {
     const items: ResolvedItem[] = [];
     for (const item of tile.items) {
-      const clientId = otb.serverToClient.get(item.id);
+      const clientId = this.otb.serverToClient.get(item.id);
       if (clientId !== undefined) {
         items.push({ clientId, count: item.count });
       }

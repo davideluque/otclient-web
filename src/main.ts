@@ -1,5 +1,5 @@
 import { Application, Container } from 'pixi.js';
-import { parseDat } from './lib/dat';
+import { parseDat, DatAttr } from './lib/dat';
 import { parseSpr, releaseSprBuffer } from './lib/spr';
 import { parseOtb } from './lib/otb';
 import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
@@ -270,6 +270,22 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // DatAttr.FullGround to mask opaque tiles on the current floor.
     const FLOOR_BELOW_ALPHA = 0.4;
 
+    // Collect positions where the current floor has a FullGround item —
+    // these completely cover the floor below and should be occluded.
+    let fullGroundPositions: Set<string> | undefined;
+    if (renderZ <= 7) {
+      fullGroundPositions = new Set();
+      for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
+        for (const item of tile.items) {
+          const tt = datIndex.get(item.clientId);
+          if (tt?.attrs.has(DatAttr.FullGround)) {
+            fullGroundPositions.add(`${tile.x}:${tile.y}`);
+            break;
+          }
+        }
+      }
+    }
+
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
     // behind it) but behind items south (trees, fences). Including the
@@ -296,6 +312,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
       const floorBelow = renderTileRegion(
         tileMap, datIndex, atlasTextures, layout,
         visible.x1, visible.y1, visible.x2, visible.y2, renderZ + 1,
+        fullGroundPositions,
       );
       floorBelow.container.alpha = FLOOR_BELOW_ALPHA;
       tileContainer.addChild(floorBelow.container);

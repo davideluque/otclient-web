@@ -216,6 +216,7 @@ export function renderTileRegion(
   atlasTextures: AtlasTextures,
   layout: Map<number, SpriteLocation>,
   x1: number, y1: number, x2: number, y2: number, z: number,
+  skipPositions?: Set<string>,
 ): RenderedRegion {
   const container = new Container();
   const animated: AnimatedSprite[] = [];
@@ -231,6 +232,7 @@ export function renderTileRegion(
   }
 
   for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
+    if (skipPositions?.has(`${tile.x}:${tile.y}`)) continue;
     renderTile(tile, container, animated, datIndex, getTexture);
   }
 

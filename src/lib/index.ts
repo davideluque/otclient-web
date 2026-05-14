@@ -23,7 +23,13 @@ export { TileMap } from './tileMap';
 export type { ResolvedTile, ResolvedItem } from './tileMap';
 
 export { createAtlasTextures, getSpriteTexture, buildDatIndex, renderTileRegion, renderPlayer } from './tileRenderer';
-export type { AtlasTextures } from './tileRenderer';
+export type { AtlasTextures, TintedTextureCache } from './tileRenderer';
+
+export { outfitIndexToRgb } from './outfitColors';
+export type { OutfitRGB } from './outfitColors';
+
+export { tintOutfitSprite, extractSpritePixels } from './outfitTint';
+export type { OutfitColorIndices } from './outfitTint';
 
 export {
   Viewport,

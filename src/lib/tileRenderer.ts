@@ -6,8 +6,12 @@ import { SPRITE_SIZE } from './spr';
 import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
 import type { PlayerState } from './player';
+import { extractSpritePixels, tintOutfitSprite } from './outfitTint';
 
 const TILE_SIZE = 32;
+
+/** Cache key → tinted 32×32 texture, owned by the caller (main.ts). */
+export type TintedTextureCache = Map<string, Texture>;
 
 export interface AtlasTextures {
   pages: Map<number, Texture>;
@@ -72,7 +76,9 @@ export function renderPlayer(
   player: PlayerState,
   creatureIndex: Map<number, ThingType>,
   atlasTextures: AtlasTextures,
+  atlasPages: AtlasPages,
   layout: Map<number, SpriteLocation>,
+  tintedCache: TintedTextureCache,
 ): Container | null {
   const creature = creatureIndex.get(player.outfit.lookType);
   if (!creature) return null;
@@ -80,32 +86,77 @@ export function renderPlayer(
   const fg = creature.frameGroup;
   const dir = Math.max(0, Math.min(player.direction, fg.numPatternX - 1));
   const phase = Math.max(0, Math.min(player.animationPhase, fg.animationPhases - 1));
+  const hasMask = fg.layers >= 2;
 
   const container = new Container();
   let drew = false;
 
-  // Sprite index layout: ((phase * patZ * patY * patX + dir) * layers + layer) * h * w + (h * w + w)
-  // Iterate every layer and every (w, h) cell of the creature's footprint.
-  for (let layer = 0; layer < fg.layers; layer++) {
-    const base = (((phase * fg.numPatternZ * fg.numPatternY) * fg.numPatternX + dir) * fg.layers + layer) * fg.height * fg.width;
+  // Sprite index layout: (((((phase*patZ + 0)*patY + 0)*patX + dir)*layers + layer)*height + h)*width + w
+  // We pick the (h, w) anchor cell pair per piece, and either compose the
+  // tinted layer-0 + layer-1 outfit (when layers >= 2) or just draw layer 0.
+  for (let h = fg.height - 1; h >= 0; h--) {
+    for (let w = fg.width - 1; w >= 0; w--) {
+      const baseIdx = layerSpriteIndex(fg, phase, dir, 0, h, w);
+      const baseSpriteId = fg.spriteIds[baseIdx];
+      if (!baseSpriteId) continue;
 
-    for (let h = fg.height - 1; h >= 0; h--) {
-      for (let w = fg.width - 1; w >= 0; w--) {
-        const spriteId = fg.spriteIds[base + h * fg.width + w];
-        if (!spriteId) continue;
-        const texture = getSpriteTexture(spriteId, atlasTextures, layout);
-        if (!texture) continue;
-
-        const sprite = new Sprite(texture);
-        sprite.x = (player.x - w) * TILE_SIZE;
-        sprite.y = (player.y - h) * TILE_SIZE;
-        container.addChild(sprite);
-        drew = true;
+      let texture: Texture | null;
+      if (hasMask) {
+        const maskIdx = layerSpriteIndex(fg, phase, dir, 1, h, w);
+        const maskSpriteId = fg.spriteIds[maskIdx] ?? 0;
+        texture = resolveTintedTexture(baseSpriteId, maskSpriteId, player, atlasPages, layout, tintedCache);
+      } else {
+        texture = getSpriteTexture(baseSpriteId, atlasTextures, layout);
       }
+      if (!texture) continue;
+
+      const sprite = new Sprite(texture);
+      sprite.x = (player.x - w) * TILE_SIZE;
+      sprite.y = (player.y - h) * TILE_SIZE;
+      container.addChild(sprite);
+      drew = true;
     }
   }
 
   return drew ? container : null;
+}
+
+function layerSpriteIndex(fg: ThingType['frameGroup'], phase: number, dir: number, layer: number, h: number, w: number): number {
+  return ((((phase * fg.numPatternZ * fg.numPatternY) * fg.numPatternX + dir) * fg.layers + layer) * fg.height + h) * fg.width + w;
+}
+
+function resolveTintedTexture(
+  baseSpriteId: number,
+  maskSpriteId: number,
+  player: PlayerState,
+  atlasPages: AtlasPages,
+  layout: Map<number, SpriteLocation>,
+  cache: TintedTextureCache,
+): Texture | null {
+  const { lookType, headColor, bodyColor, legsColor, feetColor } = player.outfit;
+  const key = `${lookType}:${baseSpriteId}:${maskSpriteId}:${headColor}:${bodyColor}:${legsColor}:${feetColor}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const basePixels = extractSpritePixels(atlasPages, layout, baseSpriteId);
+  if (!basePixels) return null;
+
+  const maskPixels = maskSpriteId ? extractSpritePixels(atlasPages, layout, maskSpriteId) : null;
+  const finalPixels = maskPixels
+    ? tintOutfitSprite(basePixels, maskPixels, { head: headColor, body: bodyColor, legs: legsColor, feet: feetColor })
+    : basePixels;
+
+  const source = new BufferImageSource({
+    resource: finalPixels,
+    width: SPRITE_SIZE,
+    height: SPRITE_SIZE,
+    format: 'rgba8unorm',
+    alphaMode: 'premultiply-alpha-on-upload',
+    scaleMode: 'nearest',
+  });
+  const texture = new Texture({ source });
+  cache.set(key, texture);
+  return texture;
 }
 
 /**

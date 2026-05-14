@@ -7,7 +7,7 @@ import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
-import type { AnimatedSprite } from './lib/tileRenderer';
+import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
 import type { PlayerState } from './lib/player';
@@ -162,6 +162,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
   let illuminationTexture: RenderTexture | null = null;
   let animatedSprites: AnimatedSprite[] = [];
   const lightMask = createLightMaskTexture();
+  // Tinted-outfit cache lives across rebuilds — same outfit + direction
+  // re-uses the texture. Cleared on app teardown, never during runtime.
+  const tintedOutfitCache: TintedTextureCache = new Map();
 
   function rebuildTiles() {
     if (tileContainer) {
@@ -194,7 +197,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     tileContainer = new Container();
     tileContainer.addChild(above.container);
-    const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, layout);
+    const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, atlasPages, layout, tintedOutfitCache);
     if (playerSprite) tileContainer.addChild(playerSprite);
     tileContainer.addChild(below.container);
 

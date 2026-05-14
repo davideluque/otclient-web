@@ -1,11 +1,13 @@
 import { Container, Sprite, Texture, BufferImageSource, Rectangle } from 'pixi.js';
 import type { TileMap, ResolvedTile } from './tileMap';
 import type { DatFile, ThingType } from './dat';
+import { DatAttr } from './dat';
 import { SPRITE_SIZE } from './spr';
 import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
 
 const TILE_SIZE = 32;
+const MAX_TILE_ELEVATION = TILE_SIZE - 1;
 
 export interface AtlasTextures {
   pages: Map<number, Texture>;
@@ -100,6 +102,11 @@ function renderTile(
   const screenX = tile.x * TILE_SIZE;
   const screenY = tile.y * TILE_SIZE;
 
+  // The DAT Elevation attribute is how many pixels items placed *on top* of
+  // this one shift up by. We accumulate it as we walk the stack so a table
+  // on a carpet renders raised above the floor.
+  let elevation = 0;
+
   for (const item of tile.items) {
     const thingType = datIndex.get(item.clientId);
     if (!thingType) continue;
@@ -121,9 +128,14 @@ function renderTile(
 
         const sprite = new Sprite(texture);
         sprite.x = screenX - w * TILE_SIZE;
-        sprite.y = screenY - h * TILE_SIZE;
+        sprite.y = screenY - h * TILE_SIZE - elevation;
         container.addChild(sprite);
       }
+    }
+
+    const itemElevation = thingType.attrs.get(DatAttr.Elevation);
+    if (typeof itemElevation === 'number' && itemElevation > 0) {
+      elevation = Math.min(elevation + itemElevation, MAX_TILE_ELEVATION);
     }
   }
 }

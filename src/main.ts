@@ -7,7 +7,7 @@ import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
-import { Viewport } from './lib/viewport';
+import { Viewport, computePlayZoom } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
 import type { PlayerState } from './lib/player';
 import {
@@ -138,7 +138,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     centerY: initialRegion.centerY,
     screenWidth: window.innerWidth,
     screenHeight: window.innerHeight,
-    zoom: 1,
+    playZoom: computePlayZoom(window.innerWidth, window.innerHeight),
   });
   const renderZ = initialRegion.z ?? 7;
 
@@ -277,11 +277,29 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastPinchDist = 0;
   }, { passive: true });
 
-  // Handle window resize
+  // Handle window resize / orientation change: snap zoom back to the
+  // baseline for the new screen so the play area stays consistent.
   window.addEventListener('resize', () => {
     viewport.screenWidth = window.innerWidth;
     viewport.screenHeight = window.innerHeight;
-    render();
+    viewport.applyPlayZoom(computePlayZoom(window.innerWidth, window.innerHeight));
+    render(true);
+  });
+
+  // Double-tap to reset zoom — quick escape if pinch leaves the user
+  // somewhere awkward.
+  const DOUBLE_TAP_MS = 300;
+  let lastTap = 0;
+  app.canvas.addEventListener('pointerup', (e: PointerEvent) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'mouse') return;
+    const now = performance.now();
+    if (now - lastTap < DOUBLE_TAP_MS) {
+      viewport.setZoom(viewport.playZoom);
+      render(true);
+      lastTap = 0;
+    } else {
+      lastTap = now;
+    }
   });
 
   // N toggles night/day so you can see the difference

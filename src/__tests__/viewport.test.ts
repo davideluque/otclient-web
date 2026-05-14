@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { Viewport } from '../lib/viewport';
+import {
+  Viewport,
+  computePlayZoom,
+  PORTRAIT_PLAY_TILES_X,
+  LANDSCAPE_PLAY_TILES_X,
+  PLAY_ZOOM_MIN_FACTOR,
+  PLAY_ZOOM_MAX_FACTOR,
+} from '../lib/viewport';
 
 describe('Viewport', () => {
   function makeViewport(opts?: Partial<ConstructorParameters<typeof Viewport>[0]>) {
@@ -9,6 +16,10 @@ describe('Viewport', () => {
       screenWidth: 640,
       screenHeight: 480,
       zoom: 1,
+      // Wide explicit bounds keep these legacy tests unaffected by the new
+      // play-zoom-derived defaults.
+      minZoom: 0.1,
+      maxZoom: 10,
       ...opts,
     });
   }
@@ -77,5 +88,46 @@ describe('Viewport', () => {
   it('tile size scales with zoom', () => {
     const vp = makeViewport({ zoom: 2 });
     expect(vp.tileSizeOnScreen).toBe(64);
+  });
+
+  describe('play zoom', () => {
+    it('fits PORTRAIT_PLAY_TILES_X tiles across in portrait', () => {
+      const screenW = 390;
+      const screenH = 844;
+      const zoom = computePlayZoom(screenW, screenH);
+      const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: screenW, screenHeight: screenH, playZoom: zoom });
+      const tilesX = vp.screenWidth / vp.tileSizeOnScreen;
+      expect(tilesX).toBeCloseTo(PORTRAIT_PLAY_TILES_X, 5);
+    });
+
+    it('fits LANDSCAPE_PLAY_TILES_X tiles across in landscape', () => {
+      const screenW = 844;
+      const screenH = 390;
+      const zoom = computePlayZoom(screenW, screenH);
+      const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: screenW, screenHeight: screenH, playZoom: zoom });
+      const tilesX = vp.screenWidth / vp.tileSizeOnScreen;
+      expect(tilesX).toBeCloseTo(LANDSCAPE_PLAY_TILES_X, 5);
+    });
+
+    it('defaults active zoom to play zoom when no zoom override is given', () => {
+      const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: 768, screenHeight: 1024 });
+      expect(vp.zoom).toBe(vp.playZoom);
+    });
+
+    it('derives bounds from play zoom', () => {
+      const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: 768, screenHeight: 1024 });
+      expect(vp.minZoom).toBeCloseTo(vp.playZoom * PLAY_ZOOM_MIN_FACTOR);
+      expect(vp.maxZoom).toBeCloseTo(vp.playZoom * PLAY_ZOOM_MAX_FACTOR);
+    });
+
+    it('applyPlayZoom resets active zoom and rescales bounds', () => {
+      const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: 768, screenHeight: 1024 });
+      vp.setZoom(vp.maxZoom);
+      vp.applyPlayZoom(2);
+      expect(vp.playZoom).toBe(2);
+      expect(vp.zoom).toBe(2);
+      expect(vp.minZoom).toBeCloseTo(2 * PLAY_ZOOM_MIN_FACTOR);
+      expect(vp.maxZoom).toBeCloseTo(2 * PLAY_ZOOM_MAX_FACTOR);
+    });
   });
 });

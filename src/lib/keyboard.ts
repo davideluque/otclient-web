@@ -90,6 +90,8 @@ export function createKeyboard(opts: KeyboardOptions = {}): KeyboardHandle {
       recalcDirection();
       e.preventDefault();
     } else if (action.type === 'toggle') {
+      // Ignore key repeat — toggles should fire once per press.
+      if (e.repeat) return;
       opts.onToggle?.(action.id);
     }
   }

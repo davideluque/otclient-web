@@ -178,10 +178,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // backgrounded.
   let wakeLock: WakeLockSentinel | null = null;
   async function requestWakeLock() {
-    if (!('wakeLock' in navigator)) return;
+    if (!('wakeLock' in navigator) || wakeLock) return;
     try {
       wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
+      wakeLock.addEventListener('release', () => { wakeLock = null; }, { once: true });
     } catch {
       // Permission denied or not supported — silently ignore.
     }

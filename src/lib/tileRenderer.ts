@@ -6,7 +6,6 @@ import { SPRITE_SIZE } from './spr';
 import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
 import type { PlayerState } from './player';
-import { getCreatureSpriteId } from './player';
 
 const TILE_SIZE = 32;
 const MAX_TILE_ELEVATION = TILE_SIZE - 1;
@@ -64,28 +63,50 @@ export function buildDatIndex(dat: DatFile): Map<number, ThingType> {
 }
 
 /**
- * Render the player as a single sprite at its current world coordinate,
- * facing its current direction. Returns null if the creature lookType
- * isn't in the loaded .dat, or its sprite/texture can't be resolved —
- * caller should skip adding a child in that case.
+ * Render the player at its current world coordinate facing its current
+ * direction. Handles creatures with multi-tile footprints (width/height > 1,
+ * like dragons) and stacked layers (base outfit + colour overlay). Returns
+ * null if the creature lookType isn't in the loaded .dat or no sprites
+ * resolve — caller should skip adding a child in that case.
  */
 export function renderPlayer(
   player: PlayerState,
   creatureIndex: Map<number, ThingType>,
   atlasTextures: AtlasTextures,
   layout: Map<number, SpriteLocation>,
-): Sprite | null {
+): Container | null {
   const creature = creatureIndex.get(player.outfit.lookType);
   if (!creature) return null;
-  const spriteId = getCreatureSpriteId(creature.frameGroup, player.direction, player.animationPhase);
-  if (!spriteId) return null;
-  const texture = getSpriteTexture(spriteId, atlasTextures, layout);
-  if (!texture) return null;
 
-  const sprite = new Sprite(texture);
-  sprite.x = player.x * TILE_SIZE;
-  sprite.y = player.y * TILE_SIZE;
-  return sprite;
+  const fg = creature.frameGroup;
+  const dir = Math.max(0, Math.min(player.direction, fg.numPatternX - 1));
+  const phase = Math.max(0, Math.min(player.animationPhase, fg.animationPhases - 1));
+
+  const container = new Container();
+  let drew = false;
+
+  // Sprite index layout: ((phase * patZ * patY * patX + dir) * layers + layer) * h * w + (h * w + w)
+  // Iterate every layer and every (w, h) cell of the creature's footprint.
+  for (let layer = 0; layer < fg.layers; layer++) {
+    const base = (((phase * fg.numPatternZ * fg.numPatternY) * fg.numPatternX + dir) * fg.layers + layer) * fg.height * fg.width;
+
+    for (let h = fg.height - 1; h >= 0; h--) {
+      for (let w = fg.width - 1; w >= 0; w--) {
+        const spriteId = fg.spriteIds[base + h * fg.width + w];
+        if (!spriteId) continue;
+        const texture = getSpriteTexture(spriteId, atlasTextures, layout);
+        if (!texture) continue;
+
+        const sprite = new Sprite(texture);
+        sprite.x = (player.x - w) * TILE_SIZE;
+        sprite.y = (player.y - h) * TILE_SIZE;
+        container.addChild(sprite);
+        drew = true;
+      }
+    }
+  }
+
+  return drew ? container : null;
 }
 
 /**

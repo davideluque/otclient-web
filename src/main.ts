@@ -161,16 +161,25 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const visible = viewport.getVisibleTiles();
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
-    const tiles = renderTileRegion(
+    // Split tile rendering at the player's row so the player draws on top
+    // of objects to its north (walls, roofs) but behind objects to its south
+    // (trees, fences). Not pixel-perfect at the player's own row but a big
+    // improvement over "player always on top of everything".
+    const playerRow = Math.floor(player.y);
+    const tilesAbove = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
-      visible.x1, visible.y1, visible.x2, visible.y2, renderZ,
+      visible.x1, visible.y1, visible.x2, Math.min(playerRow - 1, visible.y2), renderZ,
+    );
+    const tilesBelow = renderTileRegion(
+      tileMap, datIndex, atlasTextures, layout,
+      visible.x1, Math.max(playerRow, visible.y1), visible.x2, visible.y2, renderZ,
     );
 
     tileContainer = new Container();
-    tileContainer.addChild(tiles);
-
+    tileContainer.addChild(tilesAbove);
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, layout);
     if (playerSprite) tileContainer.addChild(playerSprite);
+    tileContainer.addChild(tilesBelow);
 
     if (ambient.enabled) {
       const { sprite, texture } = buildIlluminationOverlay(

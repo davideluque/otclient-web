@@ -129,8 +129,10 @@ export class TileMap {
       const clientId = this.otb.serverToClient.get(item.id);
       if (clientId === undefined) continue;
       const flags = this.otb.serverIdToFlags.get(item.id) ?? 0;
+      const resolved: ResolvedItem = { clientId, count: item.count };
       const floorChange = floorChangeFromFlags(flags);
-      items.push(floorChange ? { clientId, count: item.count, floorChange } : { clientId, count: item.count });
+      if (floorChange) resolved.floorChange = floorChange;
+      items.push(resolved);
     }
     return {
       x: tile.position.x,

@@ -12,11 +12,13 @@ export const TILE_SIZE = 32;
 
 /**
  * Flat index into FrameGroup.spriteIds for a specific frame. Matches the
- * OTClient DAT sprite layout:
- *   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
- * z-pattern is hardcoded to 0 — nothing in Tibia 7.6 .dat actually varies
- * along z. Used by both creature rendering (with patY=0, patX=direction)
- * and ground/item rendering (with patY=tile.y%numPatternY etc.).
+ * OTClient DAT sprite layout (capitals are *counts*, lowercase are
+ * *indices* — distinct in our parameter names too):
+ *   index = (((((phase*numPatternZ + z)*numPatternY + patY)*numPatternX + patX)
+ *               *layers + layer)*height + h)*width + w
+ * z-pattern index is hardcoded to 0 — nothing in Tibia 7.6 .dat actually
+ * varies along z. Used by both creature rendering (with patY=0, patX=
+ * direction) and ground/item rendering (with patY=tile.y%numPatternY etc.).
  */
 export function spriteIndex(
   fg: FrameGroup,
@@ -262,13 +264,18 @@ function renderTile(
     const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
 
     const fg = thingType.frameGroup;
-    const { width, height, layers, numPatternX, numPatternY, animationPhases, spriteIds } = fg;
+    const { width, height, layers, numPatternX, numPatternY, numPatternZ, animationPhases, spriteIds } = fg;
     // The (x, y) pattern is picked from the tile's world position so cobble
     // and other ground tiles get their natural-looking variation across a
     // stretch — the cosmetic random Tibia uses to avoid an obvious grid.
     const patX = ((tile.x % numPatternX) + numPatternX) % numPatternX;
     const patY = ((tile.y % numPatternY) + numPatternY) % numPatternY;
     const isAnimated = animationPhases > 1;
+    // Distance between adjacent animation phases in spriteIds — constant
+    // per item, so we hoist it out of the inner loops and stride from the
+    // phase-0 index in the animation-resolution pass below instead of
+    // re-running the full spriteIndex math for every phase.
+    const phaseStride = numPatternZ * numPatternY * numPatternX * layers * height * width;
 
     // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-
     // algorithm ordering places the anchor on top of pieces extending up
@@ -294,7 +301,7 @@ function renderTile(
             // can swap by reference — no allocation per frame.
             const texturesByPhase: (Texture | null)[] = new Array(animationPhases);
             for (let p = 0; p < animationPhases; p++) {
-              const phaseId = spriteIds[spriteIndex(fg, p, patX, patY, layer, h, w)];
+              const phaseId = spriteIds[idx + p * phaseStride];
               texturesByPhase[p] = phaseId ? getTexture(phaseId) : null;
             }
             animated.push({ sprite, texturesByPhase });

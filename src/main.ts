@@ -352,21 +352,19 @@ async function startApp(loaded: CompleteLoadedFiles) {
     }
   });
 
-  // --- Landscape joystick ---
-  // A virtual joystick for mobile landscape play. While held, it drives the
-  // player in the indicated cardinal direction one tile at a time; releasing
-  // it lets the current step finish and stop. Hidden in portrait — tap-to-walk
-  // is the portrait input model.
+  // --- Mobile joystick ---
+  // A virtual joystick for touch devices. While held, it drives the player
+  // in the indicated cardinal direction one tile at a time; releasing it
+  // lets the current step finish and stop. Hidden on desktop (fine pointer).
   let joystickDir: Direction | null = null;
   const joystick = createJoystick({
     onChange: (dir) => { joystickDir = dir; },
   });
   // `pointer: coarse` excludes mouse-driven desktop browsers (which match
-  // `pointer: fine`) while matching phones and touch tablets — so the
-  // joystick only appears where it's actually useful and doesn't clutter
-  // the desktop view. Pair with orientation so it only takes the corner in
-  // landscape, where the layout has room for it.
-  const joystickQuery = window.matchMedia('(orientation: landscape) and (pointer: coarse)');
+  // `pointer: fine`) while matching phones and touch tablets in any
+  // orientation — so the joystick appears wherever touch input is the
+  // primary model and stays hidden on desktop.
+  const joystickQuery = window.matchMedia('(pointer: coarse)');
   const applyJoystickVisibility = () => joystick.setVisible(joystickQuery.matches);
   applyJoystickVisibility();
   joystickQuery.addEventListener('change', applyJoystickVisibility);

@@ -53,7 +53,7 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
   const parent = opts.parent ?? document.body;
 
   const base = document.createElement('div');
-  base.id = 'joystick';
+  base.className = 'joystick';
   base.style.cssText = [
     'position:fixed',
     'bottom:24px',

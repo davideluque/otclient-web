@@ -166,6 +166,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   let lastRenderRow = Number.NaN;
   let lastPlayerX = Number.NaN;
   let lastPlayerY = Number.NaN;
+  // Track direction so a turn-without-step (e.g. joystick held into a wall)
+  // still triggers a rebuild — without this, the sprite would only update
+  // when the player actually moves tiles.
+  let lastPlayerDirection = Number.NaN;
   let ambient: LightingOptions = NIGHT_AMBIENT;
   let illuminationTexture: RenderTexture | null = null;
   let animatedSprites: AnimatedSprite[] = [];
@@ -216,6 +220,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastRenderRow = playerRow;
     lastPlayerX = player.x;
     lastPlayerY = player.y;
+    lastPlayerDirection = player.direction;
     const above = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, Math.min(playerRow, visible.y2), renderZ,
@@ -274,6 +279,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
       || renderRow !== lastRenderRow
       || player.x !== lastPlayerX
       || player.y !== lastPlayerY
+      || player.direction !== lastPlayerDirection
     ) {
       rebuildTiles();
     }
@@ -335,9 +341,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
       const step = stepInDirection(player.x, player.y, joystickDir);
       if (isTileWalkable(step.x, step.y, renderZ, tileMap, datIndex)) {
         walkState = startWalk(player, [step], performance.now());
-      } else {
+      } else if (player.direction !== joystickDir) {
         // Face the wall even when we can't step through it, for feedback.
+        // The ticker is about to return early since no walk is active, so
+        // we need to render() ourselves; the new direction-tracking
+        // rebuild condition will pick up the change.
         player.direction = joystickDir;
+        render();
       }
     }
 

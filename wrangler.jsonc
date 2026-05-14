@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "otclient-web",
+  "compatibility_date": "2026-05-14",
+  "assets": {
+    "directory": "./dist"
+  }
+}

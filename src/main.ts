@@ -125,12 +125,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
     spawn.x,
     spawn.y,
     spawn.z,
-    // Default outfit: lookType 128 (citizen). Trying user-supplied "classic
-    // 7.2 citizen" palette values: 124/114/38/94. Note: tracing these
-    // through OTClient's getColor algorithm gives unexpected results
-    // (teal / near-black / grey / red rather than the stated brown / beige
-    // / green / grey), but applying them so we can see the visual outcome.
-    { lookType: 128, headColor: 124, bodyColor: 114, legsColor: 38, feetColor: 94 },
+    // Default outfit: lookType 128 (citizen). Values verified against
+    // OTClient's getColor() algorithm — these produce real visible hues:
+    //   58 → (191, 106, 64)   medium brown — hair, pants, shoes
+    //   87 → (0, 85, 255)     Tibia shirt blue (the bright cyan-tinted one)
+    { lookType: 128, headColor: 58, bodyColor: 87, legsColor: 58, feetColor: 58 },
   );
 
   // Initialize PixiJS

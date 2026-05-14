@@ -263,6 +263,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const visible = viewport.getVisibleTiles();
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
+    // --- Floor-below transparency ---
+    // Above ground (z <= 7), render the floor below at reduced opacity so
+    // the world feels three-dimensional. Underground (z >= 8) only shows
+    // the current floor (caves have ceilings). Phase 2 will use
+    // DatAttr.FullGround to mask opaque tiles on the current floor.
+    const FLOOR_BELOW_ALPHA = 0.4;
+
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
     // behind it) but behind items south (trees, fences). Including the
@@ -284,6 +291,17 @@ async function startApp(loaded: CompleteLoadedFiles) {
     animatedSprites = [...above.animated, ...below.animated];
 
     tileContainer = new Container();
+
+    if (renderZ <= 7) {
+      const floorBelow = renderTileRegion(
+        tileMap, datIndex, atlasTextures, layout,
+        visible.x1, visible.y1, visible.x2, visible.y2, renderZ + 1,
+      );
+      floorBelow.container.alpha = FLOOR_BELOW_ALPHA;
+      tileContainer.addChild(floorBelow.container);
+      animatedSprites = [...floorBelow.animated, ...animatedSprites];
+    }
+
     tileContainer.addChild(above.container);
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, atlasPages, layout, tintedOutfitCache);
     if (playerSprite) {

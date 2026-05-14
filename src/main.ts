@@ -19,6 +19,7 @@ import { startWalk, updateWalk } from './lib/walkAnimation';
 import type { WalkState } from './lib/walkAnimation';
 import { createJoystick } from './lib/joystick';
 import { createKeyboard } from './lib/keyboard';
+import { createDevControls } from './lib/devControls';
 import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
@@ -460,7 +461,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const keyboard = createKeyboard({
     onToggle: (id) => {
       if (id === 'night') {
-        ambient = ambient === NIGHT_AMBIENT ? DAY_AMBIENT : NIGHT_AMBIENT;
+        const isNight = ambient !== NIGHT_AMBIENT;
+        ambient = isNight ? NIGHT_AMBIENT : DAY_AMBIENT;
+        devControls?.setToggle('Night', isNight);
         render(true);
       }
     },
@@ -562,7 +565,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const dy = e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
-    viewport.pan(dx, dy);
+    if (dragToPanEnabled) viewport.pan(dx, dy);
     render();
   });
 
@@ -628,9 +631,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
     endGesture();
   });
 
-  // Zoom: locked to playZoom by default for fairness. The dev-only toggle
-  // below widens the bounds so we can pinch/wheel to inspect the map.
+  // --- Dev controls state ---
   let zoomUnlocked = false;
+  let dragToPanEnabled = false;
 
   app.canvas.addEventListener('wheel', (e: WheelEvent) => {
     e.preventDefault();
@@ -661,36 +664,38 @@ async function startApp(loaded: CompleteLoadedFiles) {
   }, { passive: false });
   app.canvas.addEventListener('touchend', () => { lastPinchDist = 0; }, { passive: true });
 
-  // Zoom toggle in the corner — shipping unconditionally for now since we're
-  // the only user. Easy to gate behind import.meta.env.DEV later if needed.
-  // If startApp runs twice (shouldn't happen with the file-loader guard, but
-  // defensive against future re-entry), drop the old button first.
-  document.getElementById('zoom-toggle')?.remove();
-  const zoomBtn = document.createElement('button');
-  zoomBtn.id = 'zoom-toggle';
-  zoomBtn.type = 'button';
-  zoomBtn.textContent = 'Zoom: locked';
-  zoomBtn.title = 'Toggle zoom (pinch / wheel)';
-  zoomBtn.style.cssText = 'position:fixed;top:12px;right:12px;padding:6px 10px;'
-    + 'background:#3a3a3a;color:#ddd;border:1px solid #555;border-radius:4px;'
-    + 'font:12px system-ui,sans-serif;cursor:pointer;z-index:100;opacity:0.85';
-  zoomBtn.addEventListener('click', () => {
-    zoomUnlocked = !zoomUnlocked;
-    if (zoomUnlocked) {
-      viewport.minZoom = viewport.playZoom * 0.1;
-      viewport.maxZoom = viewport.playZoom * 5;
-      zoomBtn.textContent = 'Zoom: free';
-      zoomBtn.style.background = '#5a4a90';
-    } else {
-      viewport.minZoom = viewport.playZoom;
-      viewport.maxZoom = viewport.playZoom;
-      viewport.setZoom(viewport.playZoom);
-      zoomBtn.textContent = 'Zoom: locked';
-      zoomBtn.style.background = '#3a3a3a';
-      render(true);
-    }
-  });
-  document.body.appendChild(zoomBtn);
+  // --- Dev controls panel ---
+  const devControls = createDevControls([
+    {
+      label: 'Night',
+      defaultOn: true,
+      onChange: (on) => {
+        ambient = on ? NIGHT_AMBIENT : DAY_AMBIENT;
+        render(true);
+      },
+    },
+    {
+      label: 'Zoom',
+      defaultOn: false,
+      onChange: (on) => {
+        zoomUnlocked = on;
+        if (on) {
+          viewport.minZoom = viewport.playZoom * 0.1;
+          viewport.maxZoom = viewport.playZoom * 5;
+        } else {
+          viewport.minZoom = viewport.playZoom;
+          viewport.maxZoom = viewport.playZoom;
+          viewport.setZoom(viewport.playZoom);
+          render(true);
+        }
+      },
+    },
+    {
+      label: 'Drag pan',
+      defaultOn: false,
+      onChange: (on) => { dragToPanEnabled = on; },
+    },
+  ]);
 
   // Handle window resize / orientation change: recompute the play zoom for
   // the new screen so the visible play area stays consistent across
@@ -723,8 +728,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
         // re-locked viewport, so reset the toggle to match.
         if (zoomUnlocked) {
           zoomUnlocked = false;
-          zoomBtn.textContent = 'Zoom: locked';
-          zoomBtn.style.background = '#3a3a3a';
+          devControls.setToggle('Zoom', false);
         }
         render();
       });

@@ -18,6 +18,7 @@ import { findPath, isTileWalkable } from './lib/pathfinding';
 import { startWalk, updateWalk } from './lib/walkAnimation';
 import type { WalkState } from './lib/walkAnimation';
 import { createJoystick } from './lib/joystick';
+import { createKeyboard } from './lib/keyboard';
 import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
@@ -419,15 +420,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (fc === 'down') {
       renderZ++;
       player.z = renderZ;
-      // Ensure destination tiles are loaded so we can read the partner
-      // tile's flags. Skip the parse if we already have tiles there —
-      // round-tripping the same stair becomes instant after the first
-      // visit instead of re-parsing the OTBM each time.
       ensureLoadedAt(player.x, player.y, renderZ);
-      // Bidirectional stair: if the tile we'd land on carries a
-      // directional FloorChange (it's the upstair partner of the down-
-      // stair we just stepped on), apply the inverse of that direction
-      // so we land one tile away from the upstair tile.
       const partner = tileMap.getFloorChange(player.x, player.y, renderZ);
       if (partner === 'up-north') player.y++;
       else if (partner === 'up-south') player.y--;
@@ -442,34 +435,36 @@ async function startApp(loaded: CompleteLoadedFiles) {
       player.z = renderZ;
       ensureLoadedAt(player.x, player.y, renderZ);
     }
-    // expansionKey doesn't include z, so an exhausted-direction entry
-    // from the old floor would wrongly suppress retries on the new
-    // floor. Clear the set on every floor change.
     exhaustedDirections.clear();
     viewport.centerX = player.x;
     viewport.centerY = player.y;
     render(true);
   }
 
-  // Parse + merge a small region around (x, y, z) only when the tilemap
-  // doesn't already cover it. Cheap cache check first (one Map lookup),
-  // expensive parse only on miss.
   function ensureLoadedAt(x: number, y: number, z: number) {
     if (tileMap.getTile(x, y, z)) return;
     const region: OtbmRegion = { centerX: x, centerY: y, radius: 25, z };
     tileMap.merge(parseOtbmRegion(loaded.otbm, region));
   }
 
-  // Floor changes can fire from any startWalk callsite. The callback
-  // checks the landed tile and, when it's a stair/hole, aborts the rest
-  // of the queued path (so we stop on the stair like TFS does) and
-  // teleports via handleFloorChange.
   const onStepLand = (x: number, y: number) => {
     const fc = tileMap.getFloorChange(x, y, renderZ);
     if (!fc) return;
     if (walkState) walkState.path = [];
     handleFloorChange(fc);
   };
+
+  // --- Keyboard input ---
+  // Arrow keys + WASD for desktop movement. Toggle bindings (N = night)
+  // replace the previous inline keydown handler.
+  const keyboard = createKeyboard({
+    onToggle: (id) => {
+      if (id === 'night') {
+        ambient = ambient === NIGHT_AMBIENT ? DAY_AMBIENT : NIGHT_AMBIENT;
+        render(true);
+      }
+    },
+  });
 
   // --- Walk animation ticker ---
   // Drives the player along its computed A* path. Smoothly interpolates
@@ -482,16 +477,19 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // the next iteration starts the next step — that's the held-walk loop.
     // Skipping when the tile is blocked avoids spamming startWalk against a
     // wall: the knob stays "live" but no movement happens.
-    if (joystickDir !== null && (!walkState || !walkState.active)) {
-      const step = stepInDirection(player.x, player.y, joystickDir);
+    // Joystick or keyboard: while a direction is held and we're not
+    // already walking, kick off a one-tile step. Joystick takes priority.
+    const heldDir = joystickDir ?? keyboard.heldDirection;
+    if (heldDir !== null && (!walkState || !walkState.active)) {
+      const step = stepInDirection(player.x, player.y, heldDir);
       if (isTileWalkable(step.x, step.y, renderZ, tileMap, datIndex)) {
         walkState = startWalk(player, [step], performance.now(), onStepLand);
-      } else if (player.direction !== joystickDir) {
+      } else if (player.direction !== heldDir) {
         // Face the wall even when we can't step through it, for feedback.
         // The ticker is about to return early since no walk is active, so
         // we need to render() ourselves; the new direction-tracking
         // rebuild condition will pick up the change.
-        player.direction = joystickDir;
+        player.direction = heldDir;
         render();
       }
     }
@@ -744,13 +742,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // to interact first.
   scheduleViewportUpdate();
 
-  // N toggles night/day so you can see the difference
-  window.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key === 'n' || e.key === 'N') {
-      ambient = ambient === NIGHT_AMBIENT ? DAY_AMBIENT : NIGHT_AMBIENT;
-      render(true);
-    }
-  });
+  // N toggle is now handled by keyboard.ts via the 'night' toggle binding.
 
   console.log(`Map loaded: ${tileMap.size} tiles, spawn at (${spawn.x}, ${spawn.y}, z=${spawn.z})`);
 }

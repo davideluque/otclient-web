@@ -268,25 +268,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // the world feels three-dimensional. Underground (z >= 8) only shows
     // the current floor (caves have ceilings). Phase 2 will use
     // DatAttr.FullGround to mask opaque tiles on the current floor.
-    const FLOOR_BELOW_ALPHA = 0.4;
-
-    // Collect positions where the current floor has a FullGround item —
-    // these completely cover the floor below and should be occluded.
+    // Render up to 3 floors below with decreasing opacity. Each floor's
+    // FullGround tiles occlude deeper floors at those positions.
     // Bit-pack (x, y) into a single number for fast Set lookups.
-    // Tibia coords are 16-bit, so (x << 16) | y fits in 32 bits.
-    let fullGroundPositions: Set<number> | undefined;
-    if (renderZ <= 7) {
-      fullGroundPositions = new Set();
-      for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
-        for (const item of tile.items) {
-          const tt = datIndex.get(item.clientId);
-          if (tt?.attrs.has(DatAttr.FullGround)) {
-            fullGroundPositions.add((tile.x << 16) | tile.y);
-            break;
-          }
-        }
-      }
-    }
+    const FLOOR_ALPHAS = [0.4, 0.2, 0.1];
 
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
@@ -312,14 +297,37 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const allAnimated: typeof animatedSprites = [];
 
     if (renderZ <= 7) {
-      const floorBelow = renderTileRegion(
-        tileMap, datIndex, atlasTextures, layout,
-        visible.x1, visible.y1, visible.x2, visible.y2, renderZ + 1,
-        fullGroundPositions,
-      );
-      floorBelow.container.alpha = FLOOR_BELOW_ALPHA;
-      tileContainer.addChild(floorBelow.container);
-      allAnimated.push(...floorBelow.animated);
+      // Accumulate occluded positions across floors — FullGround on any
+      // higher floor blocks vision to all deeper floors at that position.
+      const occluded = new Set<number>();
+      for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
+        for (const item of tile.items) {
+          const tt = datIndex.get(item.clientId);
+          if (tt?.attrs.has(DatAttr.FullGround)) { occluded.add((tile.x << 16) | tile.y); break; }
+        }
+      }
+
+      // Render each floor below, deepest first (shallower on top).
+      const maxDepth = Math.min(FLOOR_ALPHAS.length, 15 - renderZ);
+      for (let depth = maxDepth; depth >= 1; depth--) {
+        const floorZ = renderZ + depth;
+        const floor = renderTileRegion(
+          tileMap, datIndex, atlasTextures, layout,
+          visible.x1, visible.y1, visible.x2, visible.y2, floorZ,
+          occluded,
+        );
+        floor.container.alpha = FLOOR_ALPHAS[depth - 1];
+        tileContainer.addChild(floor.container);
+        allAnimated.push(...floor.animated);
+
+        // Collect FullGround from this floor to occlude deeper ones.
+        for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, floorZ)) {
+          for (const item of tile.items) {
+            const tt = datIndex.get(item.clientId);
+            if (tt?.attrs.has(DatAttr.FullGround)) { occluded.add((tile.x << 16) | tile.y); break; }
+          }
+        }
+      }
     }
     allAnimated.push(...above.animated, ...below.animated);
     animatedSprites = allAnimated;

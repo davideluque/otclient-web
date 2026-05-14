@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <title>OTClient Web</title>
@@ -12,7 +12,19 @@
     <meta name="theme-color" content="#7c5cbf" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+      /* `-webkit-fill-available` gives iOS Safari/PWA the actually-visible
+         viewport height (post-status-bar layout), avoiding the
+         pre-layout-measured `100%` that leaves a black strip at the top
+         on installed PWAs. The plain `100%` line is the fallback for
+         non-WebKit browsers. */
+      html, body {
+        width: 100%;
+        height: 100%;
+        height: -webkit-fill-available;
+        overflow: hidden;
+        background: #000;
+        font-family: system-ui, sans-serif;
+      }
       canvas { display: block; }
 
       #loader {

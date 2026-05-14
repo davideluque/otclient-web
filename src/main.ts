@@ -622,6 +622,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // visualViewport tracks the actually-visible area (excludes URL bar) on
   // mobile; firing on its resize catches URL-bar reveal/hide and pinch.
   window.visualViewport?.addEventListener('resize', scheduleViewportUpdate);
+  // Cold-start fix: on installed iOS PWAs the initial visualViewport
+  // dimensions can be reported before the status-bar layout settles,
+  // leaving a black strip at the top. Fire one deferred remeasure so
+  // the canvas catches the post-layout size without needing the user
+  // to interact first.
+  scheduleViewportUpdate();
 
   // N toggles night/day so you can see the difference
   window.addEventListener('keydown', (e: KeyboardEvent) => {

@@ -95,9 +95,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // Pick the spawn: caller override (future server hook) → Rookgaard town
   // (the canonical Tibia 7.6 starting point) → first town the map declares
   // → first tile we can find by scanning.
-  const spawn: Position = pickSpawn(metadata)
-    ?? findFirstTile(loaded.otbm)
-    ?? { x: 0, y: 0, z: 7 };
+  const pickedSpawn = pickSpawn(metadata) ?? findFirstTile(loaded.otbm);
+  if (!pickedSpawn) {
+    console.warn('OTBM declares no towns and findFirstTile found nothing — spawning at (0, 0, 7). Map is probably empty or has an unusual structure.');
+  }
+  const spawn: Position = pickedSpawn ?? { x: 0, y: 0, z: 7 };
 
   const initialRegion: OtbmRegion = regionAround(spawn);
   const otbm: OtbmFile = parseOtbmRegion(loaded.otbm, initialRegion);
@@ -296,9 +298,15 @@ function regionAround(p: Position): OtbmRegion {
  */
 function pickSpawn(otbm: OtbmFile, override?: Position): Position | null {
   if (override) return override;
-  for (const town of otbm.towns) {
-    if (/rookgaard/i.test(town.name)) return town.templePosition;
-  }
+
+  // Exact case-insensitive match wins over partial — otherwise "Rookgaard East"
+  // would shadow the canonical "Rookgaard" town when both exist.
+  const exact = otbm.towns.find(t => t.name.toLowerCase() === 'rookgaard');
+  if (exact) return exact.templePosition;
+
+  const partial = otbm.towns.find(t => /rookgaard/i.test(t.name));
+  if (partial) return partial.templePosition;
+
   if (otbm.towns.length > 0) return otbm.towns[0].templePosition;
   return null;
 }

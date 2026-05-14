@@ -7,6 +7,7 @@ import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
+import type { AnimatedSprite } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
 import type { PlayerState } from './lib/player';
@@ -157,6 +158,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   let lastVisibleKey = '';
   let ambient: LightingOptions = NIGHT_AMBIENT;
   let illuminationTexture: RenderTexture | null = null;
+  let animatedSprites: AnimatedSprite[] = [];
   const lightMask = createLightMaskTexture();
 
   function rebuildTiles() {
@@ -177,20 +179,21 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // (trees, fences). Not pixel-perfect at the player's own row but a big
     // improvement over "player always on top of everything".
     const playerRow = Math.floor(player.y);
-    const tilesAbove = renderTileRegion(
+    const above = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, Math.min(playerRow - 1, visible.y2), renderZ,
     );
-    const tilesBelow = renderTileRegion(
+    const below = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, Math.max(playerRow, visible.y1), visible.x2, visible.y2, renderZ,
     );
+    animatedSprites = [...above.animated, ...below.animated];
 
     tileContainer = new Container();
-    tileContainer.addChild(tilesAbove);
+    tileContainer.addChild(above.container);
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, layout);
     if (playerSprite) tileContainer.addChild(playerSprite);
-    tileContainer.addChild(tilesBelow);
+    tileContainer.addChild(below.container);
 
     if (ambient.enabled) {
       const { sprite, texture } = buildIlluminationOverlay(
@@ -224,6 +227,22 @@ async function startApp(loaded: CompleteLoadedFiles) {
   }
 
   render(true);
+
+  // Drive item animation (torches, lights, fire). 500 ms per frame matches
+  // OTClient's ITEM_TICKS_PER_FRAME for Tibia 7.6-style items (per-phase
+  // durations weren't stored in the .dat until ~10.50+). Pre-resolved
+  // textures live on each AnimatedSprite, so this is just a reference
+  // swap — no allocation in the hot loop.
+  const ANIMATION_FRAME_MS = 500;
+  app.ticker.add(() => {
+    if (animatedSprites.length === 0) return;
+    const frame = Math.floor(performance.now() / ANIMATION_FRAME_MS);
+    for (const a of animatedSprites) {
+      const phase = frame % a.texturesByPhase.length;
+      const tex = a.texturesByPhase[phase];
+      if (tex && a.sprite.texture !== tex) a.sprite.texture = tex;
+    }
+  });
 
   // --- Touch/mouse controls ---
 

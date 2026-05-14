@@ -109,6 +109,21 @@ export function renderPlayer(
 }
 
 /**
+ * Animated sprite plus its frame-by-frame texture list. The render loop
+ * keeps an array of these for the visible region and swaps `sprite.texture`
+ * each animation tick — no allocation per frame.
+ */
+export interface AnimatedSprite {
+  sprite: Sprite;
+  texturesByPhase: (Texture | null)[];
+}
+
+export interface RenderedRegion {
+  container: Container;
+  animated: AnimatedSprite[];
+}
+
+/**
  * Render a rectangular region of tiles into a PixiJS Container.
  * Each tile's items are stacked in order (ground first, then items on top).
  *
@@ -120,8 +135,9 @@ export function renderTileRegion(
   atlasTextures: AtlasTextures,
   layout: Map<number, SpriteLocation>,
   x1: number, y1: number, x2: number, y2: number, z: number,
-): Container {
+): RenderedRegion {
   const container = new Container();
+  const animated: AnimatedSprite[] = [];
 
   // Cache textures to avoid recreating for the same sprite ID
   const textureCache = new Map<number, Texture | null>();
@@ -134,15 +150,16 @@ export function renderTileRegion(
   }
 
   for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
-    renderTile(tile, container, datIndex, getTexture);
+    renderTile(tile, container, animated, datIndex, getTexture);
   }
 
-  return container;
+  return { container, animated };
 }
 
 function renderTile(
   tile: ResolvedTile,
   container: Container,
+  animated: AnimatedSprite[],
   datIndex: Map<number, ThingType>,
   getTexture: (spriteId: number) => Texture | null,
 ): void {
@@ -165,7 +182,7 @@ function renderTile(
     const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
     const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
 
-    const { width, height, numPatternX, numPatternY, spriteIds } = thingType.frameGroup;
+    const { width, height, layers, numPatternX, numPatternY, numPatternZ, animationPhases, spriteIds } = thingType.frameGroup;
     // DAT sprite layout (matches OTClient reference):
     //   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
     // For static rendering we pick phase=0, layer=0, z-pattern=0, and pick the
@@ -175,12 +192,16 @@ function renderTile(
     const patX = ((tile.x % numPatternX) + numPatternX) % numPatternX;
     const patY = ((tile.y % numPatternY) + numPatternY) % numPatternY;
     const patternOffset = (patY * numPatternX + patX) * height * width;
+    // Stepping animationPhase by 1 advances the sprite index by this much.
+    const phaseStride = numPatternZ * numPatternY * numPatternX * layers * height * width;
+    const isAnimated = animationPhases > 1;
 
     // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-algorithm
     // ordering places the anchor on top of pieces extending up and to the left.
     for (let h = height - 1; h >= 0; h--) {
       for (let w = width - 1; w >= 0; w--) {
-        const spriteId = spriteIds[patternOffset + h * width + w];
+        const phase0Index = patternOffset + h * width + w;
+        const spriteId = spriteIds[phase0Index];
         if (!spriteId) continue;
 
         const texture = getTexture(spriteId);
@@ -190,6 +211,17 @@ function renderTile(
         sprite.x = screenX - w * TILE_SIZE - dispX;
         sprite.y = screenY - h * TILE_SIZE - elevation - dispY;
         container.addChild(sprite);
+
+        if (isAnimated) {
+          // Pre-resolve every animation frame's texture so the ticker can
+          // swap by reference — no allocation per frame.
+          const texturesByPhase: (Texture | null)[] = new Array(animationPhases);
+          for (let p = 0; p < animationPhases; p++) {
+            const id = spriteIds[phase0Index + p * phaseStride];
+            texturesByPhase[p] = id ? getTexture(id) : null;
+          }
+          animated.push({ sprite, texturesByPhase });
+        }
       }
     }
 

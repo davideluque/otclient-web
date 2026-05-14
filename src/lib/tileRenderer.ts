@@ -1,6 +1,6 @@
 import { Container, Sprite, Texture, BufferImageSource, Rectangle } from 'pixi.js';
 import type { TileMap, ResolvedTile } from './tileMap';
-import type { DatFile, ThingType } from './dat';
+import type { DatFile, ThingType, FrameGroup } from './dat';
 import { DatAttr } from './dat';
 import { SPRITE_SIZE } from './spr';
 import type { AtlasPages, SpriteLocation } from './atlas';
@@ -9,6 +9,28 @@ import type { PlayerState } from './player';
 import { extractSpritePixels, tintOutfitSprite } from './outfitTint';
 
 export const TILE_SIZE = 32;
+
+/**
+ * Flat index into FrameGroup.spriteIds for a specific frame. Matches the
+ * OTClient DAT sprite layout:
+ *   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
+ * z-pattern is hardcoded to 0 — nothing in Tibia 7.6 .dat actually varies
+ * along z. Used by both creature rendering (with patY=0, patX=direction)
+ * and ground/item rendering (with patY=tile.y%numPatternY etc.).
+ */
+export function spriteIndex(
+  fg: FrameGroup,
+  phase: number,
+  patX: number,
+  patY: number,
+  layer: number,
+  h: number,
+  w: number,
+): number {
+  const yComponent = phase * fg.numPatternZ * fg.numPatternY + patY;
+  const xyComponent = yComponent * fg.numPatternX + patX;
+  return ((xyComponent * fg.layers + layer) * fg.height + h) * fg.width + w;
+}
 
 /** Cache key → tinted 32×32 texture, owned by the caller (main.ts). */
 export type TintedTextureCache = Map<string, Texture>;
@@ -104,13 +126,15 @@ export function renderPlayer(
   // tinted layer-0 + layer-1 outfit (when layers >= 2) or just draw layer 0.
   for (let h = fg.height - 1; h >= 0; h--) {
     for (let w = fg.width - 1; w >= 0; w--) {
-      const baseIdx = layerSpriteIndex(fg, phase, dir, 0, h, w);
+      // Creatures use patX=direction and patY=0; the unified spriteIndex
+      // handles the per-layer offset that creatures and items share.
+      const baseIdx = spriteIndex(fg, phase, dir, 0, 0, h, w);
       const baseSpriteId = fg.spriteIds[baseIdx];
       if (!baseSpriteId) continue;
 
       let texture: Texture | null;
       if (hasMask) {
-        const maskIdx = layerSpriteIndex(fg, phase, dir, 1, h, w);
+        const maskIdx = spriteIndex(fg, phase, dir, 0, 1, h, w);
         const maskSpriteId = fg.spriteIds[maskIdx] ?? 0;
         texture = resolveTintedTexture(baseSpriteId, maskSpriteId, player, atlasPages, layout, tintedCache);
       } else {
@@ -127,10 +151,6 @@ export function renderPlayer(
   }
 
   return drew ? container : null;
-}
-
-function layerSpriteIndex(fg: ThingType['frameGroup'], phase: number, dir: number, layer: number, h: number, w: number): number {
-  return ((((phase * fg.numPatternZ * fg.numPatternY) * fg.numPatternX + dir) * fg.layers + layer) * fg.height + h) * fg.width + w;
 }
 
 function resolveTintedTexture(
@@ -241,45 +261,44 @@ function renderTile(
     const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
     const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
 
-    const { width, height, layers, numPatternX, numPatternY, numPatternZ, animationPhases, spriteIds } = thingType.frameGroup;
-    // DAT sprite layout (matches OTClient reference):
-    //   index = (((((phase*patZ + z)*patY + y)*patX + x)*layers + layer)*height + h)*width + w
-    // For static rendering we pick phase=0, layer=0, z-pattern=0, and pick the
-    // (x, y) pattern from the tile's world position. That gives cobblestone
-    // and other ground tiles their natural-looking variation across a stretch
-    // — the cosmetic random Tibia uses to avoid an obvious tiled grid.
+    const fg = thingType.frameGroup;
+    const { width, height, layers, numPatternX, numPatternY, animationPhases, spriteIds } = fg;
+    // The (x, y) pattern is picked from the tile's world position so cobble
+    // and other ground tiles get their natural-looking variation across a
+    // stretch — the cosmetic random Tibia uses to avoid an obvious grid.
     const patX = ((tile.x % numPatternX) + numPatternX) % numPatternX;
     const patY = ((tile.y % numPatternY) + numPatternY) % numPatternY;
-    const patternOffset = (patY * numPatternX + patX) * height * width;
-    // Stepping animationPhase by 1 advances the sprite index by this much.
-    const phaseStride = numPatternZ * numPatternY * numPatternX * layers * height * width;
     const isAnimated = animationPhases > 1;
 
-    // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-algorithm
-    // ordering places the anchor on top of pieces extending up and to the left.
+    // Iterate furthest piece first, anchor (h=0, w=0) last, so painter's-
+    // algorithm ordering places the anchor on top of pieces extending up
+    // and to the left. Within a piece, layer 0 draws first and higher
+    // layers (overlays) stack on top.
     for (let h = height - 1; h >= 0; h--) {
       for (let w = width - 1; w >= 0; w--) {
-        const phase0Index = patternOffset + h * width + w;
-        const spriteId = spriteIds[phase0Index];
-        if (!spriteId) continue;
+        for (let layer = 0; layer < layers; layer++) {
+          const idx = spriteIndex(fg, 0, patX, patY, layer, h, w);
+          const id = spriteIds[idx];
+          if (!id) continue;
 
-        const texture = getTexture(spriteId);
-        if (!texture) continue;
+          const texture = getTexture(id);
+          if (!texture) continue;
 
-        const sprite = new Sprite(texture);
-        sprite.x = screenX - w * TILE_SIZE - dispX;
-        sprite.y = screenY - h * TILE_SIZE - elevation - dispY;
-        container.addChild(sprite);
+          const sprite = new Sprite(texture);
+          sprite.x = screenX - w * TILE_SIZE - dispX;
+          sprite.y = screenY - h * TILE_SIZE - elevation - dispY;
+          container.addChild(sprite);
 
-        if (isAnimated) {
-          // Pre-resolve every animation frame's texture so the ticker can
-          // swap by reference — no allocation per frame.
-          const texturesByPhase: (Texture | null)[] = new Array(animationPhases);
-          for (let p = 0; p < animationPhases; p++) {
-            const id = spriteIds[phase0Index + p * phaseStride];
-            texturesByPhase[p] = id ? getTexture(id) : null;
+          if (isAnimated) {
+            // Pre-resolve every animation frame's texture so the ticker
+            // can swap by reference — no allocation per frame.
+            const texturesByPhase: (Texture | null)[] = new Array(animationPhases);
+            for (let p = 0; p < animationPhases; p++) {
+              const phaseId = spriteIds[spriteIndex(fg, p, patX, patY, layer, h, w)];
+              texturesByPhase[p] = phaseId ? getTexture(phaseId) : null;
+            }
+            animated.push({ sprite, texturesByPhase });
           }
-          animated.push({ sprite, texturesByPhase });
         }
       }
     }

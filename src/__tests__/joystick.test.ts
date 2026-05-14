@@ -7,7 +7,7 @@ describe('directionFromKnob', () => {
 
   it('returns null inside the dead zone', () => {
     expect(directionFromKnob(0, 0, RADIUS)).toBeNull();
-    // Default dead zone is 25% of radius = 15px.
+    // Dead zone is 35% of radius = 21px. (10,10) = ~14px, inside.
     expect(directionFromKnob(10, 10, RADIUS)).toBeNull();
   });
 
@@ -32,13 +32,37 @@ describe('directionFromKnob', () => {
   });
 
   it('breaks ties on the X axis (matches walk preference for horizontal)', () => {
-    // Exact 45° — both axes equal magnitude. The convention is X wins.
     expect(directionFromKnob(30, 30, RADIUS)).toBe(Direction.East);
     expect(directionFromKnob(-30, -30, RADIUS)).toBe(Direction.West);
   });
 
   it('respects a custom dead-zone fraction', () => {
-    expect(directionFromKnob(20, 0, RADIUS, 0.5)).toBeNull(); // 50% of 60 = 30
-    expect(directionFromKnob(35, 0, RADIUS, 0.5)).toBe(Direction.East);
+    expect(directionFromKnob(20, 0, RADIUS, null, 0.5)).toBeNull(); // 50% of 60 = 30
+    expect(directionFromKnob(35, 0, RADIUS, null, 0.5)).toBe(Direction.East);
+  });
+
+  describe('hysteresis', () => {
+    it('keeps current direction when near a diagonal', () => {
+      // Moving west with a slight upward drift — should stay West
+      // dx=-25, dy=-20: absDx/absDy = 1.25, below the 1.5 threshold
+      expect(directionFromKnob(-25, -20, RADIUS, Direction.West)).toBe(Direction.West);
+    });
+
+    it('switches direction when the new axis clearly dominates', () => {
+      // Was heading West, now clearly pointing North
+      // dx=-10, dy=-40: absDy/absDx = 4.0, well above 1.5 threshold
+      expect(directionFromKnob(-10, -40, RADIUS, Direction.West)).toBe(Direction.North);
+    });
+
+    it('has no hysteresis when currentDir is null (initial press)', () => {
+      // First press — should pick the dominant axis without stickiness
+      expect(directionFromKnob(-25, -20, RADIUS, null)).toBe(Direction.West);
+    });
+
+    it('keeps current direction at exact diagonal', () => {
+      // 45° exactly — ratio is 1.0, below 1.5 threshold, keeps current
+      expect(directionFromKnob(30, 30, RADIUS, Direction.South)).toBe(Direction.South);
+      expect(directionFromKnob(30, 30, RADIUS, Direction.East)).toBe(Direction.East);
+    });
   });
 });

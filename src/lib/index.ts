@@ -22,7 +22,7 @@ export { OtbmNode, OtbmAttr } from './otbm';
 export { TileMap } from './tileMap';
 export type { ResolvedTile, ResolvedItem } from './tileMap';
 
-export { createAtlasTextures, getSpriteTexture, buildDatIndex, renderTileRegion } from './tileRenderer';
+export { createAtlasTextures, getSpriteTexture, buildDatIndex, renderTileRegion, renderPlayer } from './tileRenderer';
 export type { AtlasTextures } from './tileRenderer';
 
 export { Viewport } from './viewport';

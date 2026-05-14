@@ -5,6 +5,8 @@ import { DatAttr } from './dat';
 import { SPRITE_SIZE } from './spr';
 import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
+import type { PlayerState } from './player';
+import { getCreatureSpriteId } from './player';
 
 const TILE_SIZE = 32;
 const MAX_TILE_ELEVATION = TILE_SIZE - 1;
@@ -59,6 +61,31 @@ export function buildDatIndex(dat: DatFile): Map<number, ThingType> {
     index.set(thing.id, thing);
   }
   return index;
+}
+
+/**
+ * Render the player as a single sprite at its current world coordinate,
+ * facing its current direction. Returns null if the creature lookType
+ * isn't in the loaded .dat, or its sprite/texture can't be resolved —
+ * caller should skip adding a child in that case.
+ */
+export function renderPlayer(
+  player: PlayerState,
+  creatureIndex: Map<number, ThingType>,
+  atlasTextures: AtlasTextures,
+  layout: Map<number, SpriteLocation>,
+): Sprite | null {
+  const creature = creatureIndex.get(player.outfit.lookType);
+  if (!creature) return null;
+  const spriteId = getCreatureSpriteId(creature.frameGroup, player.direction, player.animationPhase);
+  if (!spriteId) return null;
+  const texture = getSpriteTexture(spriteId, atlasTextures, layout);
+  if (!texture) return null;
+
+  const sprite = new Sprite(texture);
+  sprite.x = player.x * TILE_SIZE;
+  sprite.y = player.y * TILE_SIZE;
+  return sprite;
 }
 
 /**

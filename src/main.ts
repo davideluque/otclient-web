@@ -6,8 +6,10 @@ import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
 import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
-import { createAtlasTextures, renderTileRegion, buildDatIndex } from './lib/tileRenderer';
+import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import { Viewport } from './lib/viewport';
+import { buildCreatureIndex, createPlayer } from './lib/player';
+import type { PlayerState } from './lib/player';
 import {
   buildIlluminationOverlay,
   createLightMaskTexture,
@@ -106,6 +108,17 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const tileMap = new TileMap(otbm, otb);
   setStatus(`Loaded ${tileMap.size} tiles around (${initialRegion.centerX}, ${initialRegion.centerY})`);
 
+  const creatureIndex = buildCreatureIndex(dat);
+  const player: PlayerState = createPlayer(
+    initialRegion.centerX,
+    initialRegion.centerY,
+    initialRegion.z ?? 7,
+    // Default outfit: lookType 128 (citizen). If the loaded .dat doesn't
+    // ship that creature, renderPlayer falls back to drawing nothing —
+    // the map still renders.
+    { lookType: 128, headColor: 78, bodyColor: 132, legsColor: 13, feetColor: 38 },
+  );
+
   // Initialize PixiJS
   const app = new Application();
   await app.init({
@@ -155,6 +168,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     tileContainer = new Container();
     tileContainer.addChild(tiles);
+
+    const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, layout);
+    if (playerSprite) tileContainer.addChild(playerSprite);
 
     if (ambient.enabled) {
       const { sprite, texture } = buildIlluminationOverlay(

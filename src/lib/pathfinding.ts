@@ -110,6 +110,12 @@ export function findPath(
       const neighborKey = `${nx}:${ny}`;
 
       if (!isTileWalkable(nx, ny, z, tileMap, datIndex)) continue;
+      // Floor-change tiles are reachable as a destination but A* must
+      // not route *through* them — otherwise a stair on a same-floor
+      // path would teleport the walker mid-route. Matches TFS
+      // Tile::queryAdd, which returns RETURNVALUE_NOTPOSSIBLE for
+      // floor-change tiles when FLAG_PATHFINDING is set.
+      if (neighborKey !== goalKey && tileMap.getFloorChange(nx, ny, z)) continue;
 
       const tentativeG = current.g + 1;
 

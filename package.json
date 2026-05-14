@@ -10,7 +10,8 @@
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
-    "proxy": "npx tsx proxy/server.ts"
+    "proxy": "npx tsx proxy/server.ts",
+    "build:icons": "node scripts/build-icons.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

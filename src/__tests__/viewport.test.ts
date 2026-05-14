@@ -4,8 +4,6 @@ import {
   computePlayZoom,
   PORTRAIT_PLAY_TILES_X,
   LANDSCAPE_PLAY_TILES_X,
-  PLAY_ZOOM_MIN_FACTOR,
-  PLAY_ZOOM_MAX_FACTOR,
 } from '../lib/viewport';
 
 describe('Viewport', () => {
@@ -114,20 +112,22 @@ describe('Viewport', () => {
       expect(vp.zoom).toBe(vp.playZoom);
     });
 
-    it('derives bounds from play zoom', () => {
+    it('locks bounds to play zoom by default so setZoom is a no-op', () => {
       const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: 768, screenHeight: 1024 });
-      expect(vp.minZoom).toBeCloseTo(vp.playZoom * PLAY_ZOOM_MIN_FACTOR);
-      expect(vp.maxZoom).toBeCloseTo(vp.playZoom * PLAY_ZOOM_MAX_FACTOR);
+      const baseline = vp.playZoom;
+      vp.setZoom(baseline * 2);
+      expect(vp.zoom).toBe(baseline);
+      vp.setZoom(baseline / 2);
+      expect(vp.zoom).toBe(baseline);
     });
 
-    it('applyPlayZoom resets active zoom and rescales bounds', () => {
+    it('applyPlayZoom snaps zoom and bounds to a new baseline', () => {
       const vp = new Viewport({ centerX: 0, centerY: 0, screenWidth: 768, screenHeight: 1024 });
-      vp.setZoom(vp.maxZoom);
       vp.applyPlayZoom(2);
       expect(vp.playZoom).toBe(2);
       expect(vp.zoom).toBe(2);
-      expect(vp.minZoom).toBeCloseTo(2 * PLAY_ZOOM_MIN_FACTOR);
-      expect(vp.maxZoom).toBeCloseTo(2 * PLAY_ZOOM_MAX_FACTOR);
+      expect(vp.minZoom).toBe(2);
+      expect(vp.maxZoom).toBe(2);
     });
   });
 });

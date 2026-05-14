@@ -1,15 +1,13 @@
 const TILE_SIZE = 32;
 
 /**
- * Number of horizontal tiles we want visible at the device's "play zoom"
- * (the baseline zoom we snap back to). Portrait shows fewer tiles because
- * the screen is narrow; landscape shows more so the play area doesn't look
- * cramped on a wide phone or iPad. Pinch/wheel can deviate within bounds.
+ * Number of horizontal tiles visible at the device's play zoom. Tibia is a
+ * competitive shared world so the zoom stays fixed — every player sees the
+ * same play area. Pulled back a bit from the classic 15×11 to maximise
+ * situational awareness on mobile.
  */
-export const PORTRAIT_PLAY_TILES_X = 15;
-export const LANDSCAPE_PLAY_TILES_X = 18;
-export const PLAY_ZOOM_MIN_FACTOR = 0.7;
-export const PLAY_ZOOM_MAX_FACTOR = 1.5;
+export const PORTRAIT_PLAY_TILES_X = 17;
+export const LANDSCAPE_PLAY_TILES_X = 21;
 
 /**
  * Compute the zoom level that fits the desired horizontal tile count on
@@ -66,20 +64,23 @@ export class Viewport {
     const fallbackPlay = computePlayZoom(opts.screenWidth, opts.screenHeight);
     this.playZoom = opts.playZoom ?? fallbackPlay;
     this.zoom = opts.zoom ?? this.playZoom;
-    this.minZoom = opts.minZoom ?? this.playZoom * PLAY_ZOOM_MIN_FACTOR;
-    this.maxZoom = opts.maxZoom ?? this.playZoom * PLAY_ZOOM_MAX_FACTOR;
+    // Bounds default to the play zoom so the locked view is also enforced
+    // for any code that calls setZoom — keeps fairness invariants if some
+    // future UI affordance forgets to disable itself.
+    this.minZoom = opts.minZoom ?? this.playZoom;
+    this.maxZoom = opts.maxZoom ?? this.playZoom;
   }
 
   /**
-   * Recompute the baseline zoom for new screen dimensions, snap the active
-   * zoom to it, and adjust pinch bounds proportionally. Call on resize /
-   * orientation change so the play area stays consistent across devices.
+   * Recompute the play zoom for new screen dimensions and snap the active
+   * zoom + bounds to it. Call on resize / orientation change so the play
+   * area stays consistent across devices.
    */
   applyPlayZoom(newPlayZoom: number): void {
     this.playZoom = newPlayZoom;
     this.zoom = newPlayZoom;
-    this.minZoom = newPlayZoom * PLAY_ZOOM_MIN_FACTOR;
-    this.maxZoom = newPlayZoom * PLAY_ZOOM_MAX_FACTOR;
+    this.minZoom = newPlayZoom;
+    this.maxZoom = newPlayZoom;
   }
 
   /** The effective pixel size of a tile at the current zoom level. */

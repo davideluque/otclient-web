@@ -30,8 +30,6 @@ export {
   computePlayZoom,
   PORTRAIT_PLAY_TILES_X,
   LANDSCAPE_PLAY_TILES_X,
-  PLAY_ZOOM_MIN_FACTOR,
-  PLAY_ZOOM_MAX_FACTOR,
 } from './viewport';
 export type { ViewRect } from './viewport';
 

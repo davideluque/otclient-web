@@ -149,11 +149,18 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // up stale dimensions and leaves a black bar after the rotation
   // completes. We manage resize ourselves below with a two-RAF debounce
   // that gives the browser time to settle before remeasuring.
+  // visualViewport (when supported) reports the actually-visible area
+  // excluding mobile browser chrome (URL bar, on-screen keyboard); using
+  // it for sizing avoids the dropped-strip case where the page is sized
+  // to innerHeight but the visible viewport is shorter.
+  const initialW = window.visualViewport?.width ?? window.innerWidth;
+  const initialH = window.visualViewport?.height ?? window.innerHeight;
+
   const app = new Application();
   await app.init({
     background: '#000000',
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: initialW,
+    height: initialH,
     antialias: false,
     resolution: window.devicePixelRatio,
     autoDensity: true,
@@ -166,9 +173,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const viewport = new Viewport({
     centerX: spawn.x,
     centerY: spawn.y,
-    screenWidth: window.innerWidth,
-    screenHeight: window.innerHeight,
-    playZoom: computePlayZoom(window.innerWidth, window.innerHeight),
+    screenWidth: initialW,
+    screenHeight: initialH,
+    playZoom: computePlayZoom(initialW, initialH),
   });
   const renderZ = spawn.z;
 
@@ -584,12 +591,28 @@ async function startApp(loaded: CompleteLoadedFiles) {
     resizeRaf = requestAnimationFrame(() => {
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = null;
-        const w = window.innerWidth;
-        const h = window.innerHeight;
+        // visualViewport reflects the area that's actually visible — on
+        // mobile this excludes the URL bar / soft keyboard; on desktop
+        // it tracks pinch-zoom. innerWidth/innerHeight as a fallback for
+        // older browsers (notably anything pre-iOS 13).
+        const w = window.visualViewport?.width ?? window.innerWidth;
+        const h = window.visualViewport?.height ?? window.innerHeight;
+        // visualViewport.resize fires liberally on mobile (URL-bar
+        // reveal, pinch); skip if nothing actually changed.
+        if (w === viewport.screenWidth && h === viewport.screenHeight) return;
         app.renderer.resize(w, h);
         viewport.screenWidth = w;
         viewport.screenHeight = h;
         viewport.applyPlayZoom(computePlayZoom(w, h));
+        // applyPlayZoom snaps zoom back to the locked baseline and
+        // narrows the min/max bounds. If the user had unlocked zoom
+        // ("Free") the UI would otherwise be desynced from the now-
+        // re-locked viewport, so reset the toggle to match.
+        if (zoomUnlocked) {
+          zoomUnlocked = false;
+          zoomBtn.textContent = 'Zoom: locked';
+          zoomBtn.style.background = '#3a3a3a';
+        }
         render();
       });
     });

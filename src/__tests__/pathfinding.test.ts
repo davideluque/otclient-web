@@ -12,6 +12,7 @@ function makeOtb(mappings: [number, number][]): OtbFile {
     version: { version: 0, majorVersion: 3, minorVersion: 760, buildNumber: 0, csdVersion: '' },
     items: [],
     serverToClient: new Map(mappings),
+    serverIdToFlags: new Map(),
   };
 }
 

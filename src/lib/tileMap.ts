@@ -1,9 +1,23 @@
 import type { OtbmFile, OtbmTile } from './otbm';
 import type { OtbFile } from './otb';
+import { OtbFlags } from './otb';
+
+/**
+ * Where a tile sends the player on step-land. Encodes the five OTB
+ * floor-change flag bits as a union: up-* variants take the player to
+ * z-1 (and, in classic Tibia stair geometry, also shift them one tile
+ * in that compass direction on the new floor); 'down' goes to z+1
+ * without a horizontal shift. Undefined on tiles that don't change
+ * floors.
+ */
+export type FloorChange = 'down' | 'up-north' | 'up-east' | 'up-south' | 'up-west';
 
 export interface ResolvedItem {
   clientId: number;
   count?: number;
+  /** Set when this item carries an OTB FloorChange* flag. The first
+   *  such item on a tile is what `getFloorChange` reports. */
+  floorChange?: FloorChange;
 }
 
 export interface ResolvedTile {
@@ -48,6 +62,21 @@ export class TileMap {
   /** Return the bounding box for a given floor, or null if empty. */
   getBounds(z: number): Bounds | null {
     return this.zBounds.get(z) ?? null;
+  }
+
+  /**
+   * Return the floor-change direction for the tile at (x, y, z), or
+   * null if the tile doesn't exist or has no floor-change item. If
+   * multiple items on a tile carry floor-change flags, the first one
+   * wins (matches the OTBM stack order).
+   */
+  getFloorChange(x: number, y: number, z: number): FloorChange | null {
+    const tile = this.getTile(x, y, z);
+    if (!tile) return null;
+    for (const item of tile.items) {
+      if (item.floorChange) return item.floorChange;
+    }
+    return null;
   }
 
   /**
@@ -98,9 +127,10 @@ export class TileMap {
     const items: ResolvedItem[] = [];
     for (const item of tile.items) {
       const clientId = this.otb.serverToClient.get(item.id);
-      if (clientId !== undefined) {
-        items.push({ clientId, count: item.count });
-      }
+      if (clientId === undefined) continue;
+      const flags = this.otb.serverIdToFlags.get(item.id) ?? 0;
+      const floorChange = floorChangeFromFlags(flags);
+      items.push(floorChange ? { clientId, count: item.count, floorChange } : { clientId, count: item.count });
     }
     return {
       x: tile.position.x,
@@ -110,4 +140,16 @@ export class TileMap {
       items,
     };
   }
+}
+
+function floorChangeFromFlags(flags: number): FloorChange | undefined {
+  // Down has no horizontal component (holes / open manholes); the four
+  // up-* directions also shift the player one tile compass-wise on the
+  // new floor — that geometry is the consumer's job, not ours.
+  if (flags & OtbFlags.FloorChangeDown) return 'down';
+  if (flags & OtbFlags.FloorChangeNorth) return 'up-north';
+  if (flags & OtbFlags.FloorChangeEast) return 'up-east';
+  if (flags & OtbFlags.FloorChangeSouth) return 'up-south';
+  if (flags & OtbFlags.FloorChangeWest) return 'up-west';
+  return undefined;
 }

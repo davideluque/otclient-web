@@ -68,6 +68,10 @@ export interface OtbFile {
   items: OtbItem[];
   /** Map from server item ID → client item ID (for fast lookups). */
   serverToClient: Map<number, number>;
+  /** Map from server item ID → raw OTB flag bitmask. Lets consumers
+   *  cheaply check capability bits (BlockSolid, FloorChange*, etc.) by
+   *  server ID without scanning the full items array. */
+  serverIdToFlags: Map<number, number>;
 }
 
 // --- Parsers ---
@@ -178,6 +182,7 @@ export function parseOtb(buffer: ArrayBuffer): OtbFile {
   // Parse child item nodes
   const items: OtbItem[] = [];
   const serverToClient = new Map<number, number>();
+  const serverIdToFlags = new Map<number, number>();
 
   while (offset < data.length) {
     const marker = data[offset];
@@ -208,10 +213,13 @@ export function parseOtb(buffer: ArrayBuffer): OtbFile {
       if (item.serverId > 0 && item.clientId > 0) {
         serverToClient.set(item.serverId, item.clientId);
       }
+      if (item.serverId > 0) {
+        serverIdToFlags.set(item.serverId, item.flags);
+      }
     } else {
       offset++;
     }
   }
 
-  return { version, items, serverToClient };
+  return { version, items, serverToClient, serverIdToFlags };
 }

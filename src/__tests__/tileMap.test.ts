@@ -3,15 +3,20 @@ import { TileMap } from '../lib/tileMap';
 import type { OtbmFile, OtbmTile } from '../lib/otbm';
 import type { OtbFile } from '../lib/otb';
 
-function makeOtb(mappings: [number, number][]): OtbFile {
+function makeOtb(mappings: [number, number][], flagsBySid: Record<number, number> = {}): OtbFile {
   const serverToClient = new Map<number, number>();
   for (const [server, client] of mappings) {
     serverToClient.set(server, client);
+  }
+  const serverIdToFlags = new Map<number, number>();
+  for (const [sid, flags] of Object.entries(flagsBySid)) {
+    serverIdToFlags.set(Number(sid), flags);
   }
   return {
     version: { version: 0, majorVersion: 3, minorVersion: 760, buildNumber: 0, csdVersion: '' },
     items: [],
     serverToClient,
+    serverIdToFlags,
   };
 }
 
@@ -152,6 +157,66 @@ describe('TileMap', () => {
       tileMap.merge(makeOtbm([makeTile(50, 50, 7, [101])]));
       expect(tileMap.getBounds(7)!.maxX).toBe(50);
       expect(tileMap.getBounds(7)!.maxY).toBe(50);
+    });
+  });
+
+  describe('floor-change resolution', () => {
+    const FLOOR_DOWN = 1 << 8;
+    const FLOOR_NORTH = 1 << 9;
+    const FLOOR_EAST = 1 << 10;
+    const FLOOR_SOUTH = 1 << 11;
+    const FLOOR_WEST = 1 << 12;
+    const BLOCK_SOLID = 1 << 0;
+
+    it('decodes the five floor-change flag bits into ResolvedItem.floorChange', () => {
+      const otb = makeOtb(
+        [[100, 200], [101, 201], [102, 202], [103, 203], [104, 204]],
+        { 100: FLOOR_DOWN, 101: FLOOR_NORTH, 102: FLOOR_EAST, 103: FLOOR_SOUTH, 104: FLOOR_WEST },
+      );
+      const tileMap = new TileMap(
+        makeOtbm([
+          makeTile(0, 0, 7, [100]),
+          makeTile(1, 0, 7, [101]),
+          makeTile(2, 0, 7, [102]),
+          makeTile(3, 0, 7, [103]),
+          makeTile(4, 0, 7, [104]),
+        ]),
+        otb,
+      );
+      expect(tileMap.getTile(0, 0, 7)!.items[0].floorChange).toBe('down');
+      expect(tileMap.getTile(1, 0, 7)!.items[0].floorChange).toBe('up-north');
+      expect(tileMap.getTile(2, 0, 7)!.items[0].floorChange).toBe('up-east');
+      expect(tileMap.getTile(3, 0, 7)!.items[0].floorChange).toBe('up-south');
+      expect(tileMap.getTile(4, 0, 7)!.items[0].floorChange).toBe('up-west');
+    });
+
+    it('leaves floorChange unset on items without a floor-change flag', () => {
+      const otb = makeOtb([[100, 200]], { 100: BLOCK_SOLID });
+      const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [100])]), otb);
+      expect(tileMap.getTile(0, 0, 7)!.items[0].floorChange).toBeUndefined();
+    });
+
+    describe('getFloorChange', () => {
+      it('returns the floor-change of the first flagged item on the tile', () => {
+        const otb = makeOtb(
+          [[100, 200], [101, 201]],
+          { 101: FLOOR_DOWN }, // only second item has the flag
+        );
+        const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [100, 101])]), otb);
+        expect(tileMap.getFloorChange(0, 0, 7)).toBe('down');
+      });
+
+      it('returns null when the tile exists but no item carries a floor-change flag', () => {
+        const otb = makeOtb([[100, 200]]);
+        const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [100])]), otb);
+        expect(tileMap.getFloorChange(0, 0, 7)).toBeNull();
+      });
+
+      it('returns null for a non-existent tile', () => {
+        const otb = makeOtb([[100, 200]], { 100: FLOOR_DOWN });
+        const tileMap = new TileMap(makeOtbm([makeTile(0, 0, 7, [100])]), otb);
+        expect(tileMap.getFloorChange(9, 9, 7)).toBeNull();
+      });
     });
   });
 });

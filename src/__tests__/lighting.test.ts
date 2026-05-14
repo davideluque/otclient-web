@@ -60,6 +60,7 @@ describe('gatherLights', () => {
       [101, 201], // lamp server id 101 → client id 201
       [102, 202], // non-emitter server id 102 → client id 202
     ]),
+    serverIdToFlags: new Map(),
   };
 
   const datIndex = new Map<number, ThingType>([

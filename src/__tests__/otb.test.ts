@@ -133,6 +133,22 @@ describe('parseOtb', () => {
     expect(otb.serverToClient.has(9999)).toBe(false);
   });
 
+  it('builds serverIdToFlags map for capability lookups', () => {
+    const blockSolid = 1 << 0;
+    const floorChangeDown = 1 << 8;
+    const otb = parseOtb(
+      buildOtb([
+        { serverId: 2001, clientId: 3050, flags: blockSolid },
+        { serverId: 2002, clientId: 3051, flags: floorChangeDown },
+        { serverId: 2003, clientId: 3052 }, // no flags
+      ]),
+    );
+    expect(otb.serverIdToFlags.get(2001)).toBe(blockSolid);
+    expect(otb.serverIdToFlags.get(2002)).toBe(floorChangeDown);
+    expect(otb.serverIdToFlags.get(2003)).toBe(0);
+    expect(otb.serverIdToFlags.has(9999)).toBe(false);
+  });
+
   it('preserves item flags', () => {
     const flags = (1 << 0) | (1 << 5); // BlockSolid | Pickupable
     const otb = parseOtb(buildOtb([{ serverId: 100, clientId: 200, flags }]));

@@ -56,6 +56,19 @@ function* denseSpriteIds(spriteCount: number): Generator<number> {
   }
 }
 
+/**
+ * Build the set of sprite IDs the atlas needs to contain for the loaded
+ * world. Includes:
+ *   1. Every item the OTBM places on the map (resolved server→client via OTB).
+ *   2. Every creature defined in the .dat — players, NPCs, monsters all
+ *      come over the wire at runtime, never from the OTBM, so we can't
+ *      pre-filter by map data. ~600 creature types in 7.6 × ~30 sprites
+ *      each is well within one atlas page.
+ *
+ * Effects and missiles are dynamic too but are deliberately left out for
+ * now — we don't render them yet, and skipping them keeps the atlas
+ * tighter. Easy to add when we wire those up.
+ */
 export function collectReferencedSpriteIds(dat: DatFile, otb: OtbFile, otbm: OtbmFile): Set<number> {
   const datItemsByClientId = new Map(dat.items.map(item => [item.id, item]));
   const referenced = new Set<number>();
@@ -71,6 +84,12 @@ export function collectReferencedSpriteIds(dat: DatFile, otb: OtbFile, otbm: Otb
       for (const spriteId of thingType.frameGroup.spriteIds) {
         if (spriteId > 0) referenced.add(spriteId);
       }
+    }
+  }
+
+  for (const creature of dat.creatures) {
+    for (const spriteId of creature.frameGroup.spriteIds) {
+      if (spriteId > 0) referenced.add(spriteId);
     }
   }
 

@@ -198,4 +198,65 @@ describe('collectReferencedSpriteIds', () => {
 
     expect(collectReferencedSpriteIds(dat, otb, otbm)).toEqual(new Set([11, 22]));
   });
+
+  it('includes every creature sprite from the dat regardless of OTBM contents', () => {
+    const dat = {
+      signature: 0,
+      itemCount: 100,
+      creatureCount: 2,
+      effectCount: 0,
+      missileCount: 0,
+      items: [],
+      creatures: [
+        {
+          id: 128,
+          category: ThingCategory.Creature,
+          attrs: new Map(),
+          frameGroup: {
+            width: 1,
+            height: 1,
+            exactSize: 32,
+            layers: 1,
+            numPatternX: 4,
+            numPatternY: 1,
+            numPatternZ: 1,
+            animationPhases: 1,
+            spriteIds: [50, 51, 52, 53],
+          },
+        },
+        {
+          id: 129,
+          category: ThingCategory.Creature,
+          attrs: new Map(),
+          frameGroup: {
+            width: 1,
+            height: 1,
+            exactSize: 32,
+            layers: 1,
+            numPatternX: 1,
+            numPatternY: 1,
+            numPatternZ: 1,
+            animationPhases: 1,
+            spriteIds: [99],
+          },
+        },
+      ],
+      effects: [],
+      missiles: [],
+    } satisfies DatFile;
+
+    const otb = {
+      version: { version: 1, majorVersion: 1, minorVersion: 1, buildNumber: 1, csdVersion: '' },
+      items: [],
+      serverToClient: new Map(),
+    } satisfies OtbFile;
+
+    const otbm = {
+      header: { version: 1, width: 1, height: 1, majorVersionItems: 1, minorVersionItems: 1 },
+      tiles: [],
+      towns: [],
+    } satisfies OtbmFile;
+
+    expect(collectReferencedSpriteIds(dat, otb, otbm)).toEqual(new Set([50, 51, 52, 53, 99]));
+  });
 });

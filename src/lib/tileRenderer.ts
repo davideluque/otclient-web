@@ -7,7 +7,6 @@ import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
 
 const TILE_SIZE = 32;
-const MAX_TILE_ELEVATION = TILE_SIZE - 1;
 
 export interface AtlasTextures {
   pages: Map<number, Texture>;
@@ -135,7 +134,7 @@ function renderTile(
 
     const itemElevation = thingType.attrs.get(DatAttr.Elevation);
     if (typeof itemElevation === 'number' && itemElevation > 0) {
-      elevation = Math.min(elevation + itemElevation, MAX_TILE_ELEVATION);
+      elevation += itemElevation;
     }
   }
 }

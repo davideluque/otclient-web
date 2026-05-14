@@ -61,7 +61,7 @@ function* denseSpriteIds(spriteCount: number): Generator<number> {
  * render correctly without runtime atlas rebuilds.
  *
  * Effects and missiles are deliberately left out for now — we don't
- * render them yet. Easy to add when we wire those up.
+ * render them yet. Add a third loop here when effects/missiles render.
  */
 export function collectReferencedSpriteIds(dat: DatFile): Set<number> {
   const referenced = new Set<number>();

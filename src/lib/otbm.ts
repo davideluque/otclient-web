@@ -1,5 +1,5 @@
 import { BinaryReader } from './BinaryReader';
-import { NODE_START, NODE_END, readNodeData } from './nodeTree';
+import { NODE_START, NODE_END, readNodeData, skipNode } from './nodeTree';
 
 // --- Node types ---
 
@@ -71,6 +71,13 @@ export interface OtbmFile {
   towns: OtbmTown[];
 }
 
+export interface OtbmRegion {
+  centerX: number;
+  centerY: number;
+  radius: number;
+  z?: number;
+}
+
 // --- Internal helpers ---
 
 function makeReader(bytes: Uint8Array): BinaryReader {
@@ -120,6 +127,14 @@ function parseItemAttrs(reader: BinaryReader, item: OtbmItem): void {
  * Uses a state-machine approach over the escape-encoded node tree.
  */
 export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
+  return parseOtbmInternal(buffer);
+}
+
+export function parseOtbmRegion(buffer: ArrayBuffer, region: OtbmRegion): OtbmFile {
+  return parseOtbmInternal(buffer, region);
+}
+
+function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
   const data = new Uint8Array(buffer);
   let offset = 0;
 
@@ -202,6 +217,10 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
           areaBaseX = r.getU16();
           areaBaseY = r.getU16();
           areaBaseZ = r.getU8();
+          if (region && !tileAreaIntersectsRegion(areaBaseX, areaBaseY, areaBaseZ, region)) {
+            offset = skipNode(data, offset);
+            break;
+          }
           // Recurse into tile children
           walkNodes(data.length, depth + 1);
           break;
@@ -222,6 +241,11 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
 
           if (nodeType === OtbmNode.HouseTile) {
             r.skip(4); // house_id
+          }
+
+          if (region && !tileInRegion(tile, region)) {
+            offset = skipNode(data, offset);
+            break;
           }
 
           // Read tile attributes
@@ -303,4 +327,26 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
   walkNodes(data.length, 0);
 
   return { header, tiles, towns };
+}
+
+function tileAreaIntersectsRegion(baseX: number, baseY: number, z: number, region: OtbmRegion): boolean {
+  if (region.z !== undefined && z !== region.z) return false;
+
+  const minX = region.centerX - region.radius;
+  const maxX = region.centerX + region.radius;
+  const minY = region.centerY - region.radius;
+  const maxY = region.centerY + region.radius;
+
+  return baseX <= maxX && baseX + 255 >= minX && baseY <= maxY && baseY + 255 >= minY;
+}
+
+function tileInRegion(tile: OtbmTile, region: OtbmRegion): boolean {
+  if (region.z !== undefined && tile.position.z !== region.z) return false;
+
+  return (
+    tile.position.x >= region.centerX - region.radius
+    && tile.position.x <= region.centerX + region.radius
+    && tile.position.y >= region.centerY - region.radius
+    && tile.position.y <= region.centerY + region.radius
+  );
 }

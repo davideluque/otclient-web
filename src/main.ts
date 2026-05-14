@@ -2,7 +2,8 @@ import { Application, Container } from 'pixi.js';
 import { parseDat } from './lib/dat';
 import { parseSpr, releaseSprBuffer } from './lib/spr';
 import { parseOtb } from './lib/otb';
-import { parseOtbm } from './lib/otbm';
+import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
+import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, buildDatIndex } from './lib/tileRenderer';
@@ -19,10 +20,12 @@ import type { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
-import type { OtbmFile } from './lib/otbm';
+import type { OtbmFile, OtbmRegion } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
 
 // --- File loading UI ---
+
+const INITIAL_REGION_RADIUS = 100;
 const dropZone = document.getElementById('drop-zone')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const statusEl = document.getElementById('status')!;
@@ -81,8 +84,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const otb: OtbFile = parseOtb(loaded.otb);
   setStatus('Parsed .otb...');
 
-  const otbm: OtbmFile = parseOtbm(loaded.otbm);
-  setStatus('Parsed .otbm...');
+  let initialRegion = getStandardRegion();
+  let otbm: OtbmFile = parseOtbmRegion(loaded.otbm, initialRegion);
+  if (otbm.tiles.length === 0) {
+    initialRegion = getInitialRegion(loaded.otbm);
+    otbm = parseOtbmRegion(loaded.otbm, initialRegion);
+  }
+  setStatus(`Loaded ${otbm.tiles.length} tiles around (${initialRegion.centerX}, ${initialRegion.centerY})`);
 
   setStatus('Building texture atlas...');
   const referencedSpriteIds = collectReferencedSpriteIds(dat, otb, otbm);
@@ -96,6 +104,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   setStatus('Building tile map...');
   const tileMap = new TileMap(otbm, otb);
+  setStatus(`Loaded ${tileMap.size} tiles around (${initialRegion.centerX}, ${initialRegion.centerY})`);
 
   // Initialize PixiJS
   const app = new Application();
@@ -111,17 +120,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
   loaderEl.style.display = 'none';
   document.body.appendChild(app.canvas);
 
-  // Set up viewport centered on map
-  const centerX = Math.floor((tileMap.minX + tileMap.maxX) / 2);
-  const centerY = Math.floor((tileMap.minY + tileMap.maxY) / 2);
-
   const viewport = new Viewport({
-    centerX,
-    centerY,
+    centerX: initialRegion.centerX,
+    centerY: initialRegion.centerY,
     screenWidth: window.innerWidth,
     screenHeight: window.innerHeight,
     zoom: 1,
   });
+  const renderZ = initialRegion.z ?? 7;
 
   let tileContainer: Container | null = null;
   let lastVisibleKey = '';
@@ -144,7 +150,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     const tiles = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
-      visible.x1, visible.y1, visible.x2, visible.y2, 7,
+      visible.x1, visible.y1, visible.x2, visible.y2, renderZ,
     );
 
     tileContainer = new Container();
@@ -261,5 +267,117 @@ async function startApp(loaded: CompleteLoadedFiles) {
     }
   });
 
-  console.log(`Map loaded: ${tileMap.size} tiles, center at (${centerX}, ${centerY})`);
+  console.log(`Map loaded: ${tileMap.size} tiles, center at (${initialRegion.centerX}, ${initialRegion.centerY})`);
+}
+
+function getStandardRegion(): OtbmRegion {
+  return { centerX: 32100, centerY: 32100, radius: INITIAL_REGION_RADIUS, z: 7 };
+}
+
+function getInitialRegion(buffer: ArrayBuffer): OtbmRegion {
+  const tile = findFirstTile(buffer);
+  if (!tile) {
+    return getStandardRegion();
+  }
+
+  return {
+    centerX: tile.x,
+    centerY: tile.y,
+    radius: INITIAL_REGION_RADIUS,
+    z: tile.z,
+  };
+}
+
+function findFirstTile(buffer: ArrayBuffer): { x: number; y: number; z: number } | null {
+  const data = new Uint8Array(buffer);
+  let offset = 4;
+  const scanEnd = Math.min(data.length, 1024 * 1024);
+  let areaBaseX = 0;
+  let areaBaseY = 0;
+  let areaBaseZ = 0;
+
+  if (data[offset] !== NODE_START) return null;
+  offset++;
+
+  const root = readNodeData(data, offset);
+  offset = root.nextOffset;
+
+  function walk(depth = 0): { x: number; y: number; z: number } | null {
+    if (depth > 8) return null;
+
+    while (offset < scanEnd && offset < data.length) {
+      const marker = data[offset];
+
+      if (marker === NODE_END) {
+        offset++;
+        return null;
+      }
+
+      if (marker !== NODE_START) {
+        offset++;
+        continue;
+      }
+
+      offset++;
+      const node = readNodeData(data, offset);
+      offset = node.nextOffset;
+      if (node.bytes.length === 0) {
+        const found = walk(depth + 1);
+        if (found) return found;
+        continue;
+      }
+
+      const nodeType = node.bytes[0];
+      if (nodeType === OtbmNode.TileArea) {
+        areaBaseX = node.bytes[1] | (node.bytes[2] << 8);
+        areaBaseY = node.bytes[3] | (node.bytes[4] << 8);
+        areaBaseZ = node.bytes[5];
+        if (areaBaseZ !== 7) {
+          offset = skipNode(data, offset);
+          continue;
+        }
+        const found = walk(depth + 1);
+        if (found) return found;
+      } else if (nodeType === OtbmNode.Tile || nodeType === OtbmNode.HouseTile) {
+        if (tileNodeHasItems(node.bytes) || data[offset] === NODE_START) {
+          return {
+            x: areaBaseX + node.bytes[1],
+            y: areaBaseY + node.bytes[2],
+            z: areaBaseZ,
+          };
+        }
+        offset = skipNode(data, offset);
+      } else if (nodeType === OtbmNode.MapData || nodeType === OtbmNode.Towns) {
+        const found = walk(depth + 1);
+        if (found) return found;
+      } else {
+        offset = skipNode(data, offset);
+      }
+    }
+
+    return null;
+  }
+
+  return walk();
+}
+
+function tileNodeHasItems(bytes: Uint8Array): boolean {
+  let offset = bytes[0] === OtbmNode.HouseTile ? 7 : 3;
+
+  while (offset < bytes.length) {
+    const attrType = bytes[offset];
+    offset++;
+
+    if (attrType === OtbmAttr.Item) return true;
+    if (attrType === OtbmAttr.TileFlags) {
+      offset += 4;
+    } else if (attrType === OtbmAttr.Description) {
+      const len = bytes[offset] | (bytes[offset + 1] << 8);
+      offset += 2 + len;
+    } else {
+      break;
+    }
+  }
+
+  return false;
 }

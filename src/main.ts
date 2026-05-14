@@ -9,6 +9,7 @@ import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
+import type { ViewRect } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
 import type { PlayerState } from './lib/player';
 import { screenToTile } from './lib/input';
@@ -29,6 +30,7 @@ import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
 import type { OtbmFile, OtbmRegion, Position } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
+import { needsExpansion } from './lib/regionExpansion';
 
 // --- File loading UI ---
 
@@ -261,13 +263,38 @@ async function startApp(loaded: CompleteLoadedFiles) {
     tileContainer.scale.set(viewport.zoom);
   }
 
+  // --- Dynamic region expansion ---
+  let lastExpansionTime = 0;
+  const EXPANSION_COOLDOWN_MS = 500;
+
+  function tryExpand(visible: ViewRect): boolean {
+    const now = performance.now();
+    if (now - lastExpansionTime < EXPANSION_COOLDOWN_MS) return false;
+
+    const region = needsExpansion(tileMap.getBounds(renderZ), visible, renderZ, 30);
+    if (!region) return false;
+
+    const prevSize = tileMap.size;
+    const expanded = parseOtbmRegion(loaded.otbm, region);
+    tileMap.merge(expanded);
+    lastExpansionTime = now;
+
+    if (tileMap.size > prevSize) {
+      console.log('[map] expanded →', tileMap.getBounds(renderZ));
+      return true;
+    }
+    return false;
+  }
+
   function render(forceRebuild = false) {
     const visible = viewport.getVisibleTiles();
     const key = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
     const renderRow = computeRenderRow();
 
+    const expanded = tryExpand(visible);
     if (
       forceRebuild
+      || expanded
       || key !== lastVisibleKey
       || renderRow !== lastRenderRow
       || player.x !== lastPlayerX

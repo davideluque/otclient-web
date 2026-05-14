@@ -125,10 +125,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
     spawn.x,
     spawn.y,
     spawn.z,
-    // Default outfit: lookType 128 (citizen). If the loaded .dat doesn't
-    // ship that creature, renderPlayer falls back to drawing nothing —
-    // the map still renders.
-    { lookType: 128, headColor: 78, bodyColor: 132, legsColor: 13, feetColor: 38 },
+    // Default outfit: lookType 128 (citizen) with classic Tibia 7.x/8.x
+    // newbie colors (brown hair, blue shirt, brown trousers/shoes).
+    // NOTE: the renderer doesn't apply outfit colors yet — the HSI palette
+    // tinting pass is a follow-up. These values are stored so the moment
+    // tinting lands, the citizen looks right without another change here.
+    { lookType: 128, headColor: 95, bodyColor: 88, legsColor: 95, feetColor: 95 },
   );
 
   // Initialize PixiJS

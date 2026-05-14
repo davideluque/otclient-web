@@ -297,36 +297,44 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const allAnimated: typeof animatedSprites = [];
 
     if (renderZ <= 7) {
-      // Accumulate occluded positions across floors — FullGround on any
-      // higher floor blocks vision to all deeper floors at that position.
-      const occluded = new Set<number>();
+      const maxDepth = Math.min(FLOOR_ALPHAS.length, 15 - renderZ);
+
+      // Pre-compute occlusion snapshots shallow-to-deep. Each snapshot
+      // is the cumulative set of FullGround positions from the current
+      // floor down to that depth — used to occlude the floor *below* it.
+      // This avoids the bug where a FullGround on a deeper floor would
+      // incorrectly hide a shallower one during deep-to-shallow rendering.
+      const occlusionByDepth: Set<number>[] = [];
+      const cumulative = new Set<number>();
+      // Start with FullGround from the current floor.
       for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
         for (const item of tile.items) {
           const tt = datIndex.get(item.clientId);
-          if (tt?.attrs.has(DatAttr.FullGround)) { occluded.add((tile.x << 16) | tile.y); break; }
+          if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
+        }
+      }
+      for (let depth = 1; depth <= maxDepth; depth++) {
+        occlusionByDepth.push(new Set(cumulative));
+        // Add this floor's FullGround to occlude the next deeper one.
+        const floorZ = renderZ + depth;
+        for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, floorZ)) {
+          for (const item of tile.items) {
+            const tt = datIndex.get(item.clientId);
+            if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
+          }
         }
       }
 
-      // Render each floor below, deepest first (shallower on top).
-      const maxDepth = Math.min(FLOOR_ALPHAS.length, 15 - renderZ);
+      // Render deep-to-shallow so shallower floors draw on top.
       for (let depth = maxDepth; depth >= 1; depth--) {
-        const floorZ = renderZ + depth;
         const floor = renderTileRegion(
           tileMap, datIndex, atlasTextures, layout,
-          visible.x1, visible.y1, visible.x2, visible.y2, floorZ,
-          occluded,
+          visible.x1, visible.y1, visible.x2, visible.y2, renderZ + depth,
+          occlusionByDepth[depth - 1],
         );
         floor.container.alpha = FLOOR_ALPHAS[depth - 1];
         tileContainer.addChild(floor.container);
         allAnimated.push(...floor.animated);
-
-        // Collect FullGround from this floor to occlude deeper ones.
-        for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, floorZ)) {
-          for (const item of tile.items) {
-            const tt = datIndex.get(item.clientId);
-            if (tt?.attrs.has(DatAttr.FullGround)) { occluded.add((tile.x << 16) | tile.y); break; }
-          }
-        }
       }
     }
     allAnimated.push(...above.animated, ...below.animated);

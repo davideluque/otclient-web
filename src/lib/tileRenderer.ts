@@ -8,7 +8,7 @@ import { ATLAS_SIZE } from './atlas';
 import type { PlayerState } from './player';
 import { extractSpritePixels, tintOutfitSprite } from './outfitTint';
 
-const TILE_SIZE = 32;
+export const TILE_SIZE = 32;
 
 /** Cache key → tinted 32×32 texture, owned by the caller (main.ts). */
 export type TintedTextureCache = Map<string, Texture>;

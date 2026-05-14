@@ -15,7 +15,6 @@ import { screenToTile } from './lib/input';
 import { findPath } from './lib/pathfinding';
 import { startWalk, updateWalk } from './lib/walkAnimation';
 import type { WalkState } from './lib/walkAnimation';
-import type { Sprite } from 'pixi.js';
 import {
   buildIlluminationOverlay,
   createLightMaskTexture,
@@ -170,8 +169,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
   let animatedSprites: AnimatedSprite[] = [];
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
-  let currentPlayerSprite: Container | Sprite | null = null;
+  let currentPlayerSprite: Container | null = null;
   let walkState: WalkState | null = null;
+  // The most recently computed walk offset (pixels). Cached so rebuildTiles
+  // and the walk ticker share one source of truth — avoids duplicating the
+  // `(to-from) * progress * TILE_SIZE` formula in two places that could
+  // drift apart later.
+  let lastWalkOffsetX = 0;
+  let lastWalkOffsetY = 0;
   const lightMask = createLightMaskTexture();
   // Tinted-outfit cache lives across rebuilds — same outfit + direction
   // re-uses the texture. Cleared on app teardown, never during runtime.
@@ -227,8 +232,8 @@ async function startApp(loaded: CompleteLoadedFiles) {
       // doesn't briefly snap the player back to its rest position before
       // the walk ticker re-applies the offset.
       if (walkState?.active) {
-        playerSprite.x = (walkState.toX - walkState.fromX) * walkState.progress * 32;
-        playerSprite.y = (walkState.toY - walkState.fromY) * walkState.progress * 32;
+        playerSprite.x = lastWalkOffsetX;
+        playerSprite.y = lastWalkOffsetY;
       }
       tileContainer.addChild(playerSprite);
     }
@@ -301,17 +306,19 @@ async function startApp(loaded: CompleteLoadedFiles) {
   app.ticker.add(() => {
     if (!walkState || !walkState.active) return;
     const offset = updateWalk(walkState, player, performance.now());
+    lastWalkOffsetX = offset.offsetX;
+    lastWalkOffsetY = offset.offsetY;
 
     // Smooth camera follow — viewport.centerX is in tile coords, so the
     // fractional progress between fromX→toX is exactly the camera target.
     viewport.centerX = walkState.fromX + (walkState.toX - walkState.fromX) * walkState.progress;
     viewport.centerY = walkState.fromY + (walkState.toY - walkState.fromY) * walkState.progress;
 
-    // Render BEFORE applying the offset. render() may rebuild the tile
-    // container (when the visible region key changes mid-walk), which
-    // creates a fresh player container at (0, 0). Applying the offset
-    // afterward guarantees the new sprite lands at the correct
-    // interpolated position before PixiJS draws the frame.
+    // Render BEFORE applying the offset on the existing sprite. render()
+    // may rebuild the tile container (when the visible region key, render
+    // row, or player tile changes mid-walk); rebuildTiles picks up
+    // lastWalkOffsetX/Y so the freshly-created player container is already
+    // at the correct interpolated position when added to the scene graph.
     render();
 
     if (currentPlayerSprite) {
@@ -331,8 +338,17 @@ async function startApp(loaded: CompleteLoadedFiles) {
   let lastX = 0;
   let lastY = 0;
   let dragMode: 'idle' | 'pending' | 'dragging' = 'idle';
+  // Lock the tap-to-walk gesture to a single pointer so a second touch
+  // (e.g. pinch-zoom's second finger) or non-primary mouse button can't
+  // hijack or terminate it.
+  let activePointerId: number | null = null;
 
   app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+    // Primary mouse button only — right/middle clicks must not walk.
+    if (e.button !== 0) return;
+    // Ignore secondary pointers (pinch second finger, hovering pen tip, etc.).
+    if (activePointerId !== null) return;
+    activePointerId = e.pointerId;
     pointerDownX = e.clientX;
     pointerDownY = e.clientY;
     lastX = e.clientX;
@@ -341,6 +357,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   });
 
   window.addEventListener('pointermove', (e: PointerEvent) => {
+    if (e.pointerId !== activePointerId) return;
     if (dragMode === 'idle') return;
     if (dragMode === 'pending') {
       const totalDx = e.clientX - pointerDownX;
@@ -356,23 +373,39 @@ async function startApp(loaded: CompleteLoadedFiles) {
     render();
   });
 
+  function endGesture() {
+    activePointerId = null;
+    dragMode = 'idle';
+  }
+
   window.addEventListener('pointerup', (e: PointerEvent) => {
+    if (e.pointerId !== activePointerId) return;
     if (dragMode === 'pending') {
       // Was a tap — convert to tile, run A*, start walk. If already walking,
       // plan from the tile we're walking TO and just replace the queued
       // remainder so the current step finishes smoothly — no camera snap.
+      // findPath returns null for unreachable targets; in that case clear
+      // the queued path so the player stops cleanly at the end of the
+      // current step instead of chasing the previous destination.
       const tile = screenToTile(e.clientX, e.clientY, viewport);
       const startX = walkState?.active ? walkState.toX : player.x;
       const startY = walkState?.active ? walkState.toY : player.y;
       const path = findPath(startX, startY, tile.x, tile.y, renderZ, tileMap, datIndex);
-      if (path !== null && walkState?.active) {
-        walkState.path = path;
+      if (walkState?.active) {
+        walkState.path = path ?? [];
       } else if (path && path.length > 0) {
         walkState = startWalk(player, path, performance.now());
         render(true); // pick up the new facing direction immediately
       }
     }
-    dragMode = 'idle';
+    endGesture();
+  });
+
+  // Browsers can cancel a pointer (e.g. scrolling takes over, page hides) —
+  // reset gesture state so the next tap isn't ignored.
+  window.addEventListener('pointercancel', (e: PointerEvent) => {
+    if (e.pointerId !== activePointerId) return;
+    endGesture();
   });
 
   // Zoom: locked to playZoom by default for fairness. The dev-only toggle

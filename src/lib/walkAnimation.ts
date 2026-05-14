@@ -1,6 +1,7 @@
 import type { PlayerState } from './player';
 import { Direction } from './player';
 import type { PathNode } from './pathfinding';
+import { TILE_SIZE } from './tileRenderer';
 
 /** Duration of one tile walk step in milliseconds. */
 export const WALK_DURATION_MS = 200;
@@ -87,8 +88,16 @@ export function updateWalk(
       walk.toX = next.x;
       walk.toY = next.y;
       walk.progress = 0;
-      walk.startTime = now;
+      // Advance the step clock by exactly one step's worth of time so the
+      // ms we overshot in this frame carry into the next step instead of
+      // being discarded — keeps chained walks honest to WALK_DURATION_MS.
+      walk.startTime += WALK_DURATION_MS;
       walk.walkPhase = walk.walkPhase === 1 ? 2 : 1;
+      // Apply the new phase immediately. The render-path rebuild that's
+      // about to fire (player.x just changed) reads animationPhase, so
+      // without this line the new step would render with the previous
+      // step's phase and the gait would skip a beat.
+      player.animationPhase = walk.walkPhase;
 
       const dir = computeDirection(player.x, player.y, next.x, next.y);
       if (dir !== null) player.direction = dir;
@@ -105,8 +114,8 @@ export function updateWalk(
   const dy = walk.toY - walk.fromY;
 
   return {
-    offsetX: dx * walk.progress * 32,
-    offsetY: dy * walk.progress * 32,
+    offsetX: dx * walk.progress * TILE_SIZE,
+    offsetY: dy * walk.progress * TILE_SIZE,
   };
 }
 

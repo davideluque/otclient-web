@@ -354,11 +354,15 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     lastExpansionTime = now;
     pendingExpansion = true;
-    const prevSize = tileMap.size;
     otbmParser.parseRegion(region).then(expanded => {
       pendingExpansion = false;
+      // Baseline captured *here*, right before merge — a concurrent
+      // expansion (walk-expand or floor-change-load) may have grown
+      // the tilemap during our parse, so taking the snapshot any earlier
+      // would risk a stale baseline.
+      const sizeBeforeMerge = tileMap.size;
       tileMap.merge(expanded);
-      if (tileMap.size > prevSize) {
+      if (tileMap.size > sizeBeforeMerge) {
         exhaustedDirections.clear(); // bounds grew — all directions worth retrying
         console.log('[map] expanded →', tileMap.getBounds(renderZ));
         render(true); // tiles changed; rebuild
@@ -439,46 +443,60 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // shift when the destination tile is itself a directional up-stair
   // (the partner side of a bidirectional stair) so the player doesn't
   // land on top of it and instantly re-trigger going back up.
+  // Guard for the ~100 ms gap between step-land on a stair and the
+  // worker delivering the new floor's tiles. During that gap the held-
+  // walk ticker and tap-to-walk would otherwise be free to start new
+  // walks on the old floor, which would then be silently overwritten
+  // when handleFloorChange resumes. Gated everywhere that *starts* a
+  // new walk; existing in-flight walks aren't affected.
+  let floorChangeInProgress = false;
+
   async function handleFloorChange(fc: FloorChange) {
-    // Compute the new (x, y, z) and direction *without* mutating
-    // player state yet — we want to wait for tile data before showing
-    // the new floor, otherwise a void flash appears for the ~100ms the
-    // worker takes to parse.
-    let newZ = renderZ;
-    let newX = player.x;
-    let newY = player.y;
-    let newDir = player.direction;
-    if (fc === 'down') {
-      newZ++;
-    } else {
-      newZ--;
-      if (fc === 'up-north') { newY--; newDir = Direction.North; }
-      else if (fc === 'up-east') { newX++; newDir = Direction.East; }
-      else if (fc === 'up-south') { newY++; newDir = Direction.South; }
-      else if (fc === 'up-west') { newX--; newDir = Direction.West; }
+    if (floorChangeInProgress) return; // concurrent calls collapse to one
+    floorChangeInProgress = true;
+    try {
+      // Compute the new (x, y, z) and direction *without* mutating
+      // player state yet — we want to wait for tile data before showing
+      // the new floor, otherwise a void flash appears for the ~100ms the
+      // worker takes to parse.
+      let newZ = renderZ;
+      let newX = player.x;
+      let newY = player.y;
+      let newDir = player.direction;
+      if (fc === 'down') {
+        newZ++;
+      } else {
+        newZ--;
+        if (fc === 'up-north') { newY--; newDir = Direction.North; }
+        else if (fc === 'up-east') { newX++; newDir = Direction.East; }
+        else if (fc === 'up-south') { newY++; newDir = Direction.South; }
+        else if (fc === 'up-west') { newX--; newDir = Direction.West; }
+      }
+
+      await ensureLoadedAt(newX, newY, newZ);
+
+      if (fc === 'down') {
+        // Bidirectional-stair inverse shift, evaluated against the
+        // freshly-loaded destination floor.
+        const partner = tileMap.getFloorChange(newX, newY, newZ);
+        if (partner === 'up-north') newY++;
+        else if (partner === 'up-south') newY--;
+        else if (partner === 'up-east') newX--;
+        else if (partner === 'up-west') newX++;
+      }
+
+      renderZ = newZ;
+      player.x = newX;
+      player.y = newY;
+      player.z = newZ;
+      player.direction = newDir;
+      exhaustedDirections.clear();
+      viewport.centerX = player.x;
+      viewport.centerY = player.y;
+      render(true);
+    } finally {
+      floorChangeInProgress = false;
     }
-
-    await ensureLoadedAt(newX, newY, newZ);
-
-    if (fc === 'down') {
-      // Bidirectional-stair inverse shift, evaluated against the
-      // freshly-loaded destination floor.
-      const partner = tileMap.getFloorChange(newX, newY, newZ);
-      if (partner === 'up-north') newY++;
-      else if (partner === 'up-south') newY--;
-      else if (partner === 'up-east') newX--;
-      else if (partner === 'up-west') newX++;
-    }
-
-    renderZ = newZ;
-    player.x = newX;
-    player.y = newY;
-    player.z = newZ;
-    player.direction = newDir;
-    exhaustedDirections.clear();
-    viewport.centerX = player.x;
-    viewport.centerY = player.y;
-    render(true);
   }
 
   async function ensureLoadedAt(x: number, y: number, z: number): Promise<void> {
@@ -522,7 +540,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // Joystick or keyboard: while a direction is held and we're not
     // already walking, kick off a one-tile step. Joystick takes priority.
     const heldDir = joystickDir ?? keyboard.heldDirection;
-    if (heldDir !== null && (!walkState || !walkState.active)) {
+    if (heldDir !== null && !floorChangeInProgress && (!walkState || !walkState.active)) {
       const step = stepInDirection(player.x, player.y, heldDir);
       if (isTileWalkable(step.x, step.y, renderZ, tileMap, datIndex)) {
         walkState = startWalk(player, [step], performance.now(), onStepLand);
@@ -638,11 +656,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
       if (destRegion) {
         const ek = expansionKey(currentBounds, destRegion);
         if (!exhaustedDirections.has(ek)) {
-          const prevSize = tileMap.size;
           try {
             const expanded = await otbmParser.parseRegion(destRegion);
+            // Capture the size baseline *here* (right before merge) so a
+            // concurrent expansion that landed during our parse can't
+            // skew the growth check via a stale snapshot.
+            const sizeBeforeMerge = tileMap.size;
             tileMap.merge(expanded);
-            if (tileMap.size > prevSize) {
+            if (tileMap.size > sizeBeforeMerge) {
               exhaustedDirections.clear();
               if (import.meta.env.DEV) {
                 console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
@@ -656,6 +677,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
           }
         }
       }
+
+      // The async walk-expand above may have yielded long enough for the
+      // gesture state to change (pointer cancelled, new tap fired) or for
+      // a step-land floor change to start. In any of those cases the
+      // original tap is stale — drop it.
+      if (e.pointerId !== activePointerId) return;
+      if (floorChangeInProgress) { endGesture(); return; }
 
       const startX = walkState?.active ? walkState.toX : player.x;
       const startY = walkState?.active ? walkState.toY : player.y;

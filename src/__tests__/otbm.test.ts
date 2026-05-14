@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOtbm, OtbmNode, OtbmAttr } from '../lib/otbm';
+import { parseOtbm, parseOtbmRegion, OtbmNode, OtbmAttr } from '../lib/otbm';
 
 const NODE_START = 0xfe;
 const NODE_END = 0xff;
@@ -223,5 +223,77 @@ describe('parseOtbm', () => {
     const otbm = parseOtbm(buildOtbm({ tileAreas: tileArea }));
     expect(otbm.tiles[0].items[0].id).toBe(500);
     expect(otbm.tiles[0].items[0].actionId).toBe(1234);
+  });
+});
+
+describe('parseOtbmRegion', () => {
+  it('keeps tiles inside the radius', () => {
+    const tileArea = buildTileAreaNode(
+      100, 200, 7,
+      [
+        ...buildTileNode(5, 5, { groundItemId: 100 }),
+        ...buildTileNode(10, 10, { groundItemId: 101 }),
+      ],
+    );
+
+    const otbm = parseOtbmRegion(buildOtbm({ tileAreas: tileArea }), {
+      centerX: 105,
+      centerY: 205,
+      radius: 5,
+    });
+
+    expect(otbm.tiles.map(tile => tile.position)).toEqual([
+      { x: 105, y: 205, z: 7 },
+      { x: 110, y: 210, z: 7 },
+    ]);
+  });
+
+  it('drops tiles outside the radius', () => {
+    const tileArea = buildTileAreaNode(
+      100, 200, 7,
+      [
+        ...buildTileNode(5, 5, { groundItemId: 100 }),
+        ...buildTileNode(50, 5, { groundItemId: 101 }),
+      ],
+    );
+
+    const otbm = parseOtbmRegion(buildOtbm({ tileAreas: tileArea }), {
+      centerX: 105,
+      centerY: 205,
+      radius: 10,
+    });
+
+    expect(otbm.tiles).toHaveLength(1);
+    expect(otbm.tiles[0].position).toEqual({ x: 105, y: 205, z: 7 });
+  });
+
+  it('skips TileArea nodes outside the region bounds', () => {
+    const nearbyArea = buildTileAreaNode(100, 200, 7, [...buildTileNode(0, 0, { groundItemId: 100 })]);
+    const farArea = buildTileAreaNode(600, 200, 7, [...buildTileNode(0, 0, { groundItemId: 101 })]);
+
+    const otbm = parseOtbmRegion(buildOtbm({ tileAreas: [...nearbyArea, ...farArea] }), {
+      centerX: 110,
+      centerY: 210,
+      radius: 20,
+    });
+
+    expect(otbm.tiles).toHaveLength(1);
+    expect(otbm.tiles[0].items[0].id).toBe(100);
+  });
+
+  it('filters by z when provided', () => {
+    const z7Area = buildTileAreaNode(100, 200, 7, [...buildTileNode(5, 5, { groundItemId: 100 })]);
+    const z8Area = buildTileAreaNode(100, 200, 8, [...buildTileNode(5, 5, { groundItemId: 101 })]);
+
+    const otbm = parseOtbmRegion(buildOtbm({ tileAreas: [...z7Area, ...z8Area] }), {
+      centerX: 105,
+      centerY: 205,
+      radius: 10,
+      z: 8,
+    });
+
+    expect(otbm.tiles).toHaveLength(1);
+    expect(otbm.tiles[0].position).toEqual({ x: 105, y: 205, z: 8 });
+    expect(otbm.tiles[0].items[0].id).toBe(101);
   });
 });

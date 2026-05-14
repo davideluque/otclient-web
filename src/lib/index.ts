@@ -14,8 +14,8 @@ export { parseOtb } from './otb';
 export type { OtbFile, OtbItem, OtbVersion } from './otb';
 export { OtbAttr, OtbFlags } from './otb';
 
-export { parseOtbm } from './otbm';
-export type { OtbmFile, OtbmTile, OtbmItem, OtbmTown, OtbmHeader, Position } from './otbm';
+export { parseOtbm, parseOtbmRegion } from './otbm';
+export type { OtbmFile, OtbmTile, OtbmItem, OtbmTown, OtbmHeader, OtbmRegion, Position } from './otbm';
 export { OtbmNode, OtbmAttr } from './otbm';
 
 // Rendering

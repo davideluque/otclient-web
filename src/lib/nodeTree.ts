@@ -15,9 +15,8 @@ export const ESCAPE_CHAR = 0xfd;
  * Stops at NODE_START or NODE_END (does not consume the marker).
  */
 export function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Array; nextOffset: number } {
-  const buf = new Uint8Array(data.length - start);
-  let len = 0;
   let i = start;
+  let len = 0;
 
   while (i < data.length) {
     const byte = data[i];
@@ -29,15 +28,33 @@ export function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Arr
     if (byte === ESCAPE_CHAR) {
       i++;
       if (i < data.length) {
-        buf[len++] = data[i];
+        len++;
       }
     } else {
-      buf[len++] = byte;
+      len++;
     }
     i++;
   }
 
-  return { bytes: buf.subarray(0, len), nextOffset: i };
+  const nextOffset = i;
+  const buf = new Uint8Array(len);
+  let out = 0;
+  i = start;
+
+  while (i < nextOffset) {
+    const byte = data[i];
+    if (byte === ESCAPE_CHAR) {
+      i++;
+      if (i < nextOffset) {
+        buf[out++] = data[i];
+      }
+    } else {
+      buf[out++] = byte;
+    }
+    i++;
+  }
+
+  return { bytes: buf, nextOffset };
 }
 
 /**

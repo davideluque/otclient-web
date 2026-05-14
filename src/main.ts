@@ -27,7 +27,7 @@ import type { CompleteLoadedFiles } from './lib/fileLoader';
 
 // --- File loading UI ---
 
-const INITIAL_REGION_RADIUS = 100;
+const INITIAL_REGION_RADIUS = 200;
 const dropZone = document.getElementById('drop-zone')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const statusEl = document.getElementById('status')!;

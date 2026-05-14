@@ -268,11 +268,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // no new tiles. If bounds haven't grown since, we skip the expensive
   // OTBM re-parse — the file won't have new data in that direction.
   let lastExpansionTime = 0;
-  let lastFailedBoundsKey = '';
   const EXPANSION_COOLDOWN_MS = 500;
+  // Track which (bounds + direction) combos yielded no new tiles so we
+  // don't rescan the OTBM in that direction again until bounds grow.
+  const exhaustedDirections = new Set<string>();
 
-  function boundsKey(b: import('./lib/tileMap').Bounds | null): string {
-    return b ? `${b.minX},${b.minY},${b.maxX},${b.maxY}` : '';
+  function expansionKey(b: import('./lib/tileMap').Bounds | null, region: import('./lib/otbm').OtbmRegion): string {
+    const bk = b ? `${b.minX},${b.minY},${b.maxX},${b.maxY}` : '';
+    return `${bk}@${region.centerX},${region.centerY}`;
   }
 
   function tryExpand(visible: ViewRect): boolean {
@@ -283,9 +286,8 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const region = needsExpansion(currentBounds, visible, renderZ, 30);
     if (!region) return false;
 
-    // If bounds haven't changed since our last fruitless parse, don't rescan
-    const bk = boundsKey(currentBounds);
-    if (bk === lastFailedBoundsKey) return false;
+    const ek = expansionKey(currentBounds, region);
+    if (exhaustedDirections.has(ek)) return false;
 
     const prevSize = tileMap.size;
     const expanded = parseOtbmRegion(loaded.otbm, region);
@@ -293,12 +295,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastExpansionTime = now;
 
     if (tileMap.size > prevSize) {
-      lastFailedBoundsKey = ''; // bounds grew — reset the failure gate
+      exhaustedDirections.clear(); // bounds grew — all directions worth retrying
       console.log('[map] expanded →', tileMap.getBounds(renderZ));
       return true;
     }
-    // No new tiles found — remember this bounds so we don't rescan
-    lastFailedBoundsKey = bk;
+    exhaustedDirections.add(ek);
     return false;
   }
 

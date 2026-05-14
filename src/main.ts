@@ -170,6 +170,27 @@ async function startApp(loaded: CompleteLoadedFiles) {
   loaderEl.style.display = 'none';
   document.body.appendChild(app.canvas);
 
+  // Keep the screen on during gameplay. The Wake Lock API prevents the
+  // device from sleeping — essential for a mobile game PWA. Supported on
+  // Chrome/Edge Android and Safari iOS 16.4+ in standalone mode. Falls
+  // back silently on unsupported browsers. Re-acquired on visibility
+  // change because the lock is automatically released when the tab is
+  // backgrounded.
+  let wakeLock: WakeLockSentinel | null = null;
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch {
+      // Permission denied or not supported — silently ignore.
+    }
+  }
+  requestWakeLock();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestWakeLock();
+  });
+
   const viewport = new Viewport({
     centerX: spawn.x,
     centerY: spawn.y,

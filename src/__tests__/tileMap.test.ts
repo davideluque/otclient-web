@@ -71,10 +71,11 @@ describe('TileMap', () => {
       ]),
       otb,
     );
-    expect(tileMap.minX).toBe(10);
-    expect(tileMap.minY).toBe(20);
-    expect(tileMap.maxX).toBe(50);
-    expect(tileMap.maxY).toBe(80);
+    const b = tileMap.getBounds(7)!;
+    expect(b.minX).toBe(10);
+    expect(b.minY).toBe(20);
+    expect(b.maxX).toBe(50);
+    expect(b.maxY).toBe(80);
   });
 
   it('iterates tiles in region', () => {

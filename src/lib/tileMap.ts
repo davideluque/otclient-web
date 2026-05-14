@@ -37,12 +37,6 @@ export class TileMap {
 
   get size(): number { return this.tiles.size; }
 
-  // Legacy accessors (global across all z-levels)
-  get minX(): number { return this.globalBound('minX', Infinity); }
-  get minY(): number { return this.globalBound('minY', Infinity); }
-  get maxX(): number { return this.globalBound('maxX', -Infinity); }
-  get maxY(): number { return this.globalBound('maxY', -Infinity); }
-
   static key(x: number, y: number, z: number): string {
     return `${x}:${y}:${z}`;
   }
@@ -98,15 +92,6 @@ export class TileMap {
       b.minY = Math.min(b.minY, y);
       b.maxY = Math.max(b.maxY, y);
     }
-  }
-
-  private globalBound(field: keyof Bounds, fallback: number): number {
-    let result = fallback;
-    const isMin = field.startsWith('min');
-    for (const b of this.zBounds.values()) {
-      result = isMin ? Math.min(result, b[field]) : Math.max(result, b[field]);
-    }
-    return result;
   }
 
   private resolveTile(tile: OtbmTile): ResolvedTile {

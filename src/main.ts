@@ -6,6 +6,7 @@ import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
 import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
+import type { Bounds } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
@@ -273,7 +274,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // don't rescan the OTBM in that direction again until bounds grow.
   const exhaustedDirections = new Set<string>();
 
-  function expansionKey(b: import('./lib/tileMap').Bounds | null, region: import('./lib/otbm').OtbmRegion): string {
+  function expansionKey(b: Bounds | null, region: OtbmRegion): string {
     const bk = b ? `${b.minX},${b.minY},${b.maxX},${b.maxY}` : '';
     return `${bk}@${region.centerX},${region.centerY}`;
   }
@@ -291,6 +292,8 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     const prevSize = tileMap.size;
     const expanded = parseOtbmRegion(loaded.otbm, region);
+    // TODO: tiles whose sprites aren't in the initial atlas render blank.
+    // Follow-up: rebuild atlas on merge, or pre-load all item sprites.
     tileMap.merge(expanded);
     lastExpansionTime = now;
 

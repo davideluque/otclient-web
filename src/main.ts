@@ -141,11 +141,19 @@ async function startApp(loaded: CompleteLoadedFiles) {
     { lookType: 128, headColor: 58, bodyColor: 87, legsColor: 58, feetColor: 58 },
   );
 
-  // Initialize PixiJS
+  // Initialize PixiJS.
+  //
+  // Note: deliberately *not* using `resizeTo: window`. On iOS Safari the
+  // `resize` event fires on orientation change before `window.innerWidth/
+  // innerHeight` have updated, so PixiJS' internal resize handler picks
+  // up stale dimensions and leaves a black bar after the rotation
+  // completes. We manage resize ourselves below with a two-RAF debounce
+  // that gives the browser time to settle before remeasuring.
   const app = new Application();
   await app.init({
     background: '#000000',
-    resizeTo: window,
+    width: window.innerWidth,
+    height: window.innerHeight,
     antialias: false,
     resolution: window.devicePixelRatio,
     autoDensity: true,
@@ -565,13 +573,32 @@ async function startApp(loaded: CompleteLoadedFiles) {
   document.body.appendChild(zoomBtn);
 
   // Handle window resize / orientation change: recompute the play zoom for
-  // the new screen so the visible play area stays consistent across devices.
-  window.addEventListener('resize', () => {
-    viewport.screenWidth = window.innerWidth;
-    viewport.screenHeight = window.innerHeight;
-    viewport.applyPlayZoom(computePlayZoom(window.innerWidth, window.innerHeight));
-    render();
-  });
+  // the new screen so the visible play area stays consistent across
+  // devices. iOS Safari fires `resize` while `innerWidth/innerHeight` are
+  // still mid-rotation — measuring then leaves a black bar where the new
+  // orientation extends past the (stale) canvas. We wait two animation
+  // frames before remeasuring; one isn't enough on slower devices.
+  let resizeRaf: number | null = null;
+  function scheduleViewportUpdate() {
+    if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        app.renderer.resize(w, h);
+        viewport.screenWidth = w;
+        viewport.screenHeight = h;
+        viewport.applyPlayZoom(computePlayZoom(w, h));
+        render();
+      });
+    });
+  }
+  window.addEventListener('resize', scheduleViewportUpdate);
+  window.addEventListener('orientationchange', scheduleViewportUpdate);
+  // visualViewport tracks the actually-visible area (excludes URL bar) on
+  // mobile; firing on its resize catches URL-bar reveal/hide and pinch.
+  window.visualViewport?.addEventListener('resize', scheduleViewportUpdate);
 
   // N toggles night/day so you can see the difference
   window.addEventListener('keydown', (e: KeyboardEvent) => {

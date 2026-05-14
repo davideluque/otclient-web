@@ -12,10 +12,10 @@
     <meta name="theme-color" content="#7c5cbf" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      /* Prevent all browser-initiated touch gestures (double-tap-to-zoom,
-         long-press context menu, pull-to-refresh). We handle pan, pinch,
-         tap, and joystick ourselves. iOS Safari ignores user-scalable=no
-         since iOS 10, so this CSS rule is the only reliable way. */
+      /* Prevent browser-initiated touch gestures (double-tap-to-zoom,
+         pull-to-refresh). We handle pan, pinch, tap, and joystick
+         ourselves. iOS Safari ignores user-scalable=no since iOS 10,
+         so this CSS rule is the only reliable way. */
       html, body, canvas { touch-action: none; }
       /* `-webkit-fill-available` gives iOS Safari/PWA the actually-visible
          viewport height (post-status-bar layout), avoiding the

@@ -62,8 +62,9 @@ function* denseSpriteIds(spriteCount: number): Generator<number> {
  *   1. Every item the OTBM places on the map (resolved server→client via OTB).
  *   2. Every creature defined in the .dat — players, NPCs, monsters all
  *      come over the wire at runtime, never from the OTBM, so we can't
- *      pre-filter by map data. ~600 creature types in 7.6 × ~30 sprites
- *      each is well within one atlas page.
+ *      pre-filter by map data. Tibia 7.6 has ~600 creature types and they
+ *      take a handful of atlas pages; the sparse-atlas storage means
+ *      pages without any referenced sprites still aren't allocated.
  *
  * Effects and missiles are dynamic too but are deliberately left out for
  * now — we don't render them yet, and skipping them keeps the atlas

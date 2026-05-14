@@ -409,29 +409,51 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   // --- Floor changes ---
   // Apply the geometry of an OTB FloorChange* flag to player + camera +
-  // tilemap. Geometry mirrors TFS Tile::queryDestination (src/tile.cpp):
-  // up-<dir> goes to z-1 with a one-tile shift in <dir> on the new floor
-  // and the player turns to face that direction; down is plain z+1 with
-  // no shift and no facing change.
+  // tilemap. Geometry mirrors TFS Tile::queryDestination (src/tile.cpp).
+  // Up-<dir> goes to z-1 with a one-tile shift in <dir> on the new floor
+  // and the player faces that direction; down is z+1 with an *inverse*
+  // shift when the destination tile is itself a directional up-stair
+  // (the partner side of a bidirectional stair) so the player doesn't
+  // land on top of it and instantly re-trigger going back up.
   function handleFloorChange(fc: FloorChange) {
     if (fc === 'down') {
       renderZ++;
+      player.z = renderZ;
+      // Ensure destination tiles are loaded so we can read the partner
+      // tile's flags. Skip the parse if we already have tiles there —
+      // round-tripping the same stair becomes instant after the first
+      // visit instead of re-parsing the OTBM each time.
+      ensureLoadedAt(player.x, player.y, renderZ);
+      // Bidirectional stair: if the tile we'd land on carries a
+      // directional FloorChange (it's the upstair partner of the down-
+      // stair we just stepped on), apply the inverse of that direction
+      // so we land one tile away from the upstair tile.
+      const partner = tileMap.getFloorChange(player.x, player.y, renderZ);
+      if (partner === 'up-north') player.y++;
+      else if (partner === 'up-south') player.y--;
+      else if (partner === 'up-east') player.x--;
+      else if (partner === 'up-west') player.x++;
     } else {
       renderZ--;
       if (fc === 'up-north') { player.y--; player.direction = Direction.North; }
       else if (fc === 'up-east') { player.x++; player.direction = Direction.East; }
       else if (fc === 'up-south') { player.y++; player.direction = Direction.South; }
       else if (fc === 'up-west') { player.x--; player.direction = Direction.West; }
+      player.z = renderZ;
+      ensureLoadedAt(player.x, player.y, renderZ);
     }
-    player.z = renderZ;
-    // Pull in tiles around the new position at the new floor. Same radius
-    // we use for ad-hoc expansion (small enough to be cheap, big enough
-    // to fill the visible screen after the camera recenters).
-    const region: OtbmRegion = { centerX: player.x, centerY: player.y, radius: 50, z: renderZ };
-    tileMap.merge(parseOtbmRegion(loaded.otbm, region));
     viewport.centerX = player.x;
     viewport.centerY = player.y;
     render(true);
+  }
+
+  // Parse + merge a small region around (x, y, z) only when the tilemap
+  // doesn't already cover it. Cheap cache check first (one Map lookup),
+  // expensive parse only on miss.
+  function ensureLoadedAt(x: number, y: number, z: number) {
+    if (tileMap.getTile(x, y, z)) return;
+    const region: OtbmRegion = { centerX: x, centerY: y, radius: 25, z };
+    tileMap.merge(parseOtbmRegion(loaded.otbm, region));
   }
 
   // Floor changes can fire from any startWalk callsite. The callback

@@ -483,16 +483,28 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
       // Anticipatory expansion: if the tap destination is near or outside
       // loaded bounds, expand the map toward it before pathfinding.
+      // Reuses exhaustedDirections from viewport expansion to avoid
+      // repeated expensive OTBM parses for taps in areas with no data.
+      const currentBounds = tileMap.getBounds(renderZ);
       const destRegion = needsExpansionForDestination(
-        tileMap.getBounds(renderZ), tile.x, tile.y, renderZ, 30,
+        currentBounds, tile.x, tile.y, renderZ, 30,
       );
       if (destRegion) {
-        const expanded = parseOtbmRegion(loaded.otbm, destRegion);
-        tileMap.merge(expanded);
-        if (import.meta.env.DEV) {
-          console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
+        const ek = expansionKey(currentBounds, destRegion);
+        if (!exhaustedDirections.has(ek)) {
+          const prevSize = tileMap.size;
+          const expanded = parseOtbmRegion(loaded.otbm, destRegion);
+          tileMap.merge(expanded);
+          if (tileMap.size > prevSize) {
+            exhaustedDirections.clear();
+            if (import.meta.env.DEV) {
+              console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
+            }
+            render(true);
+          } else {
+            exhaustedDirections.add(ek);
+          }
         }
-        render(true);
       }
 
       const startX = walkState?.active ? walkState.toX : player.x;

@@ -60,15 +60,16 @@ export function needsExpansion(
 }
 
 const MIN_EXPANSION_RADIUS = 100;
+const MAX_EXPANSION_RADIUS = 500;
 
 /**
  * Anticipatory expansion: check if a walk destination is near or outside
  * the loaded map bounds. If so, return a region that covers both the
  * destination and the gap from current bounds.
  *
- * The region is centered on the midpoint between the nearest bounds edge
- * and the destination, with radius = max(MIN_EXPANSION_RADIUS, halfDist + 50).
- * One bigger expansion is cheaper than several iterative ones.
+ * The region is centered on the midpoint between the bounds center and
+ * the destination, with radius clamped to [MIN, MAX]. One bigger
+ * expansion is cheaper than several iterative ones.
  */
 export function needsExpansionForDestination(
   bounds: Bounds | null,
@@ -99,7 +100,7 @@ export function needsExpansionForDestination(
     Math.abs(destX - boundsCenter.x),
     Math.abs(destY - boundsCenter.y),
   ) / 2;
-  const radius = Math.max(MIN_EXPANSION_RADIUS, Math.floor(halfDist) + 50);
+  const radius = Math.min(MAX_EXPANSION_RADIUS, Math.max(MIN_EXPANSION_RADIUS, Math.floor(halfDist) + 50));
 
   return { centerX: midX, centerY: midY, radius, z };
 }

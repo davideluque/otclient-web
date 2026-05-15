@@ -263,30 +263,15 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const visible = viewport.getVisibleTiles();
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
-    // --- Floor-below transparency ---
-    // Above ground (z <= 7), render the floor below at reduced opacity so
-    // the world feels three-dimensional. Underground (z >= 8) only shows
-    // the current floor (caves have ceilings). Phase 2 will use
-    // DatAttr.FullGround to mask opaque tiles on the current floor.
-    const FLOOR_BELOW_ALPHA = 0.4;
-
-    // Collect positions where the current floor has a FullGround item —
-    // these completely cover the floor below and should be occluded.
-    // Bit-pack (x, y) into a single number for fast Set lookups.
-    // Tibia coords are 16-bit, so (x << 16) | y fits in 32 bits.
-    let fullGroundPositions: Set<number> | undefined;
-    if (renderZ <= 7) {
-      fullGroundPositions = new Set();
-      for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
-        for (const item of tile.items) {
-          const tt = datIndex.get(item.clientId);
-          if (tt?.attrs.has(DatAttr.FullGround)) {
-            fullGroundPositions.add((tile.x << 16) | tile.y);
-            break;
-          }
-        }
-      }
-    }
+    // --- Multi-floor rendering (authentic OTClient approach) ---
+    // Above ground (z <= 7), render visible floors below at full opacity at
+    // the SAME screen position as the current floor (no per-z screen offset).
+    // The iso/3D illusion comes purely from tall items: walls and stair tops
+    // (height>1) draw their top halves 32px up, poking into the floor above's
+    // visual band. FullGround tiles on shallower floors occlude lower floors
+    // at the same (tx, ty). Non-FullGround tiles (holes, stair landings)
+    // let the lower floor show through directly underneath.
+    const MAX_VISIBLE_FLOORS_BELOW = 3;
 
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
@@ -312,14 +297,43 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const allAnimated: typeof animatedSprites = [];
 
     if (renderZ <= 7) {
-      const floorBelow = renderTileRegion(
-        tileMap, datIndex, atlasTextures, layout,
-        visible.x1, visible.y1, visible.x2, visible.y2, renderZ + 1,
-        fullGroundPositions,
-      );
-      floorBelow.container.alpha = FLOOR_BELOW_ALPHA;
-      tileContainer.addChild(floorBelow.container);
-      allAnimated.push(...floorBelow.animated);
+      const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
+
+      // Cumulative FullGround occlusion: a tile at depth d, position (tx, ty)
+      // is occluded if any shallower floor (depth d' < d) has a FullGround
+      // item at the SAME (tx, ty). Stair landings, holes, and other
+      // non-FullGround tiles let the floor below show through directly.
+      const occlusionByDepth: Set<number>[] = [];
+      const cumulative = new Set<number>();
+      for (let d = 0; d < maxDepth; d++) {
+        const floorZ = renderZ + d;
+        for (const tile of tileMap.tilesInRegion(
+          visible.x1, visible.y1, visible.x2, visible.y2, floorZ,
+        )) {
+          for (const item of tile.items) {
+            const tt = datIndex.get(item.clientId);
+            if (tt?.attrs.has(DatAttr.FullGround)) {
+              cumulative.add((tile.x << 16) | tile.y);
+              break;
+            }
+          }
+        }
+        occlusionByDepth.push(new Set(cumulative));
+      }
+
+      // Render deep-to-shallow at full opacity, all at the same screen
+      // position as the current floor. Tall items (walls, stair tops) on
+      // lower floors naturally draw their top halves 32px up — that's the
+      // entire isometric/3D effect.
+      for (let depth = maxDepth; depth >= 1; depth--) {
+        const floor = renderTileRegion(
+          tileMap, datIndex, atlasTextures, layout,
+          visible.x1, visible.y1, visible.x2, visible.y2, renderZ + depth,
+          occlusionByDepth[depth - 1],
+        );
+        tileContainer.addChild(floor.container);
+        allAnimated.push(...floor.animated);
+      }
     }
     allAnimated.push(...above.animated, ...below.animated);
     animatedSprites = allAnimated;

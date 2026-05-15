@@ -298,26 +298,34 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (renderZ <= 7) {
       const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
 
-      // Pre-compute cumulative occlusion shallow-to-deep using only
-      // FullGround — items that are guaranteed to fill the entire 32x32
-      // tile with opaque pixels. Using Ground (attr 0) was too aggressive
-      // and hid stairs/holes that should be visible.
+      // Pre-compute cumulative occlusion shallow-to-deep, mirroring
+      // OTClient's Tile::limitsFloorsView (src/client/tile.cpp:393):
+      // a tile occludes the floor below if its FIRST item is either
+      //   - a Ground item (DatAttr.Ground), or
+      //   - an OnBottom item that BlockProjectile (walls, solid doors)
+      // and not flagged DontHide. This catches walls without FullGround
+      // (the previous gap that showed black) while keeping stairs and
+      // holes — which don't satisfy either condition — see-through.
+      function limitsFloorsView(tile: { items: { clientId: number }[] }): boolean {
+        const first = tile.items[0];
+        if (!first) return false;
+        const tt = datIndex.get(first.clientId);
+        if (!tt || tt.attrs.has(DatAttr.DontHide)) return false;
+        if (tt.attrs.has(DatAttr.Ground)) return true;
+        if (tt.attrs.has(DatAttr.OnBottom) && tt.attrs.has(DatAttr.BlockProjectile)) return true;
+        return false;
+      }
+
       const occlusionByDepth: Set<number>[] = [];
       const cumulative = new Set<number>();
       for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
-        for (const item of tile.items) {
-          const tt = datIndex.get(item.clientId);
-          if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
-        }
+        if (limitsFloorsView(tile)) cumulative.add((tile.x << 16) | tile.y);
       }
       for (let depth = 1; depth <= maxDepth; depth++) {
         occlusionByDepth.push(new Set(cumulative));
         const floorZ = renderZ + depth;
         for (const tile of tileMap.tilesInRegion(visible.x1 - depth, visible.y1 - depth, visible.x2, visible.y2, floorZ)) {
-          for (const item of tile.items) {
-            const tt = datIndex.get(item.clientId);
-            if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
-          }
+          if (limitsFloorsView(tile)) cumulative.add((tile.x << 16) | tile.y);
         }
       }
 

@@ -264,13 +264,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
     // --- Multi-floor rendering (authentic OTClient approach) ---
-    // Above ground (z <= 7), render visible floors below at full opacity.
-    // Each floor below offsets by +TILE_SIZE px on both axes (one tile
-    // southeast per z-level) — the standard Tibia isometric stacking.
-    // FullGround tiles on higher floors occlude lower floors at those
-    // positions. Underground (z >= 8) only shows the current floor.
+    // Above ground (z <= 7), render visible floors below at full opacity at
+    // the SAME screen position as the current floor (no per-z screen offset).
+    // The iso/3D illusion comes purely from tall items: walls and stair tops
+    // (height>1) draw their top halves 32px up, poking into the floor above's
+    // visual band. FullGround tiles on shallower floors occlude lower floors
+    // at the same (tx, ty). Non-FullGround tiles (holes, stair landings)
+    // let the lower floor show through directly underneath.
     const MAX_VISIBLE_FLOORS_BELOW = 3;
-    const FLOOR_OFFSET_PX = 32; // 1 tile diagonal per z-level
 
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
@@ -298,63 +299,38 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (renderZ <= 7) {
       const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
 
-      // Pre-compute FullGround sets per depth (depth=0 is current floor).
-      // Use the same expanded query rect as the render pass so we don't
-      // miss occluders that lie just outside the visible region.
-      const fgByDepth: Set<number>[] = [];
-      for (let d = 0; d <= maxDepth; d++) {
-        const set = new Set<number>();
+      // Cumulative FullGround occlusion: a tile at depth d, position (tx, ty)
+      // is occluded if any shallower floor (depth d' < d) has a FullGround
+      // item at the SAME (tx, ty). Stair landings, holes, and other
+      // non-FullGround tiles let the floor below show through directly.
+      const occlusionByDepth: Set<number>[] = [];
+      const cumulative = new Set<number>();
+      for (let d = 0; d < maxDepth; d++) {
         const floorZ = renderZ + d;
         for (const tile of tileMap.tilesInRegion(
-          visible.x1 - d, visible.y1 - d, visible.x2 + d, visible.y2 + d, floorZ,
+          visible.x1, visible.y1, visible.x2, visible.y2, floorZ,
         )) {
           for (const item of tile.items) {
             const tt = datIndex.get(item.clientId);
-            if (tt?.attrs.has(DatAttr.FullGround)) { set.add((tile.x << 16) | tile.y); break; }
+            if (tt?.attrs.has(DatAttr.FullGround)) {
+              cumulative.add((tile.x << 16) | tile.y);
+              break;
+            }
           }
         }
-        fgByDepth.push(set);
+        occlusionByDepth.push(new Set(cumulative));
       }
 
-      // A floor-below tile at depth=d, position (tx, ty) renders at screen
-      // position (tx + d, ty + d) because of the +32px SE isometric offset
-      // per z-level. So it's occluded if any shallower floor at depth
-      // d' < d has a FullGround tile at (tx + (d - d'), ty + (d - d')) —
-      // the tile that visually covers it on screen.
-      //
-      // Earlier code used the floor-below tile's own coordinates as the
-      // occlusion key, which masked the wrong set of tiles and hid every
-      // wall on lower floors that happened to live "under" a current-floor
-      // FullGround tile.
-      const occlusionByDepth: Set<number>[] = [];
-      for (let d = 1; d <= maxDepth; d++) {
-        const occluded = new Set<number>();
-        for (let dprime = 0; dprime < d; dprime++) {
-          const shift = d - dprime;
-          for (const key of fgByDepth[dprime]) {
-            const fx = key >>> 16;
-            const fy = key & 0xFFFF;
-            occluded.add(((fx - shift) << 16) | (fy - shift));
-          }
-        }
-        occlusionByDepth.push(occluded);
-      }
-
-      // Render deep-to-shallow at full opacity. Each floor offsets by
-      // one tile SE per z-level (Tibia's isometric perspective).
-      // Expand the render rect for deeper floors symmetrically: NW so we
-      // have tiles to fill the top-left after the shift, SE so tall items
-      // like walls on lower floors render their tops up into the current
-      // floor's visual band.
+      // Render deep-to-shallow at full opacity, all at the same screen
+      // position as the current floor. Tall items (walls, stair tops) on
+      // lower floors naturally draw their top halves 32px up — that's the
+      // entire isometric/3D effect.
       for (let depth = maxDepth; depth >= 1; depth--) {
         const floor = renderTileRegion(
           tileMap, datIndex, atlasTextures, layout,
-          visible.x1 - depth, visible.y1 - depth,
-          visible.x2 + depth, visible.y2 + depth, renderZ + depth,
+          visible.x1, visible.y1, visible.x2, visible.y2, renderZ + depth,
           occlusionByDepth[depth - 1],
         );
-        floor.container.x = depth * FLOOR_OFFSET_PX;
-        floor.container.y = depth * FLOOR_OFFSET_PX;
         tileContainer.addChild(floor.container);
         allAnimated.push(...floor.animated);
       }

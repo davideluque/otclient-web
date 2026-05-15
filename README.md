@@ -63,7 +63,7 @@ src/
       xtea.ts, opcodes.ts
       loginProtocol.ts, mapParser.ts
       creatureParser.ts, chatProtocol.ts
-    chat/
+    chat/                           # Chat UI, state, speech bubbles
       ChatManager.ts, ChatUI.ts
       SpeechBubbleRenderer.ts
   __tests__/                        # Unit tests

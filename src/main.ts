@@ -8,7 +8,7 @@ import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import type { Bounds, FloorChange } from './lib/tileMap';
-import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex, TILE_SIZE, __wallDebugLogged } from './lib/tileRenderer';
+import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex, TILE_SIZE } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import type { ViewRect } from './lib/viewport';
@@ -282,9 +282,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastPlayerX = player.x;
     lastPlayerY = player.y;
     lastPlayerDirection = player.direction;
-    // DEBUG: clear wall log so each rebuild emits a fresh snapshot
-    __wallDebugLogged.clear();
-    console.log(`[REBUILD DEBUG] renderZ=${renderZ} player=(${player.x},${player.y}) visible=(${visible.x1},${visible.y1})→(${visible.x2},${visible.y2})`);
     const above = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, Math.min(playerRow, visible.y2), renderZ,
@@ -341,9 +338,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
           }
         }
         occlusionByDepth.push(occluded);
-        console.log(`[FLOOR DEBUG] depth=${d} z=${renderZ + d} fullGroundOnShallowerFloors=${
-          fgByDepth.slice(0, d).reduce((a, s) => a + s.size, 0)
-        } occluded=${occluded.size}`);
       }
 
       // Render deep-to-shallow at full opacity. Each floor offsets by

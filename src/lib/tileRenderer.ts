@@ -231,16 +231,22 @@ export function renderTileRegion(
     return tex;
   }
 
+  let totalTiles = 0;
+  let skippedTiles = 0;
   for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
-    if (skipPositions?.has((tile.x << 16) | tile.y)) continue;
+    totalTiles++;
+    if (skipPositions?.has((tile.x << 16) | tile.y)) { skippedTiles++; continue; }
     renderTile(tile, container, animated, datIndex, getTexture);
   }
+  console.log(`[REGION DEBUG] z=${z} tiles=${totalTiles} skipped=${skippedTiles} (rect ${x1},${y1}→${x2},${y2})`);
 
   return { container, animated };
 }
 
-// DEBUG: log tall items (walls) once per unique clientId
-const __wallDebugLogged = new Set<number>();
+// DEBUG: log tall items (walls) once per unique clientId per render-cycle.
+// Cleared by main.ts before each rebuildTiles so each rebuild emits a fresh
+// snapshot.
+export const __wallDebugLogged = new Set<number>();
 
 function renderTile(
   tile: ResolvedTile,

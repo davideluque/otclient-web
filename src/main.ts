@@ -8,7 +8,7 @@ import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import type { Bounds, FloorChange } from './lib/tileMap';
-import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex, TILE_SIZE } from './lib/tileRenderer';
+import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex, TILE_SIZE, __wallDebugLogged } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import type { ViewRect } from './lib/viewport';
@@ -282,6 +282,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastPlayerX = player.x;
     lastPlayerY = player.y;
     lastPlayerDirection = player.direction;
+    // DEBUG: clear wall log so each rebuild emits a fresh snapshot
+    __wallDebugLogged.clear();
+    console.log(`[REBUILD DEBUG] renderZ=${renderZ} player=(${player.x},${player.y}) visible=(${visible.x1},${visible.y1})→(${visible.x2},${visible.y2})`);
     const above = renderTileRegion(
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, visible.y1, visible.x2, Math.min(playerRow, visible.y2), renderZ,
@@ -298,36 +301,57 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (renderZ <= 7) {
       const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
 
-      // Pre-compute cumulative occlusion shallow-to-deep using only
-      // FullGround — items that are guaranteed to fill the entire 32x32
-      // tile with opaque pixels. Using Ground (attr 0) was too aggressive
-      // and hid stairs/holes that should be visible.
-      const occlusionByDepth: Set<number>[] = [];
-      const cumulative = new Set<number>();
-      for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
-        for (const item of tile.items) {
-          const tt = datIndex.get(item.clientId);
-          if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
-        }
-      }
-      for (let depth = 1; depth <= maxDepth; depth++) {
-        occlusionByDepth.push(new Set(cumulative));
-        const floorZ = renderZ + depth;
-        for (const tile of tileMap.tilesInRegion(visible.x1 - depth, visible.y1 - depth, visible.x2, visible.y2, floorZ)) {
+      // Pre-compute FullGround sets per depth (depth=0 is current floor).
+      // Use the same expanded query rect as the render pass so we don't
+      // miss occluders that lie just outside the visible region.
+      const fgByDepth: Set<number>[] = [];
+      for (let d = 0; d <= maxDepth; d++) {
+        const set = new Set<number>();
+        const floorZ = renderZ + d;
+        for (const tile of tileMap.tilesInRegion(
+          visible.x1 - d, visible.y1 - d, visible.x2 + d, visible.y2 + d, floorZ,
+        )) {
           for (const item of tile.items) {
             const tt = datIndex.get(item.clientId);
-            if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
+            if (tt?.attrs.has(DatAttr.FullGround)) { set.add((tile.x << 16) | tile.y); break; }
           }
         }
+        fgByDepth.push(set);
+      }
+
+      // A floor-below tile at depth=d, position (tx, ty) renders at screen
+      // position (tx + d, ty + d) because of the +32px SE isometric offset
+      // per z-level. So it's occluded if any shallower floor at depth
+      // d' < d has a FullGround tile at (tx + (d - d'), ty + (d - d')) —
+      // the tile that visually covers it on screen.
+      //
+      // Earlier code used the floor-below tile's own coordinates as the
+      // occlusion key, which masked the wrong set of tiles and hid every
+      // wall on lower floors that happened to live "under" a current-floor
+      // FullGround tile.
+      const occlusionByDepth: Set<number>[] = [];
+      for (let d = 1; d <= maxDepth; d++) {
+        const occluded = new Set<number>();
+        for (let dprime = 0; dprime < d; dprime++) {
+          const shift = d - dprime;
+          for (const key of fgByDepth[dprime]) {
+            const fx = key >>> 16;
+            const fy = key & 0xFFFF;
+            occluded.add(((fx - shift) << 16) | (fy - shift));
+          }
+        }
+        occlusionByDepth.push(occluded);
+        console.log(`[FLOOR DEBUG] depth=${d} z=${renderZ + d} fullGroundOnShallowerFloors=${
+          fgByDepth.slice(0, d).reduce((a, s) => a + s.size, 0)
+        } occluded=${occluded.size}`);
       }
 
       // Render deep-to-shallow at full opacity. Each floor offsets by
       // one tile SE per z-level (Tibia's isometric perspective).
-      // Expand the render rect for deeper floors symmetrically: the SE
-      // offset means we need extra tiles in BOTH directions (NW to fill
-      // the top-left after the shift, SE so tall items like walls on
-      // floor below have their top halves render up into the current
-      // floor's visual band — that's the "adjacent tile peek").
+      // Expand the render rect for deeper floors symmetrically: NW so we
+      // have tiles to fill the top-left after the shift, SE so tall items
+      // like walls on lower floors render their tops up into the current
+      // floor's visual band.
       for (let depth = maxDepth; depth >= 1; depth--) {
         const floor = renderTileRegion(
           tileMap, datIndex, atlasTextures, layout,
@@ -335,7 +359,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
           visible.x2 + depth, visible.y2 + depth, renderZ + depth,
           occlusionByDepth[depth - 1],
         );
-        // Offset: each z-level deeper shifts +1 tile SE
         floor.container.x = depth * FLOOR_OFFSET_PX;
         floor.container.y = depth * FLOOR_OFFSET_PX;
         tileContainer.addChild(floor.container);

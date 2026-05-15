@@ -298,20 +298,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (renderZ <= 7) {
       const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
 
-      // Pre-compute cumulative occlusion shallow-to-deep. A tile is
-      // occluded if it has FullGround (perfectly opaque ground) or any
-      // Ground item (visually fills the base even if not pixel-perfect).
-      // This prevents black gaps at walls/borders whose ground tile
-      // doesn't carry the FullGround flag.
-      function isOccluding(tt: import('./lib/dat').ThingType | undefined): boolean {
-        return !!(tt?.attrs.has(DatAttr.FullGround) || tt?.attrs.has(DatAttr.Ground));
-      }
-
+      // Pre-compute cumulative occlusion shallow-to-deep using only
+      // FullGround — items that are guaranteed to fill the entire 32x32
+      // tile with opaque pixels. Using Ground (attr 0) was too aggressive
+      // and hid stairs/holes that should be visible.
       const occlusionByDepth: Set<number>[] = [];
       const cumulative = new Set<number>();
       for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
         for (const item of tile.items) {
-          if (isOccluding(datIndex.get(item.clientId))) { cumulative.add((tile.x << 16) | tile.y); break; }
+          const tt = datIndex.get(item.clientId);
+          if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
         }
       }
       for (let depth = 1; depth <= maxDepth; depth++) {
@@ -319,7 +315,8 @@ async function startApp(loaded: CompleteLoadedFiles) {
         const floorZ = renderZ + depth;
         for (const tile of tileMap.tilesInRegion(visible.x1 - depth, visible.y1 - depth, visible.x2, visible.y2, floorZ)) {
           for (const item of tile.items) {
-            if (isOccluding(datIndex.get(item.clientId))) { cumulative.add((tile.x << 16) | tile.y); break; }
+            const tt = datIndex.get(item.clientId);
+            if (tt?.attrs.has(DatAttr.FullGround)) { cumulative.add((tile.x << 16) | tile.y); break; }
           }
         }
       }

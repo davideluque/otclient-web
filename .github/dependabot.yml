@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: Europe/Copenhagen
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: deps
+    groups:
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - patch
+          - minor
+      development-dependencies:
+        dependency-type: development
+        update-types:
+          - patch
+          - minor
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:15"
+      timezone: Europe/Copenhagen
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci

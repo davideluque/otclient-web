@@ -11,12 +11,12 @@ permissions:
 jobs:
   enable-auto-merge:
     name: Enable auto-merge for safe Dependabot updates
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'davideluque/otclient-web'
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -26,5 +26,5 @@ jobs:
           steps.metadata.outputs.update-type == 'version-update:semver-minor'
         run: gh pr merge "$PR_URL" --auto --squash --delete-branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}

@@ -323,12 +323,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
       // Render deep-to-shallow at full opacity. Each floor offsets by
       // one tile SE per z-level (Tibia's isometric perspective).
-      // Expand the render rect for deeper floors: the SE offset means
-      // we need extra tiles toward NW to fill the screen.
+      // Expand the render rect for deeper floors symmetrically: the SE
+      // offset means we need extra tiles in BOTH directions (NW to fill
+      // the top-left after the shift, SE so tall items like walls on
+      // floor below have their top halves render up into the current
+      // floor's visual band — that's the "adjacent tile peek").
       for (let depth = maxDepth; depth >= 1; depth--) {
         const floor = renderTileRegion(
           tileMap, datIndex, atlasTextures, layout,
-          visible.x1 - depth, visible.y1 - depth, visible.x2, visible.y2, renderZ + depth,
+          visible.x1 - depth, visible.y1 - depth,
+          visible.x2 + depth, visible.y2 + depth, renderZ + depth,
           occlusionByDepth[depth - 1],
         );
         // Offset: each z-level deeper shifts +1 tile SE

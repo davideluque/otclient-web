@@ -1,5 +1,5 @@
 import { Application, Container } from 'pixi.js';
-import { parseDat } from './lib/dat';
+import { parseDat, DatAttr } from './lib/dat';
 import { parseSpr, releaseSprBuffer } from './lib/spr';
 import { parseOtb } from './lib/otb';
 import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
@@ -263,6 +263,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const visible = viewport.getVisibleTiles();
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
+    // --- Multi-floor rendering (authentic OTClient approach) ---
+    // Above ground (z <= 7), render visible floors below at full opacity at
+    // the SAME screen position as the current floor (no per-z screen offset).
+    // The iso/3D illusion comes purely from tall items: walls and stair tops
+    // (height>1) draw their top halves 32px up, poking into the floor above's
+    // visual band. FullGround tiles on shallower floors occlude lower floors
+    // at the same (tx, ty). Non-FullGround tiles (holes, stair landings)
+    // let the lower floor show through directly underneath.
+    const MAX_VISIBLE_FLOORS_BELOW = 3;
+
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
     // behind it) but behind items south (trees, fences). Including the
@@ -281,9 +291,53 @@ async function startApp(loaded: CompleteLoadedFiles) {
       tileMap, datIndex, atlasTextures, layout,
       visible.x1, Math.max(playerRow + 1, visible.y1), visible.x2, visible.y2, renderZ,
     );
-    animatedSprites = [...above.animated, ...below.animated];
-
     tileContainer = new Container();
+
+    // Collect all animated sprites in one pass at the end.
+    const allAnimated: typeof animatedSprites = [];
+
+    if (renderZ <= 7) {
+      const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
+
+      // Cumulative FullGround occlusion: a tile at depth d, position (tx, ty)
+      // is occluded if any shallower floor (depth d' < d) has a FullGround
+      // item at the SAME (tx, ty). Stair landings, holes, and other
+      // non-FullGround tiles let the floor below show through directly.
+      const occlusionByDepth: Set<number>[] = [];
+      const cumulative = new Set<number>();
+      for (let d = 0; d < maxDepth; d++) {
+        const floorZ = renderZ + d;
+        for (const tile of tileMap.tilesInRegion(
+          visible.x1, visible.y1, visible.x2, visible.y2, floorZ,
+        )) {
+          for (const item of tile.items) {
+            const tt = datIndex.get(item.clientId);
+            if (tt?.attrs.has(DatAttr.FullGround)) {
+              cumulative.add((tile.x << 16) | tile.y);
+              break;
+            }
+          }
+        }
+        occlusionByDepth.push(new Set(cumulative));
+      }
+
+      // Render deep-to-shallow at full opacity, all at the same screen
+      // position as the current floor. Tall items (walls, stair tops) on
+      // lower floors naturally draw their top halves 32px up — that's the
+      // entire isometric/3D effect.
+      for (let depth = maxDepth; depth >= 1; depth--) {
+        const floor = renderTileRegion(
+          tileMap, datIndex, atlasTextures, layout,
+          visible.x1, visible.y1, visible.x2, visible.y2, renderZ + depth,
+          occlusionByDepth[depth - 1],
+        );
+        tileContainer.addChild(floor.container);
+        allAnimated.push(...floor.animated);
+      }
+    }
+    allAnimated.push(...above.animated, ...below.animated);
+    animatedSprites = allAnimated;
+
     tileContainer.addChild(above.container);
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, atlasPages, layout, tintedOutfitCache);
     if (playerSprite) {

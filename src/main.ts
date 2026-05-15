@@ -263,15 +263,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const visible = viewport.getVisibleTiles();
     lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
 
-    // --- Floor-below transparency ---
-    // Above ground (z <= 7), render the floor below at reduced opacity so
-    // the world feels three-dimensional. Underground (z >= 8) only shows
-    // the current floor (caves have ceilings). Phase 2 will use
-    // DatAttr.FullGround to mask opaque tiles on the current floor.
-    // Render up to 3 floors below with decreasing opacity. Each floor's
-    // FullGround tiles occlude deeper floors at those positions.
-    // Bit-pack (x, y) into a single number for fast Set lookups.
-    const FLOOR_ALPHAS = [0.4, 0.2, 0.1];
+    // --- Multi-floor rendering (authentic OTClient approach) ---
+    // Above ground (z <= 7), render visible floors below at full opacity.
+    // Each floor below offsets by +TILE_SIZE px on both axes (one tile
+    // southeast per z-level) — the standard Tibia isometric stacking.
+    // FullGround tiles on higher floors occlude lower floors at those
+    // positions. Underground (z >= 8) only shows the current floor.
+    const MAX_VISIBLE_FLOORS_BELOW = 3;
+    const FLOOR_OFFSET_PX = 32; // 1 tile diagonal per z-level
 
     // Split tile rendering around the player's row so the player draws on
     // top of items at and north of its tile (floor, decorations, walls
@@ -297,16 +296,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
     const allAnimated: typeof animatedSprites = [];
 
     if (renderZ <= 7) {
-      const maxDepth = Math.min(FLOOR_ALPHAS.length, 15 - renderZ);
+      const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
 
-      // Pre-compute occlusion snapshots shallow-to-deep. Each snapshot
-      // is the cumulative set of FullGround positions from the current
-      // floor down to that depth — used to occlude the floor *below* it.
-      // This avoids the bug where a FullGround on a deeper floor would
-      // incorrectly hide a shallower one during deep-to-shallow rendering.
+      // Pre-compute cumulative FullGround occlusion shallow-to-deep.
       const occlusionByDepth: Set<number>[] = [];
       const cumulative = new Set<number>();
-      // Start with FullGround from the current floor.
       for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, renderZ)) {
         for (const item of tile.items) {
           const tt = datIndex.get(item.clientId);
@@ -315,7 +309,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
       }
       for (let depth = 1; depth <= maxDepth; depth++) {
         occlusionByDepth.push(new Set(cumulative));
-        // Add this floor's FullGround to occlude the next deeper one.
         const floorZ = renderZ + depth;
         for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, floorZ)) {
           for (const item of tile.items) {
@@ -325,14 +318,17 @@ async function startApp(loaded: CompleteLoadedFiles) {
         }
       }
 
-      // Render deep-to-shallow so shallower floors draw on top.
+      // Render deep-to-shallow at full opacity. Each floor offsets by
+      // one tile SE per z-level (Tibia's isometric perspective).
       for (let depth = maxDepth; depth >= 1; depth--) {
         const floor = renderTileRegion(
           tileMap, datIndex, atlasTextures, layout,
           visible.x1, visible.y1, visible.x2, visible.y2, renderZ + depth,
           occlusionByDepth[depth - 1],
         );
-        floor.container.alpha = FLOOR_ALPHAS[depth - 1];
+        // Offset: each z-level deeper shifts +1 tile SE
+        floor.container.x = depth * FLOOR_OFFSET_PX;
+        floor.container.y = depth * FLOOR_OFFSET_PX;
         tileContainer.addChild(floor.container);
         allAnimated.push(...floor.animated);
       }

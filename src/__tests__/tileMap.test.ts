@@ -102,4 +102,22 @@ describe('TileMap', () => {
     );
     expect(tileMap.size).toBe(2);
   });
+
+  it('reconstructs from a snapshot', () => {
+    const original = new TileMap(
+      makeOtbm([
+        makeTile(10, 20, 7, [100]),
+        makeTile(11, 20, 7, [101]),
+      ]),
+      otb,
+    );
+
+    const restored = TileMap.fromSnapshot(original.toSnapshot());
+
+    expect(restored.size).toBe(2);
+    expect(restored.minX).toBe(10);
+    expect(restored.maxX).toBe(11);
+    expect(restored.getTile(10, 20, 7)!.items[0].clientId).toBe(200);
+    expect([...restored.tilesInRegion(10, 20, 11, 20, 7)]).toHaveLength(2);
+  });
 });

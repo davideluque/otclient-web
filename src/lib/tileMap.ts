@@ -14,6 +14,14 @@ export interface ResolvedTile {
   items: ResolvedItem[];
 }
 
+export interface TileMapSnapshot {
+  tiles: Map<string, ResolvedTile>;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 /**
  * Spatial index for map tiles. Converts OTBM server item IDs to client IDs
  * and provides fast tile lookups by position.
@@ -46,8 +54,28 @@ export class TileMap {
   get maxY(): number { return this._maxY; }
   get size(): number { return this.tiles.size; }
 
+  static fromSnapshot(snapshot: TileMapSnapshot): TileMap {
+    const tileMap = Object.create(TileMap.prototype) as TileMap;
+    tileMap.tiles = snapshot.tiles;
+    tileMap._minX = snapshot.minX;
+    tileMap._minY = snapshot.minY;
+    tileMap._maxX = snapshot.maxX;
+    tileMap._maxY = snapshot.maxY;
+    return tileMap;
+  }
+
   static key(x: number, y: number, z: number): string {
     return `${x}:${y}:${z}`;
+  }
+
+  toSnapshot(): TileMapSnapshot {
+    return {
+      tiles: this.tiles,
+      minX: this._minX,
+      minY: this._minY,
+      maxX: this._maxX,
+      maxY: this._maxY,
+    };
   }
 
   getTile(x: number, y: number, z: number): ResolvedTile | undefined {

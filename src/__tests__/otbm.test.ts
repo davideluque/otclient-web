@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOtbm, OtbmNode, OtbmAttr } from '../lib/otbm';
+import { parseOtbm, parseOtbmWithProgress, OtbmNode, OtbmAttr } from '../lib/otbm';
 
 const NODE_START = 0xfe;
 const NODE_END = 0xff;
@@ -223,5 +223,21 @@ describe('parseOtbm', () => {
     const otbm = parseOtbm(buildOtbm({ tileAreas: tileArea }));
     expect(otbm.tiles[0].items[0].id).toBe(500);
     expect(otbm.tiles[0].items[0].actionId).toBe(1234);
+  });
+
+  it('reports byte progress while parsing', () => {
+    const buffer = buildOtbm({
+      tileAreas: buildTileAreaNode(0, 0, 7, [...buildTileNode(0, 0, { groundItemId: 100 })]),
+    });
+    const progress: Array<{ bytesProcessed: number; bytesTotal: number }> = [];
+
+    const otbm = parseOtbmWithProgress(buffer, p => progress.push(p));
+
+    expect(otbm.tiles).toHaveLength(1);
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.at(-1)).toEqual({
+      bytesProcessed: buffer.byteLength,
+      bytesTotal: buffer.byteLength,
+    });
   });
 });

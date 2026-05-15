@@ -1,16 +1,12 @@
 import { Application, Container } from 'pixi.js';
 import { parseDat } from './lib/dat';
 import { parseSpr } from './lib/spr';
-import { parseOtb } from './lib/otb';
-import { parseOtbm } from './lib/otbm';
 import { buildAtlasPages, computeAtlasLayout } from './lib/atlas';
-import { TileMap } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, buildDatIndex } from './lib/tileRenderer';
 import { Viewport } from './lib/viewport';
+import { loadTileMapInWorker } from './lib/loadTileMapWorker';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
-import type { OtbFile } from './lib/otb';
-import type { OtbmFile } from './lib/otbm';
 
 // --- File loading UI ---
 
@@ -103,20 +99,18 @@ async function startApp() {
   const spr: SprFile = parseSpr(loaded.spr!);
   setStatus('Parsed .spr...');
 
-  const otb: OtbFile = parseOtb(loaded.otb!);
-  setStatus('Parsed .otb...');
-
-  const otbm: OtbmFile = parseOtbm(loaded.otbm!);
-  setStatus('Parsed .otbm...');
+  setStatus('Parsing map: 0%...');
+  const tileMap = await loadTileMapInWorker(loaded.otb!, loaded.otbm!, progress => {
+    const percent = Math.floor((progress.bytesProcessed / progress.bytesTotal) * 100);
+    setStatus(`Parsing map: ${percent}%`);
+  });
+  setStatus('Parsed map...');
 
   setStatus('Building texture atlas...');
   const atlasPages = buildAtlasPages(spr);
   const atlasTextures = createAtlasTextures(atlasPages);
   const layout = computeAtlasLayout(spr.spriteCount);
   const datIndex = buildDatIndex(dat);
-
-  setStatus('Building tile map...');
-  const tileMap = new TileMap(otbm, otb);
 
   // Initialize PixiJS
   const app = new Application();

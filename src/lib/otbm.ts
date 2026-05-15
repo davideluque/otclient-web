@@ -71,6 +71,11 @@ export interface OtbmFile {
   towns: OtbmTown[];
 }
 
+export interface OtbmParseProgress {
+  bytesProcessed: number;
+  bytesTotal: number;
+}
+
 // --- Internal helpers ---
 
 function makeReader(bytes: Uint8Array): BinaryReader {
@@ -120,14 +125,31 @@ function parseItemAttrs(reader: BinaryReader, item: OtbmItem): void {
  * Uses a state-machine approach over the escape-encoded node tree.
  */
 export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
+  return parseOtbmInternal(buffer);
+}
+
+export function parseOtbmWithProgress(
+  buffer: ArrayBuffer,
+  onProgress: (progress: OtbmParseProgress) => void,
+): OtbmFile {
+  return parseOtbmInternal(buffer, onProgress);
+}
+
+function parseOtbmInternal(
+  buffer: ArrayBuffer,
+  onProgress?: (progress: OtbmParseProgress) => void,
+): OtbmFile {
   const data = new Uint8Array(buffer);
   let offset = 0;
+  const reportProgress = createProgressReporter(data.length, onProgress);
+  reportProgress(offset);
 
   // Skip 4-byte file identifier
   if (data.length < 5) {
     throw new Error('Invalid OTBM file: buffer too small');
   }
   offset += 4;
+  reportProgress(offset);
 
   // Root NODE_START
   if (data[offset] !== NODE_START) {
@@ -138,6 +160,7 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
   // Read root node data
   const root = readNodeData(data, offset);
   offset = root.nextOffset;
+  reportProgress(offset);
 
   if (root.bytes.length === 0 || root.bytes[0] !== OtbmNode.RootV1) {
     throw new Error('Invalid OTBM file: expected RootV1 node');
@@ -170,17 +193,20 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
 
       if (marker === NODE_END) {
         offset++;
+        reportProgress(offset);
         return;
       }
 
       if (marker !== NODE_START) {
         offset++;
+        reportProgress(offset);
         continue;
       }
 
       offset++; // consume NODE_START
       const node = readNodeData(data, offset);
       offset = node.nextOffset;
+      reportProgress(offset);
 
       if (node.bytes.length === 0) {
         // Empty node, skip children
@@ -274,17 +300,20 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
 
       if (marker === NODE_END) {
         offset++;
+        reportProgress(offset);
         return;
       }
 
       if (marker !== NODE_START) {
         offset++;
+        reportProgress(offset);
         continue;
       }
 
       offset++; // consume NODE_START
       const node = readNodeData(data, offset);
       offset = node.nextOffset;
+      reportProgress(offset);
 
       if (node.bytes.length > 0 && node.bytes[0] === OtbmNode.Item) {
         const r = makeReader(node.bytes);
@@ -301,6 +330,27 @@ export function parseOtbm(buffer: ArrayBuffer): OtbmFile {
 
   // Walk root's children
   walkNodes(data.length, 0);
+  reportProgress(data.length, true);
 
   return { header, tiles, towns };
+}
+
+function createProgressReporter(
+  bytesTotal: number,
+  onProgress?: (progress: OtbmParseProgress) => void,
+): (bytesProcessed: number, force?: boolean) => void {
+  let lastReportMs = 0;
+
+  return (bytesProcessed: number, force = false) => {
+    if (!onProgress) return;
+
+    const now = Date.now();
+    if (!force && now - lastReportMs < 75) return;
+
+    lastReportMs = now;
+    onProgress({
+      bytesProcessed: Math.min(bytesProcessed, bytesTotal),
+      bytesTotal,
+    });
+  };
 }

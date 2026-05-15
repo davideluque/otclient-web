@@ -14,13 +14,13 @@ export { parseOtb } from './otb';
 export type { OtbFile, OtbItem, OtbVersion } from './otb';
 export { OtbAttr, OtbFlags } from './otb';
 
-export { parseOtbm } from './otbm';
-export type { OtbmFile, OtbmTile, OtbmItem, OtbmTown, OtbmHeader, Position } from './otbm';
+export { parseOtbm, parseOtbmWithProgress } from './otbm';
+export type { OtbmFile, OtbmTile, OtbmItem, OtbmTown, OtbmHeader, OtbmParseProgress, Position } from './otbm';
 export { OtbmNode, OtbmAttr } from './otbm';
 
 // Rendering
 export { TileMap } from './tileMap';
-export type { ResolvedTile, ResolvedItem } from './tileMap';
+export type { ResolvedTile, ResolvedItem, TileMapSnapshot } from './tileMap';
 
 export { createAtlasTextures, getSpriteTexture, buildDatIndex, renderTileRegion } from './tileRenderer';
 export type { AtlasTextures } from './tileRenderer';

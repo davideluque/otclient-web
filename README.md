@@ -8,46 +8,13 @@ Real Tibia doesn't have a mobile client. The desktop client requires a full setu
 
 ## What it does
 
-This project connects to real Open Tibia 7.6 servers using the original protocol. It uses authentic Tibia 7.6 assets (.dat, .spr) for rendering — no recreated sprites, no custom content.
-
-## Current state
-
-The foundation is built. All core modules are implemented and tested:
-
-**Asset Pipeline** — Parse Tibia 7.6 data files and prepare GPU textures
-- `.dat` parser (thing type definitions: items, creatures, effects, missiles)
-- `.spr` parser (sprite pixel data with RLE decompression)
-- Texture atlas generator (decoded sprites packed into GPU-ready pages)
-
-**Map Rendering** — Load and display real Tibia maps
-- `.otb` parser (server item ID to client ID mapping)
-- `.otbm` parser (map tile areas, positions, item stacks)
-- Tile renderer with PixiJS (ground + item layering)
-- Viewport with pan/zoom
-
-**Player Movement** — Local tap-to-walk with pathfinding
-- Player entity with directional sprite lookup
-- Screen-to-tile coordinate conversion
-- A* pathfinding respecting collision flags
-- Smooth walk animation (200ms per tile)
-
-**OT 7.6 Protocol** — Full network stack for server connectivity
-- Binary packet reader/writer
-- XTEA encryption
-- TCP-WebSocket proxy (browsers can't do raw TCP)
-- Login sequence (account login, character list, game login)
-- Map description packet parser
-- Creature event parsers (move, turn, health, outfit, speed)
-
-**Chat System** — Protocol and state management
-- Parse/build all message types (Say, Channel, Private, Whisper, Yell)
-- Chat manager with channel routing and speech bubbles
+This project connects to real Open Tibia 7.6 servers using the original protocol.
 
 ## Tech stack
 
 - **TypeScript** + **Vite** for development
 - **PixiJS 8** for WebGL rendering
-- **Vitest** for testing (160 unit tests)
+- **Vitest** for testing
 - **Node.js** proxy for TCP-WebSocket bridging
 
 ## Getting started
@@ -72,32 +39,37 @@ npm run proxy
 ```
 src/
   lib/
-    dat.ts, spr.ts, atlas.ts     # Asset pipeline
-    otb.ts, otbm.ts, nodeTree.ts  # Map file parsers
-    tileMap.ts, tileRenderer.ts   # Map rendering
-    viewport.ts                   # Camera/viewport
-    player.ts, input.ts           # Player entity & input
-    pathfinding.ts                # A* pathfinding
-    walkAnimation.ts              # Walk animation
-    BinaryReader.ts               # Binary parsing utility
-    net/                          # Network protocol
+    dat.ts, spr.ts, atlas.ts        # Asset pipeline
+    otb.ts, otbm.ts, nodeTree.ts    # Map file parsers
+    otbmParser.ts, otbmWorker.ts    # Map parsing (Web Worker)
+    tileMap.ts, tileRenderer.ts     # Map rendering
+    creatureRenderer.ts             # Creature sprite pool
+    GameWorld.ts                    # Live server-driven world state
+    viewport.ts                     # Camera/viewport
+    player.ts, input.ts             # Player entity & input
+    joystick.ts, keyboard.ts        # Mobile + desktop controls
+    pathfinding.ts                  # A* pathfinding
+    walkAnimation.ts                # Walk animation
+    regionExpansion.ts              # Dynamic map streaming
+    outfitColors.ts, outfitTint.ts  # Outfit color tinting
+    lighting.ts                     # Day/night ambient lighting
+    devControls.ts                  # Dev toggles UI
+    fileLoader.ts                   # Asset loading
+    BinaryReader.ts                 # Binary parsing utility
+    net/                            # Network protocol
+      Connection.ts, GameClient.ts
+      PacketDispatcher.ts
       InputPacket.ts, OutputPacket.ts
       xtea.ts, opcodes.ts
       loginProtocol.ts, mapParser.ts
       creatureParser.ts, chatProtocol.ts
-    chat/
-      ChatManager.ts              # Chat state management
-  __tests__/                      # 160 unit tests
+    chat/                           # Chat UI, state, speech bubbles
+      ChatManager.ts, ChatUI.ts
+      SpeechBubbleRenderer.ts
+  __tests__/                        # Unit tests
 proxy/
-  server.ts                       # TCP-WebSocket proxy
+  server.ts                         # TCP-WebSocket proxy
 ```
-
-## Next steps
-
-- Wire all modules into a working browser app (file loading, game loop, touch controls)
-- Live server connection with real-time map updates
-- Chat UI with mobile-friendly bottom sheet
-- Speech bubbles above players
 
 ## Contributing
 

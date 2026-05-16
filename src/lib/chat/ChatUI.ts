@@ -152,10 +152,10 @@ export function parseCommand(
   }
 
   if (text.startsWith('/whisper ')) {
-    const rest = text.slice(9);
-    const parts = rest.split(' ');
-    if (parts.length >= 2 && parts[0]) {
-      return protocol.chat.buildPrivateMessage(parts[0], parts.slice(1).join(' '));
+    const rest = text.slice(9).replace(/^\s+/, '');
+    const match = rest.match(/^(\S+)\s+(.+)$/);
+    if (match) {
+      return protocol.chat.buildPrivateMessage(match[1], match[2]);
     }
     return protocol.chat.buildWhisper(rest);
   }
@@ -172,11 +172,9 @@ export function parseCommand(
 }
 
 function parsePrivateOrNull(rest: string, protocol: GameProtocol): OutputPacket | null {
-  const parts = rest.split(' ');
-  const name = parts[0];
-  const msg = parts.slice(1).join(' ');
-  if (name && msg) return protocol.chat.buildPrivateMessage(name, msg);
-  return null;
+  const match = rest.replace(/^\s+/, '').match(/^(\S+)\s+(.+)$/);
+  if (!match) return null;
+  return protocol.chat.buildPrivateMessage(match[1], match[2]);
 }
 
 function escapeHtml(text: string): string {

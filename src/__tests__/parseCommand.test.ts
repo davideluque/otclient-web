@@ -52,4 +52,18 @@ describe('parseCommand', () => {
     expect(packet).not.toBeNull();
     expect(firstMessageType(packet!)).toBe(MessageType.Channel);
   });
+
+  it('/w with extra whitespace still routes to private message', () => {
+    // Regression guard: parser must collapse variable whitespace between
+    // the prefix and the recipient name, or PMs silently drop / misroute.
+    const packet = parseCommand('/w    Alice   hello there', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.PrivateTo);
+  });
+
+  it('/whisper with extra whitespace still routes to private message', () => {
+    const packet = parseCommand('/whisper   Bob   secret', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.PrivateTo);
+  });
 });

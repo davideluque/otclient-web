@@ -115,8 +115,10 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-// Well-known chat constants — stable across most OT versions; per-version
-// implementations override on the protocol if their wire codes differ.
+// Well-known chat constants matching OT 7.6 wire codes. These are
+// pragmatically shared across most OT versions; if a future version's wire
+// codes diverge, expose per-version values on `GameProtocol.chat` instead of
+// importing this constant from caller code.
 export const MessageType = {
   Say: 0x01,
   Whisper: 0x02,
@@ -151,9 +153,13 @@ export interface ProtocolConfig {
   version: number;
   /** Value sent in the login packet's client-version field. May differ from version (e.g. jamera expects 761). */
   clientVersion: number;
-  /** Whether the login packet's credential block is RSA-encrypted. */
+  /**
+   * Whether the login packet's credential block is RSA-encrypted.
+   * Tracked as intent; the canonical 7.6 builder ships plaintext for now —
+   * a real RSA gate will land alongside an implementation in a later PR.
+   */
   useRSA: boolean;
-  /** Whether subsequent game packets are XTEA-encrypted. */
+  /** Whether subsequent game packets are XTEA-encrypted. Enforced by GameClient. */
   useXTEA: boolean;
 }
 

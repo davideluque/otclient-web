@@ -63,9 +63,12 @@ export class GameProtocol implements GameProtocolSpec {
   constructor(config: Partial<ProtocolConfig> = {}) {
     this.config = { ...DEFAULT_76_CONFIG, ...config };
 
+    const { clientVersion } = this.config;
     this.login = {
-      buildLoginRequest: buildLoginPacket,
-      buildGameLogin: buildGameLoginPacket,
+      buildLoginRequest: (accountNumber, password, xteaKey) =>
+        buildLoginPacket(accountNumber, password, xteaKey, clientVersion),
+      buildGameLogin: (accountNumber, characterName, password, xteaKey) =>
+        buildGameLoginPacket(accountNumber, characterName, password, xteaKey, clientVersion),
       parseLoginResponse,
       isLoginError,
     };

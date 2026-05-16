@@ -62,6 +62,21 @@ describe('GameProtocol (7.6)', () => {
       expect(protocol.login.isLoginError(errorResponse)).toBe(true);
       expect(protocol.login.isLoginError(okResponse)).toBe(false);
     });
+
+    it('config.clientVersion flows through to the login packet bytes', () => {
+      // Login packet layout: opcode(1) + os(U16) + clientVersion(U16) + ...
+      // clientVersion sits at byte offset 3..5 (little-endian).
+      const default760 = new GameProtocol();
+      const default760Bytes = default760.login.buildLoginRequest(1, 'pw', XTEA_KEY).toUint8Array();
+      expect(default760Bytes[3] | (default760Bytes[4] << 8)).toBe(760);
+
+      const jamera761 = new GameProtocol({ clientVersion: 761 });
+      const jamera761Bytes = jamera761.login.buildLoginRequest(1, 'pw', XTEA_KEY).toUint8Array();
+      expect(jamera761Bytes[3] | (jamera761Bytes[4] << 8)).toBe(761);
+
+      const gameLoginBytes = jamera761.login.buildGameLogin(1, 'Bruno', 'pw', XTEA_KEY).toUint8Array();
+      expect(gameLoginBytes[3] | (gameLoginBytes[4] << 8)).toBe(761);
+    });
   });
 
   describe('chat', () => {

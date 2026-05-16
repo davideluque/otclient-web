@@ -3,9 +3,8 @@ import { InputPacket } from '../common/InputPacket';
 import type { XteaKey } from '../common/xtea';
 import type { CharacterInfo, LoginResponse, LoginError } from '../common/types';
 
-/** OT 7.6 client version constants. */
 const CLIENT_OS = 2; // Windows
-const CLIENT_VERSION = 760;
+const DEFAULT_CLIENT_VERSION = 760;
 
 /**
  * Build the login server request packet.
@@ -15,13 +14,14 @@ export function buildLoginPacket(
   accountNumber: number,
   password: string,
   xteaKey: XteaKey,
+  clientVersion: number = DEFAULT_CLIENT_VERSION,
 ): OutputPacket {
   const out = new OutputPacket();
 
   out.addU8(0x01); // Login server opcode
 
   out.addU16(CLIENT_OS);
-  out.addU16(CLIENT_VERSION);
+  out.addU16(clientVersion);
 
   // RSA-encrypted block starts here in a real implementation.
   // For now, send plaintext (works with some OT servers configured without RSA).
@@ -48,13 +48,14 @@ export function buildGameLoginPacket(
   characterName: string,
   password: string,
   xteaKey: XteaKey,
+  clientVersion: number = DEFAULT_CLIENT_VERSION,
 ): OutputPacket {
   const out = new OutputPacket();
 
   out.addU8(0x0a); // Game server opcode
 
   out.addU16(CLIENT_OS);
-  out.addU16(CLIENT_VERSION);
+  out.addU16(clientVersion);
 
   // XTEA key
   out.addU32(xteaKey[0]);

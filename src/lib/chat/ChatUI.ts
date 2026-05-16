@@ -135,8 +135,8 @@ export function createChatUI(
  * Parse chat commands: /w name msg, /whisper name msg, /yell msg
  */
 function parseCommand(text: string, activeChannelId: number, protocol: GameProtocol): OutputPacket | null {
-  if (text.startsWith('/w ') || text.startsWith('/whisper ')) {
-    const parts = text.replace(/^\/(w|whisper)\s+/, '').split(' ');
+  if (text.startsWith('/w ')) {
+    const parts = text.slice(3).split(' ');
     const name = parts[0];
     const msg = parts.slice(1).join(' ');
     if (name && msg) return protocol.chat.buildPrivateMessage(name, msg);

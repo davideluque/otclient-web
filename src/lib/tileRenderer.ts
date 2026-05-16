@@ -238,9 +238,6 @@ export function renderTileRegion(
   return { container, animated };
 }
 
-// DEBUG: log tall items (walls) once per unique clientId per session.
-const __wallDebugLogged = new Set<number>();
-
 function renderTile(
   tile: ResolvedTile,
   container: Container,
@@ -259,11 +256,6 @@ function renderTile(
   for (const item of tile.items) {
     const thingType = datIndex.get(item.clientId);
     if (!thingType) {
-      // DEBUG: unmapped client ID
-      if (!__wallDebugLogged.has(-item.clientId)) {
-        __wallDebugLogged.add(-item.clientId);
-        console.log(`[WALL DEBUG] tile (${tile.x},${tile.y},${tile.z}) item clientId=${item.clientId} NOT in datIndex`);
-      }
       continue;
     }
 
@@ -277,24 +269,6 @@ function renderTile(
     const fg = thingType.frameGroup;
     const { width, height, layers, numPatternX, numPatternY, numPatternZ, animationPhases, spriteIds } = fg;
 
-    // DEBUG: log first encounter of each tall item (walls)
-    const isTall = height > 1 || width > 1;
-    const shouldDebug = isTall && !__wallDebugLogged.has(item.clientId);
-    if (shouldDebug) {
-      __wallDebugLogged.add(item.clientId);
-      const onBottom = thingType.attrs.has(DatAttr.OnBottom);
-      const fullGround = thingType.attrs.has(DatAttr.FullGround);
-      const blockProjectile = thingType.attrs.has(DatAttr.BlockProjectile);
-      const ids = spriteIds.slice(0, Math.min(8, spriteIds.length));
-      console.log(
-        `[WALL DEBUG] tile (${tile.x},${tile.y},${tile.z}) clientId=${item.clientId} ` +
-        `w=${width} h=${height} layers=${layers} patX=${numPatternX} patY=${numPatternY} ` +
-        `patZ=${numPatternZ} phases=${animationPhases} ` +
-        `onBottom=${onBottom} fullGround=${fullGround} blockProj=${blockProjectile} ` +
-        `displacement=${JSON.stringify(displacement)} ` +
-        `spriteIds[0..${ids.length}]=[${ids.join(',')}] totalIds=${spriteIds.length}`,
-      );
-    }
     // The (x, y) pattern is picked from the tile's world position so cobble
     // and other ground tiles get their natural-looking variation across a
     // stretch — the cosmetic random Tibia uses to avoid an obvious grid.
@@ -317,21 +291,12 @@ function renderTile(
           const idx = spriteIndex(fg, 0, patX, patY, layer, h, w);
           const id = spriteIds[idx];
           if (!id) {
-            if (shouldDebug) {
-              console.log(`[WALL DEBUG]   piece h=${h} w=${w} layer=${layer} idx=${idx} spriteId=0 (skipped)`);
-            }
             continue;
           }
 
           const texture = getTexture(id);
           if (!texture) {
-            if (shouldDebug) {
-              console.log(`[WALL DEBUG]   piece h=${h} w=${w} layer=${layer} idx=${idx} spriteId=${id} NO TEXTURE (not in atlas)`);
-            }
             continue;
-          }
-          if (shouldDebug) {
-            console.log(`[WALL DEBUG]   piece h=${h} w=${w} layer=${layer} idx=${idx} spriteId=${id} drawn at (${screenX - w * TILE_SIZE - dispX}, ${screenY - h * TILE_SIZE - elevation - dispY})`);
           }
 
           const sprite = new Sprite(texture);

@@ -132,23 +132,36 @@ export function createChatUI(
 }
 
 /**
- * Parse chat commands: /w name msg, /whisper name msg, /yell msg
+ * Parse chat commands:
+ * - /w Name msg → private message to Name
+ * - /whisper Name msg → private message to Name (alias for /w)
+ * - /whisper msg (single word) → local whisper speech
+ * - /yell msg → yell speech
+ *
+ * Ambiguity note: `/whisper Name msg` is treated as private — preserving the
+ * "/whisper Name msg" command contract — so a multi-word local whisper must
+ * be sent without the `/whisper` prefix.
  */
-function parseCommand(text: string, activeChannelId: number, protocol: GameProtocol): OutputPacket | null {
+export function parseCommand(
+  text: string,
+  activeChannelId: number,
+  protocol: GameProtocol,
+): OutputPacket | null {
   if (text.startsWith('/w ')) {
-    const parts = text.slice(3).split(' ');
-    const name = parts[0];
-    const msg = parts.slice(1).join(' ');
-    if (name && msg) return protocol.chat.buildPrivateMessage(name, msg);
-    return null;
+    return parsePrivateOrNull(text.slice(3), protocol);
+  }
+
+  if (text.startsWith('/whisper ')) {
+    const rest = text.slice(9);
+    const parts = rest.split(' ');
+    if (parts.length >= 2 && parts[0]) {
+      return protocol.chat.buildPrivateMessage(parts[0], parts.slice(1).join(' '));
+    }
+    return protocol.chat.buildWhisper(rest);
   }
 
   if (text.startsWith('/yell ')) {
     return protocol.chat.buildYell(text.slice(6));
-  }
-
-  if (text.startsWith('/whisper ')) {
-    return protocol.chat.buildWhisper(text.slice(9));
   }
 
   // Default: send to active channel or as Say
@@ -156,6 +169,14 @@ function parseCommand(text: string, activeChannelId: number, protocol: GameProto
     return protocol.chat.buildSay(text);
   }
   return protocol.chat.buildChannelMessage(activeChannelId, text);
+}
+
+function parsePrivateOrNull(rest: string, protocol: GameProtocol): OutputPacket | null {
+  const parts = rest.split(' ');
+  const name = parts[0];
+  const msg = parts.slice(1).join(' ');
+  if (name && msg) return protocol.chat.buildPrivateMessage(name, msg);
+  return null;
 }
 
 function escapeHtml(text: string): string {

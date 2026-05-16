@@ -63,6 +63,14 @@ export class GameProtocol implements GameProtocolSpec {
   constructor(config: Partial<ProtocolConfig> = {}) {
     this.config = { ...DEFAULT_76_CONFIG, ...config };
 
+    if (this.config.useRSA) {
+      // RSA is not implemented yet; failing here prevents the silent
+      // privacy leak where a caller asks for RSA and gets plaintext.
+      throw new Error(
+        'GameProtocol: useRSA: true is not yet implemented for 7.6 — would silently send credentials in plaintext. Set useRSA: false or wait for the RSA implementation.',
+      );
+    }
+
     const { clientVersion } = this.config;
     this.login = {
       buildLoginRequest: (accountNumber, password, xteaKey) =>

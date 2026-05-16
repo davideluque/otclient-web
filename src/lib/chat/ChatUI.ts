@@ -1,5 +1,6 @@
 import type { ChatManager } from './ChatManager';
 import type { GameProtocol } from '../net/common/types';
+import { ChannelId } from '../net/common/types';
 import type { OutputPacket } from '../net/common/OutputPacket';
 
 export type SendPacketFn = (packet: OutputPacket) => void;
@@ -141,6 +142,11 @@ export function createChatUI(
  * Ambiguity note: `/whisper Name msg` is treated as private — preserving the
  * "/whisper Name msg" command contract — so a multi-word local whisper must
  * be sent without the `/whisper` prefix.
+ *
+ * Unknown commands: any input starting with `/` that doesn't match a known
+ * command above returns null (silent no-op). This prevents typo-driven
+ * privacy leaks — e.g. `/wAlice secret` (missing space) or `/pm Bob secret`
+ * would otherwise fall through to the public Say/channel branch.
  */
 export function parseCommand(
   text: string,
@@ -164,8 +170,14 @@ export function parseCommand(
     return protocol.chat.buildYell(text.slice(6));
   }
 
+  // Any other slash input is an unrecognised command — drop it rather than
+  // leak intended-private text to the public channel.
+  if (text.startsWith('/')) {
+    return null;
+  }
+
   // Default: send to active channel or as Say
-  if (activeChannelId === 0) {
+  if (activeChannelId === ChannelId.Default) {
     return protocol.chat.buildSay(text);
   }
   return protocol.chat.buildChannelMessage(activeChannelId, text);

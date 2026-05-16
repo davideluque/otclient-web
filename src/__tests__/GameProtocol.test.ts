@@ -17,11 +17,16 @@ describe('GameProtocol (7.6)', () => {
     });
 
     it('overrides individual fields via the constructor', () => {
-      const protocol = new GameProtocol({ clientVersion: 761, useRSA: true });
+      const protocol = new GameProtocol({ clientVersion: 761 });
       expect(protocol.config.clientVersion).toBe(761);
-      expect(protocol.config.useRSA).toBe(true);
       expect(protocol.config.version).toBe(760);
       expect(protocol.config.useXTEA).toBe(true);
+    });
+
+    it('throws when useRSA: true is requested (RSA not implemented)', () => {
+      // Privacy guard: caller asking for RSA must not silently receive
+      // plaintext. Fail loud until a real RSA implementation lands.
+      expect(() => new GameProtocol({ useRSA: true })).toThrow(/useRSA/);
     });
   });
 

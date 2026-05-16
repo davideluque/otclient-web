@@ -66,4 +66,35 @@ describe('parseCommand', () => {
     expect(packet).not.toBeNull();
     expect(firstMessageType(packet!)).toBe(MessageType.PrivateTo);
   });
+
+  // ─── Privacy guards: unknown slash commands must NOT leak to public ────
+
+  it('/wAlice secret (missing space after /w) returns null instead of leaking', () => {
+    // Real privacy regression candidate: this looks like a typo'd PM and
+    // would otherwise be sent to public Say.
+    expect(parseCommand('/wAlice secret', ChannelId.Default, protocol)).toBeNull();
+  });
+
+  it('/w (no trailing space) returns null', () => {
+    expect(parseCommand('/w', ChannelId.Default, protocol)).toBeNull();
+  });
+
+  it('/whisper (no trailing space) returns null', () => {
+    expect(parseCommand('/whisper', ChannelId.Default, protocol)).toBeNull();
+  });
+
+  it('/pm Bob secret (unknown command) returns null instead of leaking', () => {
+    expect(parseCommand('/pm Bob secret', ChannelId.Default, protocol)).toBeNull();
+  });
+
+  it('/unknownCommand returns null', () => {
+    expect(parseCommand('/zzz hello', ChannelId.Default, protocol)).toBeNull();
+  });
+
+  it('plain text containing / mid-string still sends to default', () => {
+    // Regression guard: only LEADING `/` is treated as command syntax.
+    const packet = parseCommand('hello/world', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.Say);
+  });
 });

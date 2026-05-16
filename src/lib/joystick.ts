@@ -141,6 +141,39 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
     emit(null);
   }
 
+  function trySetPointerCapture(pointerId: number) {
+    if (typeof base.setPointerCapture !== 'function') return;
+    try {
+      base.setPointerCapture(pointerId);
+    } catch {
+      // The browser can cancel a touch between pointerdown and capture.
+    }
+  }
+
+  function tryReleasePointerCapture(pointerId: number) {
+    if (
+      typeof base.hasPointerCapture !== 'function'
+      || typeof base.releasePointerCapture !== 'function'
+    ) {
+      return;
+    }
+
+    try {
+      if (base.hasPointerCapture(pointerId)) base.releasePointerCapture(pointerId);
+    } catch {
+      // Capture may already be gone after cancellation, blur, or page hide.
+    }
+  }
+
+  function cancelActive() {
+    const pointerId = activePointerId;
+    activePointerId = null;
+    baseRect = null;
+    reset();
+
+    if (pointerId !== null) tryReleasePointerCapture(pointerId);
+  }
+
   /** Compute clamped knob displacement from a pointer event. */
   function knobDelta(e: PointerEvent): { dx: Pixel; dy: Pixel; r: Pixel } | null {
     if (!baseRect) return null;
@@ -166,7 +199,7 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
     if (activePointerId !== null) return;
     activePointerId = e.pointerId;
     baseRect = base.getBoundingClientRect();
-    base.setPointerCapture(e.pointerId);
+    trySetPointerCapture(e.pointerId);
     // Don't emit a direction on touch-down — wait for the drag to
     // establish intent. Just move the knob visually.
     const d = knobDelta(e);
@@ -182,29 +215,47 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
 
   function endActive(e: PointerEvent) {
     if (e.pointerId !== activePointerId) return;
-    activePointerId = null;
-    baseRect = null;
-    reset();
-    if (base.hasPointerCapture(e.pointerId)) base.releasePointerCapture(e.pointerId);
+    cancelActive();
+  }
+
+  function onLostPointerCapture(e: PointerEvent) {
+    if (e.pointerId !== activePointerId) return;
+    cancelActive();
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') cancelActive();
   }
 
   base.addEventListener('pointerdown', onDown);
   base.addEventListener('pointermove', onMove);
   base.addEventListener('pointerup', endActive);
   base.addEventListener('pointercancel', endActive);
+  base.addEventListener('lostpointercapture', onLostPointerCapture);
+  window.addEventListener('pointerup', endActive);
+  window.addEventListener('pointercancel', endActive);
+  window.addEventListener('blur', cancelActive);
+  window.addEventListener('pagehide', cancelActive);
+  document.addEventListener('visibilitychange', onVisibilityChange);
 
   return {
     el: base,
     setVisible(visible: boolean) {
+      if (!visible) cancelActive();
       base.style.display = visible ? 'block' : 'none';
-      // Releasing visibility while held would otherwise leave a stale direction.
-      if (!visible && currentDir !== null) reset();
     },
     destroy() {
+      cancelActive();
       base.removeEventListener('pointerdown', onDown);
       base.removeEventListener('pointermove', onMove);
       base.removeEventListener('pointerup', endActive);
       base.removeEventListener('pointercancel', endActive);
+      base.removeEventListener('lostpointercapture', onLostPointerCapture);
+      window.removeEventListener('pointerup', endActive);
+      window.removeEventListener('pointercancel', endActive);
+      window.removeEventListener('blur', cancelActive);
+      window.removeEventListener('pagehide', cancelActive);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       base.remove();
     },
   };

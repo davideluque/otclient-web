@@ -14,7 +14,7 @@ import {
   parseLoginResponse,
   isLoginError,
 } from './loginProtocol';
-import { parseMapDescription } from './mapParser';
+import { parseMapDescription, parsePosition } from './mapParser';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -91,6 +91,7 @@ export class GameProtocol implements GameProtocolSpec {
     };
 
     this.map = {
+      parsePosition,
       parseDescription: parseMapDescription,
     };
 

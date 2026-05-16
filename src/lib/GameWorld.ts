@@ -91,7 +91,14 @@ export class GameWorld {
   }
 
   private handleMapDescription(packet: InputPacket): void {
-    // Full map around player: 18x14 tiles, floors 0-7
+    // The initial 0x64 frame is prefixed with the player's position; later
+    // movement updates (0x65-0x68) are not.
+    const pos = this.protocol.map.parsePosition(packet);
+    this.playerX = pos.x;
+    this.playerY = pos.y;
+    this.playerZ = pos.z;
+
+    // 18x14 visible area around the player, across all visible floors.
     const startX = this.playerX - 8;
     const startY = this.playerY - 6;
     const endX = this.playerX + 9;

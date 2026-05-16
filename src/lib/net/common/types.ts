@@ -181,13 +181,27 @@ export interface LoginProtocol {
 }
 
 export interface MapProtocol {
+  /**
+   * Consume the 5-byte position prefix `(U16 x, U16 y, U8 z)` that the
+   * server prepends to the initial map description (opcode 0x64). Movement
+   * updates (opcodes 0x65–0x68) do not carry this prefix — only call this
+   * for the initial frame.
+   */
+  parsePosition(packet: InputPacket): { x: number; y: number; z: number };
+
+  /**
+   * Parse a rectangular map region across all currently-visible floors,
+   * based on `playerZ` (the server sends 8 layers above ground or 5
+   * layers underground). A single skip counter carries tiles across
+   * floor boundaries — do not call this once per floor.
+   */
   parseDescription(
     packet: InputPacket,
     startX: number,
     startY: number,
     endX: number,
     endY: number,
-    z: number,
+    playerZ: number,
   ): MapTile[];
 }
 

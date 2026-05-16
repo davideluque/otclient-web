@@ -151,6 +151,24 @@ describe('createJoystick', () => {
     expect(knobTransform()).toBe('translate(calc(-50% + 0px), calc(-50% + 0px))');
   });
 
+  it('releases pointer capture when hasPointerCapture is unavailable', () => {
+    const changes = mountJoystick();
+    const el = handle?.el as HTMLElement;
+    const releasePointerCapture = vi.fn();
+    Object.defineProperties(el, {
+      hasPointerCapture: { configurable: true, value: undefined },
+      releasePointerCapture: { configurable: true, value: releasePointerCapture },
+    });
+
+    el.dispatchEvent(pointer('pointerdown', { pointerId: 9, clientX: 60, clientY: 60 }));
+    el.dispatchEvent(pointer('pointermove', { pointerId: 9, clientX: 110, clientY: 60 }));
+    expect(changes).toEqual([Direction.East]);
+
+    window.dispatchEvent(pointer('pointerup', { pointerId: 9 }));
+    expect(releasePointerCapture).toHaveBeenCalledWith(9);
+    expect(changes).toEqual([Direction.East, null]);
+  });
+
   it('clears active touch state when hidden before a direction is emitted', () => {
     const changes = mountJoystick();
 

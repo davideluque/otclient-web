@@ -151,15 +151,15 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
   }
 
   function tryReleasePointerCapture(pointerId: number) {
-    if (
-      typeof base.hasPointerCapture !== 'function'
-      || typeof base.releasePointerCapture !== 'function'
-    ) {
-      return;
-    }
+    if (typeof base.releasePointerCapture !== 'function') return;
 
     try {
-      if (base.hasPointerCapture(pointerId)) base.releasePointerCapture(pointerId);
+      if (
+        typeof base.hasPointerCapture !== 'function'
+        || base.hasPointerCapture(pointerId)
+      ) {
+        base.releasePointerCapture(pointerId);
+      }
     } catch {
       // Capture may already be gone after cancellation, blur, or page hide.
     }

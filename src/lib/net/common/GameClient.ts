@@ -1,11 +1,19 @@
-import { Connection } from '../common/Connection';
-import { PacketDispatcher } from '../common/PacketDispatcher';
-import { buildLoginPacket, buildGameLoginPacket, parseLoginResponse, isLoginError } from './loginProtocol';
-import type { CharacterInfo, LoginResponse } from './loginProtocol';
-import { generateXteaKey, type XteaKey } from '../common/xtea';
-import type { InputPacket } from '../common/InputPacket';
+import { Connection } from './Connection';
+import { PacketDispatcher } from './PacketDispatcher';
+import { generateXteaKey, type XteaKey } from './xtea';
+import type { InputPacket } from './InputPacket';
+import type {
+  GameProtocol,
+  CharacterInfo,
+  LoginResponse,
+} from './types';
 
-export type GameClientState = 'disconnected' | 'logging_in' | 'character_list' | 'entering_game' | 'in_game';
+export type GameClientState =
+  | 'disconnected'
+  | 'logging_in'
+  | 'character_list'
+  | 'entering_game'
+  | 'in_game';
 
 export interface GameClientEvents {
   onStateChange?: (state: GameClientState) => void;
@@ -17,6 +25,8 @@ export interface GameClientEvents {
 
 /**
  * High-level game client that manages the login flow and game connection.
+ * Protocol-agnostic: receives a GameProtocol implementation via constructor
+ * injection rather than importing version-specific builders/parsers directly.
  */
 export class GameClient {
   private loginConn: Connection;
@@ -25,13 +35,15 @@ export class GameClient {
   private state: GameClientState = 'disconnected';
   private events: GameClientEvents;
   private dispatcher: PacketDispatcher;
+  private protocol: GameProtocol;
   private accountNumber = 0;
   private password = '';
 
-  constructor(proxyUrl: string, events: GameClientEvents) {
+  constructor(proxyUrl: string, events: GameClientEvents, protocol: GameProtocol) {
     this.loginConn = new Connection(proxyUrl);
     this.events = events;
     this.dispatcher = new PacketDispatcher();
+    this.protocol = protocol;
   }
 
   getState(): GameClientState {
@@ -62,7 +74,7 @@ export class GameClient {
 
     try {
       await this.loginConn.connect('/login');
-      const loginPacket = buildLoginPacket(accountNumber, password, this.xteaKey);
+      const loginPacket = this.protocol.login.buildLoginRequest(accountNumber, password, this.xteaKey);
       this.loginConn.send(loginPacket);
     } catch {
       this.setState('disconnected');
@@ -95,14 +107,16 @@ export class GameClient {
 
     try {
       await this.gameConn.connect('/game');
-      const gamePacket = buildGameLoginPacket(
+      const gamePacket = this.protocol.login.buildGameLogin(
         this.accountNumber,
         character.name,
         this.password,
         this.xteaKey,
       );
       this.gameConn.send(gamePacket);
-      this.gameConn.setXteaKey(this.xteaKey);
+      if (this.protocol.config.useXTEA) {
+        this.gameConn.setXteaKey(this.xteaKey);
+      }
       this.setState('in_game');
     } catch {
       this.setState('disconnected');
@@ -116,9 +130,9 @@ export class GameClient {
   }
 
   private handleLoginResponse(packet: InputPacket): void {
-    const response = parseLoginResponse(packet);
+    const response = this.protocol.login.parseLoginResponse(packet);
 
-    if (isLoginError(response)) {
+    if (this.protocol.login.isLoginError(response)) {
       this.events.onLoginError?.(response.message);
       this.setState('disconnected');
       return;

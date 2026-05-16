@@ -1,11 +1,5 @@
 import type { ChatManager } from './ChatManager';
-import {
-  buildSayPacket,
-  buildChannelMessagePacket,
-  buildPrivateMessagePacket,
-  buildWhisperPacket,
-  buildYellPacket,
-} from '../net/7.6/chatProtocol';
+import type { GameProtocol } from '../net/common/types';
 import type { OutputPacket } from '../net/common/OutputPacket';
 
 export type SendPacketFn = (packet: OutputPacket) => void;
@@ -16,6 +10,7 @@ export type SendPacketFn = (packet: OutputPacket) => void;
  */
 export function createChatUI(
   chatManager: ChatManager,
+  protocol: GameProtocol,
   sendPacket: SendPacketFn,
 ): HTMLElement {
   const root = document.createElement('div');
@@ -114,7 +109,7 @@ export function createChatUI(
     if (!text) return;
     inputEl.value = '';
 
-    const packet = parseCommand(text, chatManager.activeChannelId);
+    const packet = parseCommand(text, chatManager.activeChannelId, protocol);
     if (packet) sendPacket(packet);
   }
 
@@ -139,28 +134,28 @@ export function createChatUI(
 /**
  * Parse chat commands: /w name msg, /whisper name msg, /yell msg
  */
-function parseCommand(text: string, activeChannelId: number): OutputPacket | null {
+function parseCommand(text: string, activeChannelId: number, protocol: GameProtocol): OutputPacket | null {
   if (text.startsWith('/w ') || text.startsWith('/whisper ')) {
     const parts = text.replace(/^\/(w|whisper)\s+/, '').split(' ');
     const name = parts[0];
     const msg = parts.slice(1).join(' ');
-    if (name && msg) return buildPrivateMessagePacket(name, msg);
+    if (name && msg) return protocol.chat.buildPrivateMessage(name, msg);
     return null;
   }
 
   if (text.startsWith('/yell ')) {
-    return buildYellPacket(text.slice(6));
+    return protocol.chat.buildYell(text.slice(6));
   }
 
   if (text.startsWith('/whisper ')) {
-    return buildWhisperPacket(text.slice(9));
+    return protocol.chat.buildWhisper(text.slice(9));
   }
 
   // Default: send to active channel or as Say
   if (activeChannelId === 0) {
-    return buildSayPacket(text);
+    return protocol.chat.buildSay(text);
   }
-  return buildChannelMessagePacket(activeChannelId, text);
+  return protocol.chat.buildChannelMessage(activeChannelId, text);
 }
 
 function escapeHtml(text: string): string {

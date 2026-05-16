@@ -1,27 +1,11 @@
 import { OutputPacket } from '../common/OutputPacket';
 import { InputPacket } from '../common/InputPacket';
 import type { XteaKey } from '../common/xtea';
+import type { CharacterInfo, LoginResponse, LoginError } from '../common/types';
 
 /** OT 7.6 client version constants. */
 const CLIENT_OS = 2; // Windows
 const CLIENT_VERSION = 760;
-
-export interface CharacterInfo {
-  name: string;
-  worldName: string;
-  worldIp: string;
-  worldPort: number;
-}
-
-export interface LoginResponse {
-  motd?: string;
-  characters: CharacterInfo[];
-  premiumDays: number;
-}
-
-export interface LoginError {
-  message: string;
-}
 
 /**
  * Build the login server request packet.

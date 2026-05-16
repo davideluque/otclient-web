@@ -1,8 +1,6 @@
 import type { InputPacket } from './net/common/InputPacket';
 import type { PacketDispatcher } from './net/common/PacketDispatcher';
-import { ServerOp } from './net/7.6/opcodes';
-import { parseMapDescription, type MapTile, type MapCreature } from './net/7.6/mapParser';
-import { parseCreatureMove } from './net/7.6/creatureParser';
+import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
 
 export interface WorldCreature {
   id: number;
@@ -38,14 +36,21 @@ export class GameWorld {
   /** Callback when map or creatures change. */
   onChange: (() => void) | null = null;
 
+  private protocol: GameProtocol;
+
+  constructor(protocol: GameProtocol) {
+    this.protocol = protocol;
+  }
+
   registerHandlers(dispatcher: PacketDispatcher): void {
-    dispatcher.on(ServerOp.MapDescription, (p) => this.handleMapDescription(p));
-    dispatcher.on(ServerOp.MoveNorth, (p) => this.handleMoveNorth(p));
-    dispatcher.on(ServerOp.MoveEast, (p) => this.handleMoveEast(p));
-    dispatcher.on(ServerOp.MoveSouth, (p) => this.handleMoveSouth(p));
-    dispatcher.on(ServerOp.MoveWest, (p) => this.handleMoveWest(p));
-    dispatcher.on(ServerOp.CreatureMove, (p) => this.handleCreatureMove(p));
-    dispatcher.on(ServerOp.SelfAppear, (p) => this.handleSelfAppear(p));
+    const op = this.protocol.serverOpcodes;
+    dispatcher.on(op.MapDescription, (p) => this.handleMapDescription(p));
+    dispatcher.on(op.MoveNorth, (p) => this.handleMoveNorth(p));
+    dispatcher.on(op.MoveEast, (p) => this.handleMoveEast(p));
+    dispatcher.on(op.MoveSouth, (p) => this.handleMoveSouth(p));
+    dispatcher.on(op.MoveWest, (p) => this.handleMoveWest(p));
+    dispatcher.on(op.CreatureMove, (p) => this.handleCreatureMove(p));
+    dispatcher.on(op.SelfAppear, (p) => this.handleSelfAppear(p));
   }
 
   getTile(x: number, y: number, z: number): MapTile | undefined {
@@ -92,14 +97,14 @@ export class GameWorld {
     const endX = this.playerX + 9;
     const endY = this.playerY + 7;
 
-    const tiles = parseMapDescription(packet, startX, startY, endX, endY, this.playerZ);
+    const tiles = this.protocol.map.parseDescription(packet, startX, startY, endX, endY, this.playerZ);
     for (const tile of tiles) this.setTile(tile);
     this.onChange?.();
   }
 
   private handleMoveNorth(packet: InputPacket): void {
     this.playerY--;
-    const tiles = parseMapDescription(
+    const tiles = this.protocol.map.parseDescription(
       packet,
       this.playerX - 8, this.playerY - 6,
       this.playerX + 9, this.playerY - 6,
@@ -111,7 +116,7 @@ export class GameWorld {
 
   private handleMoveEast(packet: InputPacket): void {
     this.playerX++;
-    const tiles = parseMapDescription(
+    const tiles = this.protocol.map.parseDescription(
       packet,
       this.playerX + 9, this.playerY - 6,
       this.playerX + 9, this.playerY + 7,
@@ -123,7 +128,7 @@ export class GameWorld {
 
   private handleMoveSouth(packet: InputPacket): void {
     this.playerY++;
-    const tiles = parseMapDescription(
+    const tiles = this.protocol.map.parseDescription(
       packet,
       this.playerX - 8, this.playerY + 7,
       this.playerX + 9, this.playerY + 7,
@@ -135,7 +140,7 @@ export class GameWorld {
 
   private handleMoveWest(packet: InputPacket): void {
     this.playerX--;
-    const tiles = parseMapDescription(
+    const tiles = this.protocol.map.parseDescription(
       packet,
       this.playerX - 8, this.playerY - 6,
       this.playerX - 8, this.playerY + 7,
@@ -146,7 +151,7 @@ export class GameWorld {
   }
 
   private handleCreatureMove(packet: InputPacket): void {
-    const event = parseCreatureMove(packet);
+    const event = this.protocol.creature.parseMove(packet);
     const fromTile = this.getTile(event.fromX, event.fromY, event.fromZ);
     if (fromTile && fromTile.creatures.length > event.fromStack) {
       // Remove creature from source tile

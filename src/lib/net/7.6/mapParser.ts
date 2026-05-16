@@ -1,34 +1,5 @@
 import { InputPacket } from '../common/InputPacket';
-
-export interface MapTileItem {
-  id: number;
-  count?: number;
-}
-
-export interface MapCreature {
-  id: number;
-  name: string;
-  health: number;
-  direction: number;
-  outfit: {
-    lookType: number;
-    head: number;
-    body: number;
-    legs: number;
-    feet: number;
-  };
-  lightLevel: number;
-  lightColor: number;
-  speed: number;
-}
-
-export interface MapTile {
-  x: number;
-  y: number;
-  z: number;
-  items: MapTileItem[];
-  creatures: MapCreature[];
-}
+import type { MapTile, MapTileItem, MapCreature } from '../common/types';
 
 /**
  * Special marker: 0xFF 0xFF means "skip tiles" in the map description.

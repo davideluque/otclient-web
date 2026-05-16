@@ -1,6 +1,5 @@
 import type { InputPacket } from './InputPacket';
 import type { OutputPacket } from './OutputPacket';
-import type { XteaKey } from './xtea';
 
 // ─── Shape types (data shapes exchanged with callers) ──────────────────────
 
@@ -159,15 +158,24 @@ export interface ProtocolConfig {
    * a real RSA gate will land alongside an implementation in a later PR.
    */
   useRSA: boolean;
-  /** Whether subsequent game packets are XTEA-encrypted. Enforced by GameClient. */
+  /** Whether game packets are XTEA-encrypted. Enforced by GameClient. OT 7.6 has no XTEA. */
   useXTEA: boolean;
+  /**
+   * U32 signatures for Tibia.dat / Tibia.spr / Tibia.pic that 7.6 servers
+   * may validate against the client's claimed asset versions. Defaults to
+   * zeros — jamera and some forks ignore them. Real values should be
+   * plumbed in from the asset loaders.
+   */
+  datSignature?: number;
+  sprSignature?: number;
+  picSignature?: number;
 }
 
 // ─── Sub-protocol interfaces ───────────────────────────────────────────────
 
 export interface LoginProtocol {
-  buildLoginRequest(accountNumber: number, password: string, xteaKey: XteaKey): OutputPacket;
-  buildGameLogin(accountNumber: number, characterName: string, password: string, xteaKey: XteaKey): OutputPacket;
+  buildLoginRequest(accountNumber: number, password: string): OutputPacket;
+  buildGameLogin(accountNumber: number, characterName: string, password: string): OutputPacket;
   parseLoginResponse(packet: InputPacket): LoginResponse | LoginError;
   isLoginError(response: LoginResponse | LoginError): response is LoginError;
 }

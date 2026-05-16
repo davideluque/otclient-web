@@ -31,7 +31,7 @@ export interface GameClientEvents {
 export class GameClient {
   private loginConn: Connection;
   private gameConn: Connection | null = null;
-  private xteaKey: XteaKey = [0, 0, 0, 0];
+  private xteaKey: XteaKey | null = null;
   private state: GameClientState = 'disconnected';
   private events: GameClientEvents;
   private dispatcher: PacketDispatcher;
@@ -60,7 +60,6 @@ export class GameClient {
   async login(accountNumber: number, password: string): Promise<void> {
     this.accountNumber = accountNumber;
     this.password = password;
-    this.xteaKey = generateXteaKey();
     this.setState('logging_in');
 
     this.loginConn.setPacketHandler((packet) => {
@@ -74,7 +73,7 @@ export class GameClient {
 
     try {
       await this.loginConn.connect('/login');
-      const loginPacket = this.protocol.login.buildLoginRequest(accountNumber, password, this.xteaKey);
+      const loginPacket = this.protocol.login.buildLoginRequest(accountNumber, password);
       this.loginConn.send(loginPacket);
     } catch {
       this.setState('disconnected');
@@ -89,7 +88,6 @@ export class GameClient {
     this.loginConn.disconnect();
 
     this.gameConn = new Connection(`ws://${character.worldIp}:8090`);
-    this.xteaKey = generateXteaKey();
 
     this.gameConn.setPacketHandler((packet) => {
       this.dispatcher.dispatch(packet);
@@ -111,10 +109,13 @@ export class GameClient {
         this.accountNumber,
         character.name,
         this.password,
-        this.xteaKey,
       );
       this.gameConn.send(gamePacket);
       if (this.protocol.config.useXTEA) {
+        // XTEA was introduced in Tibia 8.0+; the key is generated here so
+        // the protocol implementation can negotiate it before encrypted
+        // game packets start flowing.
+        this.xteaKey = generateXteaKey();
         this.gameConn.setXteaKey(this.xteaKey);
       }
       this.setState('in_game');

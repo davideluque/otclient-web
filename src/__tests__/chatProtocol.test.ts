@@ -7,9 +7,9 @@ import {
   buildWhisperPacket,
   buildYellPacket,
   MessageType,
-} from '../lib/net/chatProtocol';
-import { InputPacket } from '../lib/net/InputPacket';
-import { OutputPacket } from '../lib/net/OutputPacket';
+} from '../lib/net/7.6/chatProtocol';
+import { InputPacket } from '../lib/net/common/InputPacket';
+import { OutputPacket } from '../lib/net/common/OutputPacket';
 
 describe('parseCreatureSpeak', () => {
   it('parses a Say message with position', () => {

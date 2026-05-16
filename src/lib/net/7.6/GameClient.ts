@@ -1,10 +1,10 @@
-import { Connection } from './Connection';
-import { PacketDispatcher } from './PacketDispatcher';
+import { Connection } from '../common/Connection';
+import { PacketDispatcher } from '../common/PacketDispatcher';
 import { buildLoginPacket, buildGameLoginPacket, parseLoginResponse, isLoginError } from './loginProtocol';
 import type { CharacterInfo, LoginResponse } from './loginProtocol';
-import { generateXteaKey } from './xtea';
-import type { XteaKey } from './xtea';
-import type { InputPacket } from './InputPacket';
+import { generateXteaKey } from '../common/xtea';
+import type { XteaKey } from '../common/xtea';
+import type { InputPacket } from '../common/InputPacket';
 
 export type GameClientState = 'disconnected' | 'logging_in' | 'character_list' | 'entering_game' | 'in_game';
 

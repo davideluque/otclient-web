@@ -4,10 +4,10 @@ import {
   buildGameLoginPacket,
   parseLoginResponse,
   isLoginError,
-} from '../lib/net/loginProtocol';
-import { InputPacket } from '../lib/net/InputPacket';
-import { OutputPacket } from '../lib/net/OutputPacket';
-import type { XteaKey } from '../lib/net/xtea';
+} from '../lib/net/7.6/loginProtocol';
+import { InputPacket } from '../lib/net/common/InputPacket';
+import { OutputPacket } from '../lib/net/common/OutputPacket';
+import type { XteaKey } from '../lib/net/common/xtea';
 
 const TEST_KEY: XteaKey = [1, 2, 3, 4];
 

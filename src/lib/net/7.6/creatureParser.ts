@@ -1,4 +1,4 @@
-import { InputPacket } from './InputPacket';
+import { InputPacket } from '../common/InputPacket';
 
 export interface CreatureMoveEvent {
   type: 'move';

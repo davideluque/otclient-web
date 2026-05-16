@@ -1,6 +1,6 @@
-import { OutputPacket } from './OutputPacket';
-import { InputPacket } from './InputPacket';
-import type { XteaKey } from './xtea';
+import { OutputPacket } from '../common/OutputPacket';
+import { InputPacket } from '../common/InputPacket';
+import type { XteaKey } from '../common/xtea';
 
 /** OT 7.6 client version constants. */
 const CLIENT_OS = 2; // Windows

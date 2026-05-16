@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseMapDescription } from '../lib/net/mapParser';
-import { InputPacket } from '../lib/net/InputPacket';
-import { OutputPacket } from '../lib/net/OutputPacket';
+import { parseMapDescription } from '../lib/net/7.6/mapParser';
+import { InputPacket } from '../lib/net/common/InputPacket';
+import { OutputPacket } from '../lib/net/common/OutputPacket';
 
 function pushSkipMarker(out: OutputPacket, skipCount: number) {
   out.addU8(0xff);

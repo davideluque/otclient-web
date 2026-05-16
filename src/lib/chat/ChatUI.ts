@@ -1,6 +1,6 @@
 import type { ChatManager } from './ChatManager';
-import { buildSayPacket, buildChannelMessagePacket, buildPrivateMessagePacket, buildWhisperPacket, buildYellPacket } from '../net/chatProtocol';
-import type { OutputPacket } from '../net/OutputPacket';
+import { buildSayPacket, buildChannelMessagePacket, buildPrivateMessagePacket, buildWhisperPacket, buildYellPacket } from '../net/7.6/chatProtocol';
+import type { OutputPacket } from '../net/common/OutputPacket';
 
 export type SendPacketFn = (packet: OutputPacket) => void;
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { InputPacket } from '../lib/net/InputPacket';
-import { OutputPacket } from '../lib/net/OutputPacket';
+import { InputPacket } from '../lib/net/common/InputPacket';
+import { OutputPacket } from '../lib/net/common/OutputPacket';
 
 describe('OutputPacket', () => {
   it('writes and reads U8', () => {

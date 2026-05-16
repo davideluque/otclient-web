@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { PacketDispatcher } from '../lib/net/PacketDispatcher';
-import { InputPacket } from '../lib/net/InputPacket';
-import { OutputPacket } from '../lib/net/OutputPacket';
+import { PacketDispatcher } from '../lib/net/common/PacketDispatcher';
+import { InputPacket } from '../lib/net/common/InputPacket';
+import { OutputPacket } from '../lib/net/common/OutputPacket';
 
 function makePacket(...opcodes: number[]): InputPacket {
   const out = new OutputPacket();

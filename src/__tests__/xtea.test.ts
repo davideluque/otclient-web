@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { xteaEncrypt, xteaDecrypt, generateXteaKey } from '../lib/net/xtea';
-import type { XteaKey } from '../lib/net/xtea';
+import { xteaEncrypt, xteaDecrypt, generateXteaKey } from '../lib/net/common/xtea';
+import type { XteaKey } from '../lib/net/common/xtea';
 
 const TEST_KEY: XteaKey = [0x01234567, 0x89abcdef, 0xfedcba98, 0x76543210];
 

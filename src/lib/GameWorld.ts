@@ -1,9 +1,9 @@
-import type { InputPacket } from './net/InputPacket';
-import type { PacketDispatcher } from './net/PacketDispatcher';
-import { ServerOp } from './net/opcodes';
-import { parseMapDescription } from './net/mapParser';
-import type { MapTile, MapCreature } from './net/mapParser';
-import { parseCreatureMove } from './net/creatureParser';
+import type { InputPacket } from './net/common/InputPacket';
+import type { PacketDispatcher } from './net/common/PacketDispatcher';
+import { ServerOp } from './net/7.6/opcodes';
+import { parseMapDescription } from './net/7.6/mapParser';
+import type { MapTile, MapCreature } from './net/7.6/mapParser';
+import { parseCreatureMove } from './net/7.6/creatureParser';
 
 export interface WorldCreature {
   id: number;

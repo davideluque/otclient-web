@@ -1,5 +1,5 @@
-import { InputPacket } from './InputPacket';
-import { OutputPacket } from './OutputPacket';
+import { InputPacket } from '../common/InputPacket';
+import { OutputPacket } from '../common/OutputPacket';
 
 // --- Message types (SpeakType in OT 7.6) ---
 

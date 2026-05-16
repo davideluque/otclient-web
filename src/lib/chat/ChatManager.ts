@@ -1,5 +1,5 @@
-import type { ChatMessage } from '../net/chatProtocol';
-import { MessageType, ChannelId } from '../net/chatProtocol';
+import type { ChatMessage } from '../net/7.6/chatProtocol';
+import { MessageType, ChannelId } from '../net/7.6/chatProtocol';
 
 export interface Channel {
   id: number;

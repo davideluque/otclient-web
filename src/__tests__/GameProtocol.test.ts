@@ -4,15 +4,14 @@ import { OutputPacket } from '../lib/net/common/OutputPacket';
 import { InputPacket } from '../lib/net/common/InputPacket';
 import { MessageType } from '../lib/net/common/types';
 
-const XTEA_KEY: [number, number, number, number] = [1, 2, 3, 4];
-
 describe('GameProtocol (7.6)', () => {
   describe('config', () => {
     it('applies the 7.6 defaults when no overrides given', () => {
       const protocol = new GameProtocol();
       expect(protocol.config).toEqual(DEFAULT_76_CONFIG);
       expect(protocol.config.version).toBe(760);
-      expect(protocol.config.useXTEA).toBe(true);
+      // OT 7.6 has no XTEA and no RSA — both came in later versions.
+      expect(protocol.config.useXTEA).toBe(false);
       expect(protocol.config.useRSA).toBe(false);
     });
 
@@ -20,7 +19,7 @@ describe('GameProtocol (7.6)', () => {
       const protocol = new GameProtocol({ clientVersion: 761 });
       expect(protocol.config.clientVersion).toBe(761);
       expect(protocol.config.version).toBe(760);
-      expect(protocol.config.useXTEA).toBe(true);
+      expect(protocol.config.useXTEA).toBe(false);
     });
 
     it('throws when useRSA: true is requested (RSA not implemented)', () => {
@@ -49,14 +48,14 @@ describe('GameProtocol (7.6)', () => {
     const protocol = new GameProtocol();
 
     it('buildLoginRequest produces a non-empty packet starting with the login opcode', () => {
-      const packet = protocol.login.buildLoginRequest(12345, 'secret', XTEA_KEY);
+      const packet = protocol.login.buildLoginRequest(12345, 'secret');
       expect(packet.length).toBeGreaterThan(0);
       const bytes = packet.toUint8Array();
       expect(bytes[0]).toBe(protocol.clientOpcodes.LoginServerRequest);
     });
 
     it('buildGameLogin produces a non-empty packet starting with the game-login opcode', () => {
-      const packet = protocol.login.buildGameLogin(12345, 'Bruno', 'secret', XTEA_KEY);
+      const packet = protocol.login.buildGameLogin(12345, 'Bruno', 'secret');
       const bytes = packet.toUint8Array();
       expect(bytes[0]).toBe(protocol.clientOpcodes.GameServerRequest);
     });
@@ -72,15 +71,29 @@ describe('GameProtocol (7.6)', () => {
       // Login packet layout: opcode(1) + os(U16) + clientVersion(U16) + ...
       // clientVersion sits at byte offset 3..5 (little-endian).
       const default760 = new GameProtocol();
-      const default760Bytes = default760.login.buildLoginRequest(1, 'pw', XTEA_KEY).toUint8Array();
+      const default760Bytes = default760.login.buildLoginRequest(1, 'pw').toUint8Array();
       expect(default760Bytes[3] | (default760Bytes[4] << 8)).toBe(760);
 
       const jamera761 = new GameProtocol({ clientVersion: 761 });
-      const jamera761Bytes = jamera761.login.buildLoginRequest(1, 'pw', XTEA_KEY).toUint8Array();
+      const jamera761Bytes = jamera761.login.buildLoginRequest(1, 'pw').toUint8Array();
       expect(jamera761Bytes[3] | (jamera761Bytes[4] << 8)).toBe(761);
 
-      const gameLoginBytes = jamera761.login.buildGameLogin(1, 'Bruno', 'pw', XTEA_KEY).toUint8Array();
+      const gameLoginBytes = jamera761.login.buildGameLogin(1, 'Bruno', 'pw').toUint8Array();
       expect(gameLoginBytes[3] | (gameLoginBytes[4] << 8)).toBe(761);
+    });
+
+    it('config file signatures flow through to the login packet bytes', () => {
+      // File sigs sit at offset 5..17 (3 × U32 after the 5-byte header).
+      const protocol = new GameProtocol({
+        datSignature: 0xaabbccdd,
+        sprSignature: 0x11223344,
+        picSignature: 0x55667788,
+      });
+      const inp = new InputPacket(protocol.login.buildLoginRequest(1, 'pw').toArrayBuffer());
+      inp.skip(5); // opcode + os + version
+      expect(inp.getU32()).toBe(0xaabbccdd);
+      expect(inp.getU32()).toBe(0x11223344);
+      expect(inp.getU32()).toBe(0x55667788);
     });
   });
 

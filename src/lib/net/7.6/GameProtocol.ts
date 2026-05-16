@@ -35,14 +35,18 @@ import { ServerOp, ClientOp } from './opcodes';
 
 /**
  * Default config for the canonical OT 7.6 protocol.
- * Jamera and other server variants override individual fields via the
- * constructor argument.
+ *
+ * 7.6 has no RSA and no XTEA — those came in later Tibia versions. Server
+ * variants (e.g. jamera) override individual fields via the constructor:
+ * jamera bumps `clientVersion` to 761 but stays on the no-encryption
+ * defaults. File signatures default to zeros — real values should be
+ * plumbed from the asset loaders once .dat/.spr/.pic load is wired up.
  */
 export const DEFAULT_76_CONFIG: ProtocolConfig = {
   version: 760,
   clientVersion: 760,
   useRSA: false,
-  useXTEA: true,
+  useXTEA: false,
 };
 
 /**
@@ -71,12 +75,17 @@ export class GameProtocol implements GameProtocolSpec {
       );
     }
 
-    const { clientVersion } = this.config;
+    const { clientVersion, datSignature, sprSignature, picSignature } = this.config;
+    const signatures = {
+      dat: datSignature ?? 0,
+      spr: sprSignature ?? 0,
+      pic: picSignature ?? 0,
+    };
     this.login = {
-      buildLoginRequest: (accountNumber, password, xteaKey) =>
-        buildLoginPacket(accountNumber, password, xteaKey, clientVersion),
-      buildGameLogin: (accountNumber, characterName, password, xteaKey) =>
-        buildGameLoginPacket(accountNumber, characterName, password, xteaKey, clientVersion),
+      buildLoginRequest: (accountNumber, password) =>
+        buildLoginPacket(accountNumber, password, clientVersion, signatures),
+      buildGameLogin: (accountNumber, characterName, password) =>
+        buildGameLoginPacket(accountNumber, characterName, password, clientVersion),
       parseLoginResponse,
       isLoginError,
     };

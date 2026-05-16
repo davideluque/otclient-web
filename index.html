@@ -17,6 +17,22 @@
          ourselves. iOS Safari ignores user-scalable=no since iOS 10,
          so this CSS rule is the only reliable way. */
       html, body, canvas { touch-action: none; }
+      /* Kill iOS long-press text selection + callout menu on game UI.
+         Without -webkit-touch-callout, long-pressing the joystick, Dev
+         button, or canvas pops up the "Copy/Look Up" sheet and selects
+         nearby text. -webkit-user-select is the iOS Safari prefix that
+         the unprefixed user-select doesn't cover. Inputs opt back in
+         below so chat is still typable/selectable. */
+      html, body {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      input, textarea, [contenteditable="true"] {
+        -webkit-touch-callout: default;
+        -webkit-user-select: text;
+        user-select: text;
+      }
       /* `-webkit-fill-available` gives iOS Safari/PWA the actually-visible
          viewport height (post-status-bar layout), avoiding the
          pre-layout-measured `100%` that leaves a black strip at the top

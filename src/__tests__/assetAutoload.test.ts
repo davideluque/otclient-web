@@ -134,7 +134,7 @@ describe('tryAutoload', () => {
     expect(lastCall?.[1]).toBe(true);
   });
 
-  it('emits an Auto-loading status as soon as the manifest is validated', async () => {
+  it('emits a Loading status as soon as the manifest is validated', async () => {
     let resolveDat: (r: Response) => void = () => {};
     const datPromise = new Promise<Response>(r => { resolveDat = r; });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -152,10 +152,28 @@ describe('tryAutoload', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(opts.onStatus).toHaveBeenCalled();
-    expect(opts.onStatus.mock.calls[0][0]).toMatch(/auto-loading/i);
+    expect(opts.onStatus.mock.calls[0][0]).toMatch(/loading/i);
 
     resolveDat(bufResponse(1));
     await run;
+  });
+
+  it('reports an error status when fetch rejects after manifest succeeds', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('manifest.json')) return Promise.resolve(jsonResponse(VALID_MANIFEST));
+      // All asset fetches throw — simulates network failure, CORS, abort.
+      return Promise.reject(new TypeError('NetworkError'));
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+    const opts = makeOptions();
+
+    const ok = await tryAutoload(opts);
+
+    expect(ok).toBe(false);
+    expect(opts.startApp).not.toHaveBeenCalled();
+    const lastCall = opts.onStatus.mock.calls.at(-1);
+    expect(lastCall?.[1]).toBe(true);
+    expect(lastCall?.[0]).toMatch(/could not load/i);
   });
 
   it('targets the version folder from ?version=<v>', async () => {

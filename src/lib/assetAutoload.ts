@@ -69,8 +69,9 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
   // and look like it's waiting for input. A later file 404 (partial folder)
   // is treated as a config error with an explicit message rather than a
   // silent fallback: if the user set up the folder, they want to know what
-  // went wrong.
-  options.onStatus(`Auto-loading ${version} assets...`);
+  // went wrong. Network/parse errors get a generic error message so the
+  // status doesn't stay stuck on "Loading...".
+  options.onStatus('Loading assets...');
 
   try {
     const responses = await Promise.all(
@@ -80,7 +81,7 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
       if (!responses[i].ok) {
         const missing = manifest.files[FILE_KEYS[i]];
         options.onStatus(
-          `Auto-load failed: ${missing} not found. Drop files to load manually.`,
+          `Could not load ${missing}. Drop files to load manually.`,
           true,
         );
         return false;
@@ -95,11 +96,11 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
       options.addFileToList(`${name} (${(buffers[i].byteLength / 1024).toFixed(0)} KB)`);
     });
 
-    options.onStatus(`Auto-loaded ${version} assets — loading...`);
     await options.startApp(loaded);
     return true;
   } catch (e) {
     console.warn('Asset autoload failed, falling back to manual upload:', e);
+    options.onStatus('Could not load assets. Drop files to load manually.', true);
     return false;
   }
 }

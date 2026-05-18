@@ -64,15 +64,27 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
     return false;
   }
 
-  // Status is intentionally NOT touched until we know all four fetches
-  // succeeded. On a partial-folder fallback we leave the status untouched
-  // so the manual upload UI shows its default state.
+  // Manifest succeeded — autoload is committed. Surface that to the user
+  // immediately so the drop-zone doesn't sit there during the .spr fetch
+  // and look like it's waiting for input. A later file 404 (partial folder)
+  // is treated as a config error with an explicit message rather than a
+  // silent fallback: if the user set up the folder, they want to know what
+  // went wrong.
+  options.onStatus(`Auto-loading ${version} assets...`);
+
   try {
     const responses = await Promise.all(
       FILE_KEYS.map(key => fetch(`${base}/${manifest.files[key]}`)),
     );
-    for (const res of responses) {
-      if (!res.ok) return false;
+    for (let i = 0; i < responses.length; i++) {
+      if (!responses[i].ok) {
+        const missing = manifest.files[FILE_KEYS[i]];
+        options.onStatus(
+          `Auto-load failed: ${missing} not found. Drop files to load manually.`,
+          true,
+        );
+        return false;
+      }
     }
 
     const buffers = await Promise.all(responses.map(r => r.arrayBuffer()));

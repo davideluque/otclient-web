@@ -3,8 +3,14 @@
 // fallback on any miss. Remove by deleting this file + its two lines in
 // main.ts. Version resolves from ?version=<v>, then VITE_CLIENT_VERSION,
 // then DEFAULT_VERSION.
+//
+// Also checks the IndexedDB cache (assetCache.ts) before hitting the
+// network — this is what makes the installed PWA boot instantly and work
+// offline once the assets have been seen at least once.
 
 import type { CompleteLoadedFiles } from './fileLoader';
+import { resolveVersion } from './clientVersion';
+import { getCached } from './assetCache';
 
 type FileKey = keyof CompleteLoadedFiles;
 
@@ -13,20 +19,12 @@ interface Manifest {
 }
 
 const FILE_KEYS: readonly FileKey[] = ['dat', 'spr', 'otb', 'otbm'] as const;
-const DEFAULT_VERSION = '760';
 
 function isValidManifest(value: unknown): value is Manifest {
   if (!value || typeof value !== 'object') return false;
   const files = (value as { files?: unknown }).files;
   if (!files || typeof files !== 'object') return false;
   return FILE_KEYS.every(k => typeof (files as Record<string, unknown>)[k] === 'string');
-}
-
-function resolveVersion(): string {
-  const fromUrl = new URLSearchParams(window.location.search).get('version');
-  if (fromUrl) return fromUrl;
-  const fromEnv = import.meta.env.VITE_CLIENT_VERSION as string | undefined;
-  return fromEnv || DEFAULT_VERSION;
 }
 
 function baseFor(version: string): string {
@@ -47,6 +45,17 @@ export interface AutoloadOptions {
  */
 export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
   const version = resolveVersion();
+
+  // Cache first — if we've booted with these assets before, skip the
+  // network entirely. This is the PWA install-and-go path: first run pays
+  // the network/upload cost, every subsequent run reads from IndexedDB.
+  const cached = await getCached(version);
+  if (cached) {
+    options.onStatus('Loading cached assets...');
+    await options.startApp(cached);
+    return true;
+  }
+
   const base = baseFor(version);
 
   // Probe manifest first. Missing / non-JSON / wrong shape = silent fallback.

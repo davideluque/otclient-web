@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tryAutoload, type AutoloadOptions } from '../lib/assetAutoload';
+import { putCached } from '../lib/assetCache';
 
 const VALID_MANIFEST = {
   files: { dat: 'Tibia.dat', spr: 'Tibia.spr', otb: 'items.otb', otbm: 'world.otbm' },
@@ -30,6 +33,11 @@ function makeOptions() {
 }
 
 const originalFetch = globalThis.fetch;
+
+beforeEach(() => {
+  // Fresh IDB per test so a cache hit in one case doesn't satisfy the next.
+  globalThis.indexedDB = new IDBFactory();
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -146,12 +154,12 @@ describe('tryAutoload', () => {
     const opts = makeOptions();
 
     const run = tryAutoload(opts);
-    // Yield until the manifest microtasks complete and onStatus fires,
-    // before the .dat fetch resolves.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(opts.onStatus).toHaveBeenCalled();
+    // Wait for the manifest-validated status to fire, before the .dat
+    // fetch ever resolves. vi.waitFor handles the IDB + fetch microtask
+    // chain without coupling the test to its exact length.
+    await vi.waitFor(() => {
+      expect(opts.onStatus).toHaveBeenCalled();
+    });
     expect(opts.onStatus.mock.calls[0][0]).toMatch(/loading/i);
 
     resolveDat(bufResponse(1));
@@ -201,5 +209,24 @@ describe('tryAutoload', () => {
     await tryAutoload(makeOptions());
 
     expect(seen[0].startsWith(import.meta.env.BASE_URL)).toBe(true);
+  });
+
+  it('skips the network when the cache has a bundle for this version', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as typeof fetch;
+    const opts = makeOptions();
+
+    const ok = await tryAutoload(opts);
+
+    expect(ok).toBe(true);
+    expect(opts.startApp).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(opts.onStatus.mock.calls[0][0]).toMatch(/cached/i);
   });
 });

@@ -31,6 +31,8 @@ import {
 } from './lib/lighting';
 import { createFileLoader } from './lib/fileLoader';
 import { tryAutoload } from './lib/assetAutoload';
+import { putCached } from './lib/assetCache';
+import { resolveVersion } from './lib/clientVersion';
 import type { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
@@ -74,6 +76,12 @@ async function startAppOnce(loaded: CompleteLoadedFiles): Promise<void> {
   bootStarted = true;
   try {
     await startApp(loaded);
+    // Boot succeeded — stash for next launch so the installed PWA opens
+    // instantly without re-fetching or asking for an upload. Fire-and-forget;
+    // a cache write failure must never break the running app.
+    putCached(resolveVersion(), loaded).catch(err =>
+      console.warn('asset cache write failed:', err),
+    );
   } catch (e) {
     bootStarted = false;
     throw e;

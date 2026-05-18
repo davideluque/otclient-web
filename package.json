@@ -19,6 +19,7 @@
     "@types/node": "^25.8.0",
     "@types/ws": "^8.18.1",
     "eslint": "^10.4.0",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.9.0",
     "jsdom": "^29.1.1",
     "tsx": "^4.22.1",

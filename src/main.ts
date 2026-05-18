@@ -21,6 +21,8 @@ import type { WalkState } from './lib/walkAnimation';
 import { createJoystick } from './lib/joystick';
 import { createKeyboard } from './lib/keyboard';
 import { createDevControls } from './lib/devControls';
+import { createStatusHUD } from './lib/statusHUD';
+import { createCreatureOverlay } from './lib/creatureOverlay';
 import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
@@ -255,6 +257,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
   let currentPlayerSprite: Container | null = null;
+  // Placeholder name/HP/mana — visible while we develop the UI. Once
+  // the server stat packets are wired into GameWorld, these become
+  // server-driven and the StatusHUD + creature overlay re-read them.
+  const playerStatus = {
+    name: 'Player',
+    hp: 150, hpMax: 200,
+    mana: 100, manaMax: 100,
+  };
   let walkState: WalkState | null = null;
   // The most recently computed walk offset (pixels). Cached so rebuildTiles
   // and the walk ticker share one source of truth — avoids duplicating the
@@ -376,6 +386,22 @@ async function startApp(loaded: CompleteLoadedFiles) {
         playerSprite.y = lastWalkOffsetY;
       }
       tileContainer.addChild(playerSprite);
+
+      // Attach the classic above-head bar + name to the player. Rebuilt
+      // each tile rebuild — destroyed with playerSprite when tileContainer
+      // is replaced. The position math mirrors renderPlayer's anchor:
+      // sprite top-left is at (player.x*TS - dispX, player.y*TS - dispY)
+      // for the typical 1x1 creature; center horizontally at +TS/2 and
+      // sit a couple px above the sprite's top edge.
+      const creatureType = creatureIndex.get(player.outfit.lookType);
+      const disp = creatureType?.attrs.get(DatAttr.Displacement);
+      const dispX = typeof disp === 'object' && disp && 'x' in disp ? disp.x : 0;
+      const dispY = typeof disp === 'object' && disp && 'y' in disp ? disp.y : 0;
+      const hpPercent = (playerStatus.hp / Math.max(1, playerStatus.hpMax)) * 100;
+      const overlay = createCreatureOverlay(playerStatus.name, hpPercent);
+      overlay.container.x = player.x * TILE_SIZE - dispX + TILE_SIZE / 2;
+      overlay.container.y = player.y * TILE_SIZE - dispY - 2;
+      playerSprite.addChild(overlay.container);
     }
     currentPlayerSprite = playerSprite;
     tileContainer.addChild(below.container);
@@ -818,6 +844,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
     lastPinchDist = dist;
   }, { passive: false });
   app.canvas.addEventListener('touchend', () => { lastPinchDist = 0; }, { passive: true });
+
+  // --- Status HUD ---
+  // Top-left HP / Mana panel. Driven by `playerStatus` placeholders for
+  // now; will read from server-driven values once stat packets land.
+  const statusHUD = createStatusHUD();
+  statusHUD.setHp(playerStatus.hp, playerStatus.hpMax);
+  statusHUD.setMana(playerStatus.mana, playerStatus.manaMax);
 
   // --- Dev controls panel ---
   const devControls = createDevControls([

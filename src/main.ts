@@ -65,11 +65,19 @@ function addFileToList(name: string) {
 // still in flight. Wrap startApp so whichever path completes first wins;
 // the other becomes a no-op. Without this, both paths can init Pixi twice
 // (duplicate canvas, listeners, workers).
+//
+// Reset on throw so a failed autoload (corrupt/incompatible assets) doesn't
+// permanently block the manual upload retry path.
 let bootStarted = false;
 async function startAppOnce(loaded: CompleteLoadedFiles): Promise<void> {
   if (bootStarted) return;
   bootStarted = true;
-  await startApp(loaded);
+  try {
+    await startApp(loaded);
+  } catch (e) {
+    bootStarted = false;
+    throw e;
+  }
 }
 
 const handleFiles = createFileLoader({

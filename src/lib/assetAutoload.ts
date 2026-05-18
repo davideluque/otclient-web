@@ -1,64 +1,37 @@
-// Optional auto-loader. If a per-version asset folder exists under public/
-// with the expected filenames, fetches all four files on startup and skips
-// the manual upload UI. Silent fallback on any miss — the manual drop-zone
-// continues to work exactly as before.
-//
-// To remove the feature entirely: delete this file plus the two lines in
-// src/main.ts that import and call tryAutoload(). Nothing else depends on
-// it.
-//
-// To add a new client version: drop the four files in
-// public/assets/<version>/ using the canonical names below and add an entry
-// to MANIFESTS. Per-version overrides exist because some clients diverge
-// from the stock naming (different items.otb shipment, etc.).
-//
-// Active version resolution order:
-//   1. ?version=<v>     URL query string
-//   2. VITE_CLIENT_VERSION   build-time env (.env / .env.local)
-//   3. DEFAULT_VERSION  fallback
-//
-// Folder & filename convention follows the real Tibia client where
-// possible: Tibia.dat, Tibia.spr, items.otb. The map is named world.otbm
-// for consistency with TFS server distributions.
+// Optional auto-loader: if public/assets/<version>/manifest.json exists,
+// fetches the four files it lists instead of showing the upload UI. Silent
+// fallback on any miss. Remove by deleting this file + its two lines in
+// main.ts. Version resolves from ?version=<v>, then VITE_CLIENT_VERSION,
+// then DEFAULT_VERSION.
 
 import type { CompleteLoadedFiles } from './fileLoader';
 
 type FileKey = keyof CompleteLoadedFiles;
 
-interface VersionManifest {
-  // Path under the deployed base, no leading slash. Joined with
-  // import.meta.env.BASE_URL so the autoload still works when the app is
-  // mounted at a subpath (GitHub Pages, reverse proxy, etc.).
-  base: string;
+interface Manifest {
   files: Record<FileKey, string>;
 }
 
-const CANONICAL_FILES: Record<FileKey, string> = {
-  dat: 'Tibia.dat',
-  spr: 'Tibia.spr',
-  otb: 'items.otb',
-  otbm: 'world.otbm',
-};
-
-const MANIFESTS: Record<string, VersionManifest> = {
-  '760': { base: 'assets/760', files: CANONICAL_FILES },
-  // Future versions: add manifests here and create public/assets/<v>/.
-  // '810': { base: 'assets/810', files: CANONICAL_FILES },
-  // '860': { base: 'assets/860', files: CANONICAL_FILES },
-};
-
-function assetUrl(manifest: VersionManifest, key: FileKey): string {
-  return `${import.meta.env.BASE_URL}${manifest.base}/${manifest.files[key]}`;
-}
-
-const DEFAULT_VERSION = '760';
 const FILE_KEYS: readonly FileKey[] = ['dat', 'spr', 'otb', 'otbm'] as const;
+const DEFAULT_VERSION = '760';
+
+function isValidManifest(value: unknown): value is Manifest {
+  if (!value || typeof value !== 'object') return false;
+  const files = (value as { files?: unknown }).files;
+  if (!files || typeof files !== 'object') return false;
+  return FILE_KEYS.every(k => typeof (files as Record<string, unknown>)[k] === 'string');
+}
 
 function resolveVersion(): string {
   const fromUrl = new URLSearchParams(window.location.search).get('version');
   if (fromUrl) return fromUrl;
   const fromEnv = import.meta.env.VITE_CLIENT_VERSION as string | undefined;
   return fromEnv || DEFAULT_VERSION;
+}
+
+function baseFor(version: string): string {
+  // Prefixed with import.meta.env.BASE_URL so subpath deploys still resolve.
+  return `${import.meta.env.BASE_URL}assets/${version}`;
 }
 
 export interface AutoloadOptions {
@@ -69,19 +42,24 @@ export interface AutoloadOptions {
 
 /**
  * Returns true if assets were found and startApp was launched.
- * Returns false if the folder is absent or any expected file is missing —
- * caller should then show the manual upload UI.
+ * Returns false (silently) if the manifest is absent/malformed or any
+ * listed file 404s — caller falls back to the manual upload UI.
  */
 export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
   const version = resolveVersion();
-  const manifest = MANIFESTS[version];
-  if (!manifest) return false;
+  const base = baseFor(version);
 
-  // Cheap presence probe: if even the .dat isn't there, don't fire the rest.
-  // Keeps the console quiet when the folder isn't populated.
+  // Probe manifest first. Missing / non-JSON / wrong shape = silent fallback.
+  let manifest: Manifest;
   try {
-    const probe = await fetch(assetUrl(manifest, 'dat'), { method: 'HEAD' });
-    if (!probe.ok) return false;
+    const res = await fetch(`${base}/manifest.json`);
+    if (!res.ok) return false;
+    const json: unknown = await res.json();
+    if (!isValidManifest(json)) {
+      console.warn(`Asset autoload: malformed manifest at ${base}/manifest.json`);
+      return false;
+    }
+    manifest = json;
   } catch {
     return false;
   }
@@ -90,7 +68,9 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
   // succeeded. On a partial-folder fallback we leave the status untouched
   // so the manual upload UI shows its default state.
   try {
-    const responses = await Promise.all(FILE_KEYS.map(key => fetch(assetUrl(manifest, key))));
+    const responses = await Promise.all(
+      FILE_KEYS.map(key => fetch(`${base}/${manifest.files[key]}`)),
+    );
     for (const res of responses) {
       if (!res.ok) return false;
     }
@@ -107,7 +87,6 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
     await options.startApp(loaded);
     return true;
   } catch (e) {
-    // Network/parse error during autoload — let the user upload manually.
     console.warn('Asset autoload failed, falling back to manual upload:', e);
     return false;
   }

@@ -68,7 +68,9 @@ export function createCreatureOverlay(name: string, healthPercent = 100): Creatu
     text: name,
     style: new TextStyle({
       fontFamily: 'Verdana, "DejaVu Sans", sans-serif',
-      fontSize: 11,
+      // OTClient ships an 11px bitmap font for desktop; on phones that
+      // reads too large at our scale, so render ~18% smaller.
+      fontSize: 9,
       fontWeight: 'bold',
       fill: colorForPercent(healthPercent),
       stroke: { color: 0x000000, width: 2 },

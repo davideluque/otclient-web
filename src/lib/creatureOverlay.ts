@@ -71,9 +71,11 @@ export function createCreatureOverlay(name: string, healthPercent = 100): Creatu
       // OTClient ships an 11px bitmap font for desktop; on phones that
       // reads too large at our scale, so render ~18% smaller.
       fontSize: 9,
-      fontWeight: 'bold',
       fill: colorForPercent(healthPercent),
-      stroke: { color: 0x000000, width: 2 },
+      // 1px stroke matches OTClient's bitmap-font outline thickness;
+      // a 2px stroke + bold weight made the text read significantly
+      // heavier than the original.
+      stroke: { color: 0x000000, width: 1 },
       align: 'center',
     }),
   });

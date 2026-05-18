@@ -26,6 +26,8 @@ const NAME_GAP = 2;
 const HEALTHY = 0x4caf50;
 const WOUNDED = 0xe4b333;
 const CRITICAL = 0xc83737;
+const THRESHOLD_HEALTHY = 60;
+const THRESHOLD_WOUNDED = 30;
 
 const NAME_STYLE = new TextStyle({
   fontFamily: 'system-ui, sans-serif',
@@ -39,7 +41,7 @@ const NAME_STYLE = new TextStyle({
  * Build the overlay. The container's local origin (0, 0) is the
  * bottom-center of the bar, so the caller positions it by setting
  * `container.x = centerX; container.y = barBottomY`. The name renders
- * above the bar; the bar fill grows leftward from the right edge.
+ * above the bar; the bar fill grows rightward from the left edge.
  */
 export function createCreatureOverlay(name: string, healthPercent = 100): CreatureOverlay {
   const container = new Container();
@@ -55,7 +57,7 @@ export function createCreatureOverlay(name: string, healthPercent = 100): Creatu
   function draw(percent: number) {
     const clamped = Math.max(0, Math.min(100, percent));
     const fillWidth = (BAR_WIDTH * clamped) / 100;
-    const color = clamped > 60 ? HEALTHY : clamped > 30 ? WOUNDED : CRITICAL;
+    const color = clamped > THRESHOLD_HEALTHY ? HEALTHY : clamped > THRESHOLD_WOUNDED ? WOUNDED : CRITICAL;
 
     bar.clear();
     bar.rect(-BAR_WIDTH / 2, -BAR_HEIGHT, BAR_WIDTH, BAR_HEIGHT).fill(BAR_BG);

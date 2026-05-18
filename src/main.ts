@@ -23,6 +23,7 @@ import { createKeyboard } from './lib/keyboard';
 import { createDevControls } from './lib/devControls';
 import { createStatusHUD } from './lib/statusHUD';
 import { createCreatureOverlay } from './lib/creatureOverlay';
+import type { CreatureOverlay } from './lib/creatureOverlay';
 import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
@@ -257,6 +258,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
   let currentPlayerSprite: Container | null = null;
+  // Persistent above-head bar + name. Kept across tile rebuilds so the
+  // PIXI.Text inside isn't re-created each time — it's detached from the
+  // old playerSprite before destroy() and re-parented to the new one.
+  let playerOverlay: CreatureOverlay | null = null;
   // Placeholder name/HP/mana — visible while we develop the UI. Once
   // the server stat packets are wired into GameWorld, these become
   // server-driven and the StatusHUD + creature overlay re-read them.
@@ -289,6 +294,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   function rebuildTiles() {
     if (tileContainer) {
+      // Detach the persistent player overlay before destroy({children: true})
+      // would otherwise recursively destroy it along with the old playerSprite.
+      if (playerOverlay && currentPlayerSprite) {
+        currentPlayerSprite.removeChild(playerOverlay.container);
+      }
       app.stage.removeChild(tileContainer);
       tileContainer.destroy({ children: true });
     }
@@ -387,10 +397,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
       }
       tileContainer.addChild(playerSprite);
 
-      // Attach the classic above-head bar + name to the player. Rebuilt
-      // each tile rebuild — destroyed with playerSprite when tileContainer
-      // is replaced. The position math mirrors renderPlayer's anchor:
-      // sprite top-left is at (player.x*TS - dispX, player.y*TS - dispY)
+      // Attach the persistent above-head bar + name. The overlay's
+      // PIXI.Text is created once on first rebuild and re-parented to
+      // each new playerSprite — avoids the per-rebuild texture upload
+      // a fresh Text would incur. Position math mirrors renderPlayer's
+      // anchor: sprite top-left is at (player.x*TS - dispX, player.y*TS - dispY)
       // for the typical 1x1 creature; center horizontally at +TS/2 and
       // sit a couple px above the sprite's top edge.
       const creatureType = creatureIndex.get(player.outfit.lookType);
@@ -398,10 +409,15 @@ async function startApp(loaded: CompleteLoadedFiles) {
       const dispX = typeof disp === 'object' && disp && 'x' in disp ? disp.x : 0;
       const dispY = typeof disp === 'object' && disp && 'y' in disp ? disp.y : 0;
       const hpPercent = (playerStatus.hp / Math.max(1, playerStatus.hpMax)) * 100;
-      const overlay = createCreatureOverlay(playerStatus.name, hpPercent);
-      overlay.container.x = player.x * TILE_SIZE - dispX + TILE_SIZE / 2;
-      overlay.container.y = player.y * TILE_SIZE - dispY - 2;
-      playerSprite.addChild(overlay.container);
+      if (!playerOverlay) {
+        playerOverlay = createCreatureOverlay(playerStatus.name, hpPercent);
+      } else {
+        playerOverlay.setName(playerStatus.name);
+        playerOverlay.setHealth(hpPercent);
+      }
+      playerOverlay.container.x = player.x * TILE_SIZE - dispX + TILE_SIZE / 2;
+      playerOverlay.container.y = player.y * TILE_SIZE - dispY - 2;
+      playerSprite.addChild(playerOverlay.container);
     }
     currentPlayerSprite = playerSprite;
     tileContainer.addChild(below.container);

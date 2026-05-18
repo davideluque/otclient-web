@@ -30,6 +30,7 @@ import {
   type LightingOptions,
 } from './lib/lighting';
 import { createFileLoader } from './lib/fileLoader';
+import { tryAutoload } from './lib/assetAutoload';
 import type { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
@@ -65,6 +66,11 @@ const handleFiles = createFileLoader({
   startApp,
   onError: console.error,
 });
+
+// Attempt to auto-load assets from a per-version folder under public/.
+// Silently no-ops if the folder/files aren't there, leaving the manual
+// upload UI below as the fallback. See src/lib/assetAutoload.ts.
+tryAutoload({ onStatus: setStatus, addFileToList, startApp }).catch(console.error);
 
 // Drag and drop
 dropZone.addEventListener('dragover', (e) => {

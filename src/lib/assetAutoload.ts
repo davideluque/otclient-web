@@ -26,6 +26,9 @@ import type { CompleteLoadedFiles } from './fileLoader';
 type FileKey = keyof CompleteLoadedFiles;
 
 interface VersionManifest {
+  // Path under the deployed base, no leading slash. Joined with
+  // import.meta.env.BASE_URL so the autoload still works when the app is
+  // mounted at a subpath (GitHub Pages, reverse proxy, etc.).
   base: string;
   files: Record<FileKey, string>;
 }
@@ -38,11 +41,15 @@ const CANONICAL_FILES: Record<FileKey, string> = {
 };
 
 const MANIFESTS: Record<string, VersionManifest> = {
-  '760': { base: '/assets/760', files: CANONICAL_FILES },
+  '760': { base: 'assets/760', files: CANONICAL_FILES },
   // Future versions: add manifests here and create public/assets/<v>/.
-  // '810': { base: '/assets/810', files: CANONICAL_FILES },
-  // '860': { base: '/assets/860', files: CANONICAL_FILES },
+  // '810': { base: 'assets/810', files: CANONICAL_FILES },
+  // '860': { base: 'assets/860', files: CANONICAL_FILES },
 };
+
+function assetUrl(manifest: VersionManifest, key: FileKey): string {
+  return `${import.meta.env.BASE_URL}${manifest.base}/${manifest.files[key]}`;
+}
 
 const DEFAULT_VERSION = '760';
 const FILE_KEYS: readonly FileKey[] = ['dat', 'spr', 'otb', 'otbm'] as const;
@@ -72,20 +79,18 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
 
   // Cheap presence probe: if even the .dat isn't there, don't fire the rest.
   // Keeps the console quiet when the folder isn't populated.
-  const probeUrl = `${manifest.base}/${manifest.files.dat}`;
   try {
-    const probe = await fetch(probeUrl, { method: 'HEAD' });
+    const probe = await fetch(assetUrl(manifest, 'dat'), { method: 'HEAD' });
     if (!probe.ok) return false;
   } catch {
     return false;
   }
 
-  options.onStatus(`Auto-loading ${version} assets from ${manifest.base}/...`);
-
+  // Status is intentionally NOT touched until we know all four fetches
+  // succeeded. On a partial-folder fallback we leave the status untouched
+  // so the manual upload UI shows its default state.
   try {
-    const responses = await Promise.all(
-      FILE_KEYS.map(key => fetch(`${manifest.base}/${manifest.files[key]}`)),
-    );
+    const responses = await Promise.all(FILE_KEYS.map(key => fetch(assetUrl(manifest, key))));
     for (const res of responses) {
       if (!res.ok) return false;
     }
@@ -98,7 +103,7 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
       options.addFileToList(`${name} (${(buffers[i].byteLength / 1024).toFixed(0)} KB)`);
     });
 
-    options.onStatus('Loading assets...');
+    options.onStatus(`Auto-loaded ${version} assets — loading...`);
     await options.startApp(loaded);
     return true;
   } catch (e) {

@@ -86,6 +86,24 @@ describe('tryAutoload', () => {
 
     expect(ok).toBe(false);
     expect(opts.startApp).not.toHaveBeenCalled();
+    // Silent fallback: no "Auto-loading..." text should leak through, so
+    // the drop-zone default status remains visible to the user.
+    expect(opts.onStatus).not.toHaveBeenCalled();
+  });
+
+  it('prefixes URLs with import.meta.env.BASE_URL for subpath deploys', async () => {
+    const seenUrls: string[] = [];
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      seenUrls.push(url);
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await tryAutoload(makeOptions());
+
+    // BASE_URL defaults to '/' under vitest; the assertion is that the
+    // probe URL starts with it rather than a bare hardcoded '/assets/...'.
+    expect(seenUrls[0]).toBe(`${import.meta.env.BASE_URL}assets/760/Tibia.dat`);
   });
 
   it('returns false for an unknown version (no manifest, never touches fetch)', async () => {

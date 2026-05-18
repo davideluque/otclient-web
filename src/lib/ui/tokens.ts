@@ -3,16 +3,29 @@
  * type, and z-index used across DOM widgets (statusHUD, devControls,
  * joystick, chat, …) and PixiJS overlays (creatureOverlay).
  *
- * Two representations of color are exported because the two layers
- * speak different dialects:
- *   - PixiJS APIs want numeric hex (`0xRRGGBB`).
- *   - CSS wants string hex (`'#RRGGBB'`) or `rgba(…)`.
+ * Layer dialects
+ * --------------
+ * PixiJS APIs want numeric hex (`0xRRGGBB`); CSS wants string hex /
+ * `rgba(…)`. Each token is authored in whichever form its current
+ * consumer needs. When a token becomes shared across layers, the
+ * second representation is derived on demand with `hexToCss()` (DOM
+ * gets the string) — there is intentionally no parallel string copy
+ * sitting next to the numeric source. That keeps the numeric value
+ * unambiguously the source of truth and avoids the two copies
+ * drifting out of sync.
  *
- * Where a token is used by both layers, both forms live in the same
- * object so changing the source value updates both call sites.
+ * Today: `healthBand` is the only cross-layer palette — it lives as
+ * numbers here and `cssTokens.ts` injects the CSS forms via
+ * `hexToCss()` so DOM components can read them via `var(--…)`.
  *
- * Scaffold only — nothing imports this yet. Wiring landings as a
- * follow-up once PR #103 is merged.
+ * Unit handling
+ * -------------
+ * Numeric tokens (`space`, `radius`, sizes) are stored as raw numbers.
+ * Units (`px`, `rem`) are appended by `cssTokens.ts` when generating
+ * CSS, so TS code can do arithmetic on them without parsing strings.
+ *
+ * Scaffold only — nothing imports this yet. Wiring lands as follow-ups
+ * once PR #103 is merged.
  */
 
 /** Six-band creature health palette, ported from OTClient creature.cpp. */
@@ -52,37 +65,46 @@ export const space = {
   xxl: 16,
 } as const;
 
-/** Border radii for cards and pill shapes. */
+/** Border radii (px) for cards and pill shapes. */
 export const radius = {
   sm: 4,
   md: 7, // matches pill bars at 14px height
   lg: 12, // panels / cards
 } as const;
 
-/** Font stacks + sizes. Game text uses a Verdana fallback for the
- *  pixel-font feel; chrome uses the host system UI font. */
+/** Font stacks (strings) + sizes (rem multipliers, stored as raw
+ *  numbers so callers can do arithmetic; `cssTokens.ts` appends the
+ *  `rem` unit when generating CSS). */
 export const font = {
   ui: 'system-ui, sans-serif',
   // Verdana approximates OTClient's bitmap `verdana-11px-rounded` until
   // we ship the actual bitmap font as an asset.
   game: 'Verdana, "DejaVu Sans", sans-serif',
-  sizeXs: '0.72rem',
-  sizeSm: '0.78rem',
-  sizeMd: '0.92rem',
-  sizeLg: '1rem',
+  sizeXs: 0.72,
+  sizeSm: 0.78,
+  sizeMd: 0.92,
+  sizeLg: 1,
 } as const;
 
-/** Stacking order for fixed widgets. Keep gaps so we can slot new
- *  layers in without renumbering callers. */
+/** Stacking order for fixed widgets. Gaps left between layers so new
+ *  surfaces can slot in without renumbering callers. */
 export const zIndex = {
   chat: 20,
   joystick: 50,
   hud: 60,
-  devControls: 60,
+  devControls: 70,
   modal: 100,
 } as const;
 
-/** Convert a Pixi-style numeric color (`0xRRGGBB`) to a CSS hex string. */
+/**
+ * Convert a Pixi-style numeric color (`0xRRGGBB`) to a CSS hex string.
+ * Throws on inputs that can't represent a 24-bit RGB color so a
+ * mistakenly-passed sentinel value doesn't silently produce a string
+ * like `#-1` that CSS would reject at parse time.
+ */
 export function hexToCss(n: number): string {
+  if (!Number.isInteger(n) || n < 0 || n > 0xffffff) {
+    throw new RangeError(`hexToCss expects an integer between 0x000000 and 0xFFFFFF (got ${n})`);
+  }
   return '#' + n.toString(16).padStart(6, '0');
 }

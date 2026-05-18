@@ -109,8 +109,12 @@ function buildRow(label: string, fillColor: string): Row {
   row.appendChild(numbers);
 
   function set(current: number, max: number) {
-    const safeMax = Math.max(1, max);
-    const clamped = Math.max(0, Math.min(current, safeMax));
+    // Guard against non-finite / non-positive inputs from upstream (e.g.
+    // server packets carrying malformed stats) so the bar never renders
+    // `NaN%` or `NaN / NaN`.
+    const safeMax = Number.isFinite(max) && max > 0 ? max : 1;
+    const safeCurrent = Number.isFinite(current) ? current : 0;
+    const clamped = Math.max(0, Math.min(safeCurrent, safeMax));
     const pct = (clamped / safeMax) * 100;
     barFill.style.width = `${pct}%`;
     numbers.textContent = `${clamped} / ${safeMax}`;

@@ -26,21 +26,25 @@ export function createStatusHUD(): StatusHUDHandle {
   root.className = 'status-hud';
   root.style.cssText = [
     'position:fixed',
-    // env(safe-area-inset-*) keeps the HUD clear of iOS notch / status bar.
+    // env(safe-area-inset-top) keeps the HUD clear of iOS notch / status bar.
     'top:max(12px, env(safe-area-inset-top))',
-    'left:max(12px, env(safe-area-inset-left))',
+    // Centered horizontally so the top-left corner is free for the
+    // future minimap. translateX(-50%) lets the widget grow naturally
+    // with its content without being pinned to a fixed width.
+    'left:50%',
+    'transform:translateX(-50%)',
     'z-index:60',
     'font-family:system-ui,sans-serif',
-    'font-size:0.72rem',
+    'font-size:0.78rem',
     'color:#eee',
-    'background:rgba(20,20,20,0.65)',
+    'background:rgba(20,20,20,0.7)',
     'border:1px solid #333',
-    'border-radius:6px',
-    'padding:6px 8px',
+    'border-radius:12px',
+    'padding:8px 12px',
     'display:flex',
     'flex-direction:column',
-    'gap:4px',
-    'min-width:148px',
+    'gap:6px',
+    'min-width:172px',
     'pointer-events:none',
   ].join(';');
 
@@ -84,10 +88,10 @@ function buildRow(label: string, fillColor: string): Row {
   const barOuter = document.createElement('div');
   barOuter.style.cssText = [
     'flex:1',
-    'height:10px',
+    'height:14px',
     `background:${BAR_BG}`,
     'border:1px solid #222',
-    'border-radius:2px',
+    'border-radius:7px',
     'overflow:hidden',
     'position:relative',
   ].join(';');

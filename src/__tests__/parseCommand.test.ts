@@ -97,4 +97,46 @@ describe('parseCommand', () => {
     expect(packet).not.toBeNull();
     expect(firstMessageType(packet!)).toBe(MessageType.Say);
   });
+
+  // ─── Leading-whitespace bypass guards ─────────────────────────────────
+
+  it('"  /w Alice hi" (leading spaces) still routes to private, never public', () => {
+    // Codex Rescue regression: callers that don't pre-trim could otherwise
+    // bypass the slash-command guards entirely, exposing intended-private
+    // text via the default Say branch.
+    const packet = parseCommand('  /w Alice secret', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.PrivateTo);
+  });
+
+  it('"\\n/w Alice hi" (leading newline) still routes to private', () => {
+    const packet = parseCommand('\n/w Alice secret', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.PrivateTo);
+  });
+
+  it('"\\t/whisper Bob hi" (leading tab) still routes to private', () => {
+    const packet = parseCommand('\t/whisper Bob secret', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.PrivateTo);
+  });
+
+  it('"\\u00A0/pm Bob secret" (NBSP-prefixed unknown command) returns null', () => {
+    // NBSP (U+00A0) is Unicode whitespace; trimStart handles it per spec.
+    // After trim the input becomes "/pm Bob secret" which is an unknown
+    // slash command → null, not leaked to public.
+    expect(parseCommand(' /pm Bob secret', ChannelId.Default, protocol)).toBeNull();
+  });
+
+  // ─── Documented quirk: single-word /whisper ────────────────────────────
+
+  it('/whisper Bob (no body) sends "Bob" as local whisper (documented quirk)', () => {
+    // This is a privacy-ambiguous corner — the intended-recipient name is
+    // spoken locally instead of going nowhere. Behaviour matches the doc
+    // comment above parseCommand; this test guards against silent change.
+    // If we ever want to flip the default to "null", update both.
+    const packet = parseCommand('/whisper Bob', ChannelId.Default, protocol);
+    expect(packet).not.toBeNull();
+    expect(firstMessageType(packet!)).toBe(MessageType.Whisper);
+  });
 });

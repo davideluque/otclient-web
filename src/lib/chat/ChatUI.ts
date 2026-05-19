@@ -147,12 +147,18 @@ export function createChatUI(
  * command above returns null (silent no-op). This prevents typo-driven
  * privacy leaks — e.g. `/wAlice secret` (missing space) or `/pm Bob secret`
  * would otherwise fall through to the public Say/channel branch.
+ *
+ * Leading whitespace is stripped before any prefix matching so callers can't
+ * accidentally bypass the slash-command guards by passing `"  /w Alice hi"`
+ * — `String.prototype.trimStart` covers Unicode whitespace per the spec.
  */
 export function parseCommand(
   text: string,
   activeChannelId: number,
   protocol: GameProtocol,
 ): OutputPacket | null {
+  text = text.trimStart();
+
   if (text.startsWith('/w ')) {
     return parsePrivateOrNull(text.slice(3), protocol);
   }

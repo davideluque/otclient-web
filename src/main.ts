@@ -37,7 +37,7 @@ import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
 import type { OtbmFile, OtbmRegion, Position } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
-import { needsExpansion, needsExpansionForDestination } from './lib/regionExpansion';
+import { needsExpansion, needsExpansionForDestination, regionZForPlayer } from './lib/regionExpansion';
 import { calcFirstVisibleFloor } from './lib/render/floorVisibility';
 import { renderUpperFloors } from './lib/render/upperFloorRenderer';
 import { TILE_SIZE } from './constants';
@@ -598,7 +598,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   async function ensureLoadedAt(x: number, y: number, z: number): Promise<void> {
     if (tileMap.getTile(x, y, z)) return;
-    const region: OtbmRegion = { centerX: x, centerY: y, radius: 25, z };
+    const region: OtbmRegion = {
+      centerX: x, centerY: y, radius: 25,
+      z: regionZForPlayer(z),
+    };
     tileMap.merge(await otbmParser.parseRegion(region));
   }
 
@@ -923,7 +926,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
 }
 
 function regionAround(p: Position): OtbmRegion {
-  return { centerX: p.x, centerY: p.y, radius: INITIAL_REGION_RADIUS, z: p.z };
+  return {
+    centerX: p.x, centerY: p.y, radius: INITIAL_REGION_RADIUS,
+    z: regionZForPlayer(p.z),
+  };
 }
 
 /**

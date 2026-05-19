@@ -5,6 +5,21 @@ import type { OtbmRegion } from './otbm';
 const EXPANSION_RADIUS = 100;
 
 /**
+ * Above-ground play (z<=7) needs the floors *above* the player loaded
+ * so the roof-culling pass has tiles to draw — return `undefined` (=
+ * "all floors" in `OtbmRegion`) for those cases. Underground players
+ * don't have roofs in the same sense, so we keep loading their single
+ * floor to avoid pulling the entire 16-floor stack for a 200-radius
+ * region just because someone walked into a cave.
+ *
+ * Exported so the initial / on-demand load sites in `main.ts` apply
+ * the same rule the dynamic-expansion paths below do.
+ */
+export function regionZForPlayer(playerZ: number): number | undefined {
+  return playerZ <= 7 ? undefined : playerZ;
+}
+
+/**
  * Check if the viewport is close enough to the loaded map edge that we
  * should parse more OTBM data. Returns the region to load, or null.
  *
@@ -28,7 +43,7 @@ export function needsExpansion(
       centerX: bounds.minX - EXPANSION_RADIUS,
       centerY: Math.floor((visible.y1 + visible.y2) / 2),
       radius: EXPANSION_RADIUS,
-      z,
+      z: regionZForPlayer(z),
     };
   }
   if (visible.x2 >= bounds.maxX - paddingTiles) {
@@ -36,7 +51,7 @@ export function needsExpansion(
       centerX: bounds.maxX + EXPANSION_RADIUS,
       centerY: Math.floor((visible.y1 + visible.y2) / 2),
       radius: EXPANSION_RADIUS,
-      z,
+      z: regionZForPlayer(z),
     };
   }
   if (visible.y1 <= bounds.minY + paddingTiles) {
@@ -44,7 +59,7 @@ export function needsExpansion(
       centerX: Math.floor((visible.x1 + visible.x2) / 2),
       centerY: bounds.minY - EXPANSION_RADIUS,
       radius: EXPANSION_RADIUS,
-      z,
+      z: regionZForPlayer(z),
     };
   }
   if (visible.y2 >= bounds.maxY - paddingTiles) {
@@ -52,7 +67,7 @@ export function needsExpansion(
       centerX: Math.floor((visible.x1 + visible.x2) / 2),
       centerY: bounds.maxY + EXPANSION_RADIUS,
       radius: EXPANSION_RADIUS,
-      z,
+      z: regionZForPlayer(z),
     };
   }
 
@@ -102,5 +117,5 @@ export function needsExpansionForDestination(
   ) / 2;
   const radius = Math.min(MAX_EXPANSION_RADIUS, Math.max(MIN_EXPANSION_RADIUS, Math.floor(halfDist) + 50));
 
-  return { centerX: midX, centerY: midY, radius, z };
+  return { centerX: midX, centerY: midY, radius, z: regionZForPlayer(z) };
 }

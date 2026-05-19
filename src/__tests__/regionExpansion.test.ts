@@ -15,7 +15,9 @@ describe('needsExpansion', () => {
     const region = needsExpansion(bounds, visible, 7, 30);
     expect(region).not.toBeNull();
     expect(region!.centerX).toBeLessThan(bounds.minX);
-    expect(region!.z).toBe(7);
+    // Above-ground: load all floors so the roof-culling render pass
+    // has upper-floor tiles available.
+    expect(region!.z).toBeUndefined();
   });
 
   it('triggers east expansion when near right edge', () => {
@@ -44,10 +46,16 @@ describe('needsExpansion', () => {
     expect(needsExpansion(null, visible, 7, 30)).toBeNull();
   });
 
-  it('respects z parameter in returned region', () => {
+  it('returns z=undefined for above-ground play so all surface floors load', () => {
     const visible = { x1: 105, y1: 180, x2: 150, y2: 220 };
     const region = needsExpansion(bounds, visible, 5, 30);
-    expect(region!.z).toBe(5);
+    expect(region!.z).toBeUndefined();
+  });
+
+  it('passes underground z through unchanged so only that floor loads', () => {
+    const visible = { x1: 105, y1: 180, x2: 150, y2: 220 };
+    const region = needsExpansion(bounds, visible, 10, 30);
+    expect(region!.z).toBe(10);
   });
 });
 
@@ -59,8 +67,15 @@ describe('needsExpansionForDestination', () => {
   it('triggers when destination is near left edge', () => {
     const region = needsExpansionForDestination(bounds, 110, 200, 7, 30);
     expect(region).not.toBeNull();
-    expect(region!.z).toBe(7);
+    // Above-ground destinations load all surface floors.
+    expect(region!.z).toBeUndefined();
     expect(region!.radius).toBeGreaterThanOrEqual(100);
+  });
+
+  it('keeps underground destination z so only that floor loads', () => {
+    const region = needsExpansionForDestination(bounds, 110, 200, 10, 30);
+    expect(region).not.toBeNull();
+    expect(region!.z).toBe(10);
   });
 
   it('triggers when destination is outside bounds entirely', () => {

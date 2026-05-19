@@ -1,4 +1,5 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { healthBand, font } from './ui/tokens';
 
 /**
  * Classic-Tibia-style overlay above a creature: a thin colored health bar
@@ -34,20 +35,15 @@ const NAME_GAP = 1;
 // Six-band health color mapping, ported verbatim from upstream OTClient
 // (src/client/creature.cpp, drawInformation). Both the bar fill and the
 // name text use the same band so a glance at either reads the same.
-const BAND_BRIGHT_GREEN = 0x00bc00;
-const BAND_DARK_GREEN = 0x50a150;
-const BAND_YELLOW = 0xa1a100;
-const BAND_RED = 0xbf0a0a;
-const BAND_DARK_RED = 0x910f0f;
-const BAND_DARKER_RED = 0x850c0c;
-
+// Source palette lives in `lib/ui/tokens.ts` (`healthBand`) so the DOM
+// side can mirror the same colors via the matching CSS variables.
 function colorForPercent(percent: number): number {
-  if (percent > 92) return BAND_BRIGHT_GREEN;
-  if (percent > 60) return BAND_DARK_GREEN;
-  if (percent > 30) return BAND_YELLOW;
-  if (percent > 8) return BAND_RED;
-  if (percent > 3) return BAND_DARK_RED;
-  return BAND_DARKER_RED;
+  if (percent > 92) return healthBand.brightGreen;
+  if (percent > 60) return healthBand.darkGreen;
+  if (percent > 30) return healthBand.yellow;
+  if (percent > 8) return healthBand.red;
+  if (percent > 3) return healthBand.darkRed;
+  return healthBand.darkerRed;
 }
 
 /**
@@ -62,12 +58,13 @@ export function createCreatureOverlay(name: string, healthPercent = 100): Creatu
   const bar = new Graphics();
   container.addChild(bar);
 
-  // OTClient uses a bitmap "verdana-11px-rounded" font. Falling back to
-  // Verdana is the closest the browser can match without shipping a font.
+  // OTClient uses a bitmap "verdana-11px-rounded" font. The token
+  // `font.game` is the Verdana fallback the browser uses until we
+  // ship the actual bitmap font as an asset.
   const nameText = new Text({
     text: name,
     style: new TextStyle({
-      fontFamily: 'Verdana, "DejaVu Sans", sans-serif',
+      fontFamily: font.game,
       // OTClient ships an 11px bitmap font for desktop; on phones that
       // reads too large at our scale, so render ~18% smaller.
       fontSize: 9,

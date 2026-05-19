@@ -22,6 +22,7 @@ import { createJoystick } from './lib/joystick';
 import { createKeyboard } from './lib/keyboard';
 import { createDevControls } from './lib/devControls';
 import { createStatusHUD } from './lib/statusHUD';
+import { injectCssTokens } from './lib/ui/cssTokens';
 import { createCreatureOverlay } from './lib/creatureOverlay';
 import type { CreatureOverlay } from './lib/creatureOverlay';
 import { Direction } from './lib/player';
@@ -862,8 +863,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
   app.canvas.addEventListener('touchend', () => { lastPinchDist = 0; }, { passive: true });
 
   // --- Status HUD ---
-  // Top-left HP / Mana panel. Driven by `playerStatus` placeholders for
-  // now; will read from server-driven values once stat packets land.
+  // Top-center HP / Mana panel. Driven by `playerStatus` placeholders
+  // for now; will read from server-driven values once stat packets land.
+  // injectCssTokens must run before createStatusHUD — the HUD references
+  // design tokens via `var(--...)` which only resolve once the :root
+  // custom properties have been mounted.
+  injectCssTokens();
   const statusHUD = createStatusHUD();
   statusHUD.setHp(playerStatus.hp, playerStatus.hpMax);
   statusHUD.setMana(playerStatus.mana, playerStatus.manaMax);

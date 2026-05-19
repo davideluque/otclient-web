@@ -6,6 +6,10 @@
  * bar is a darker gray rather than pure black so the pill shape
  * always reads as a 3D surface.
  *
+ * Styling consumes the shared design tokens via CSS custom properties
+ * — call `injectCssTokens()` (from `lib/ui/cssTokens`) once before
+ * mounting the HUD, or the `var(--...)` references resolve to nothing.
+ *
  * UI-only: exposes setHp / setMana so the network layer can drive the
  * bars once stat packets are wired into GameWorld.
  */
@@ -17,18 +21,6 @@ export interface StatusHUDHandle {
   setMana(current: number, max: number): void;
   destroy(): void;
 }
-
-// Placeholder colors — replace with the exact OTClient hex values once
-// you have them. Each pair = [top of gradient, bottom of gradient].
-const HP_TOP = '#e2767c';
-const HP_BOTTOM = '#a83033';
-const MANA_TOP = '#6470cc';
-const MANA_BOTTOM = '#3a48a0';
-
-// Darker gray fill for the empty portion so the pill shape reads as a
-// 3D surface even when fully drained.
-const EMPTY_TOP = '#3a3a3a';
-const EMPTY_BOTTOM = '#1a1a1a';
 
 // Inline SVGs colored via `fill="currentColor"` so the icon picks up
 // the row's `color` style. Keeping them tiny + monochrome (no emoji
@@ -51,28 +43,28 @@ export function createStatusHUD(): StatusHUDHandle {
   root.style.cssText = [
     'position:fixed',
     // env(safe-area-inset-top) keeps the HUD clear of iOS notch / status bar.
-    'top:max(12px, env(safe-area-inset-top))',
+    'top:max(var(--space-xl), env(safe-area-inset-top))',
     // Centered horizontally so the top-left corner is free for the
     // future minimap. translateX(-50%) lets the widget grow naturally
     // with its content without being pinned to a fixed width.
     'left:50%',
     'transform:translateX(-50%)',
-    'z-index:60',
-    'font-family:system-ui,sans-serif',
-    'color:#eee',
-    'background:rgba(20,20,20,0.7)',
-    'border:1px solid #333',
-    'border-radius:12px',
-    'padding:8px 12px',
+    'z-index:var(--z-hud)',
+    'font-family:var(--font-ui)',
+    'color:var(--color-text-primary)',
+    'background:var(--surface-panel-bg)',
+    'border:1px solid var(--surface-panel-border)',
+    'border-radius:var(--radius-lg)',
+    'padding:var(--space-lg) var(--space-xl)',
     'display:flex',
     'flex-direction:column',
-    'gap:6px',
+    'gap:var(--space-md)',
     'min-width:172px',
     'pointer-events:none',
   ].join(';');
 
-  const hpRow = buildRow(HEART_SVG, HP_TOP, HP_BOTTOM);
-  const manaRow = buildRow(BOLT_SVG, MANA_TOP, MANA_BOTTOM);
+  const hpRow = buildRow(HEART_SVG, 'var(--bar-hp-top)', 'var(--bar-hp-bottom)');
+  const manaRow = buildRow(BOLT_SVG, 'var(--bar-mana-top)', 'var(--bar-mana-bottom)');
   root.appendChild(hpRow.el);
   root.appendChild(manaRow.el);
 
@@ -102,7 +94,7 @@ interface Row {
 
 function buildRow(iconSvg: string, fillTop: string, fillBottom: string): Row {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+  row.style.cssText = 'display:flex;align-items:center;gap:var(--space-lg);';
 
   const iconEl = document.createElement('span');
   iconEl.innerHTML = iconSvg;
@@ -121,9 +113,9 @@ function buildRow(iconSvg: string, fillTop: string, fillBottom: string): Row {
   barOuter.style.cssText = [
     'flex:1',
     'height:14px',
-    `background:linear-gradient(180deg, ${EMPTY_TOP} 0%, ${EMPTY_BOTTOM} 100%)`,
+    'background:linear-gradient(180deg, var(--bar-empty-top) 0%, var(--bar-empty-bottom) 100%)',
     'border:1px solid #222',
-    'border-radius:7px',
+    'border-radius:var(--radius-md)',
     'overflow:hidden',
     'position:relative',
   ].join(';');
@@ -141,11 +133,11 @@ function buildRow(iconSvg: string, fillTop: string, fillBottom: string): Row {
   numbers.style.cssText = [
     'min-width:42px',
     'text-align:right',
-    'color:#fff',
+    'color:var(--color-text-numeric)',
     'font-weight:700',
-    'font-size:0.92rem',
+    'font-size:var(--font-size-md)',
     'font-variant-numeric:tabular-nums',
-    'text-shadow:0 1px 1px rgba(0,0,0,0.6)',
+    'text-shadow:var(--text-shadow-soft)',
   ].join(';');
 
   row.appendChild(iconEl);

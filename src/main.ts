@@ -38,6 +38,8 @@ import type { OtbFile } from './lib/otb';
 import type { OtbmFile, OtbmRegion, Position } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
 import { needsExpansion, needsExpansionForDestination } from './lib/regionExpansion';
+import { calcFirstVisibleFloor } from './lib/render/floorVisibility';
+import { renderUpperFloors } from './lib/render/upperFloorRenderer';
 import { TILE_SIZE } from './constants';
 
 // --- File loading UI ---
@@ -379,6 +381,20 @@ async function startApp(loaded: CompleteLoadedFiles) {
     }
     currentPlayerSprite = playerSprite;
     tileContainer.addChild(below.container);
+
+    // Render floors *above* the player up to `firstVisibleFloor`, so the
+    // roof of a building is visible from outside but disappears the
+    // moment the player steps under it. Drawn before the lighting
+    // overlay so night ambient darkens the roof along with everything
+    // else underneath.
+    const firstVisibleFloor = calcFirstVisibleFloor(
+      Math.floor(player.x), Math.floor(player.y), renderZ, tileMap, datIndex,
+    );
+    const upper = renderUpperFloors(
+      tileMap, datIndex, atlasTextures, layout, visible, renderZ, firstVisibleFloor,
+    );
+    tileContainer.addChild(upper.container);
+    allAnimated.push(...upper.animated);
 
     if (ambient.enabled) {
       const { sprite, texture } = buildIlluminationOverlay(

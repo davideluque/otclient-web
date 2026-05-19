@@ -387,9 +387,23 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // moment the player steps under it. Drawn before the lighting
     // overlay so night ambient darkens the roof along with everything
     // else underneath.
-    const firstVisibleFloor = calcFirstVisibleFloor(
+    //
+    // During a walk we evaluate both endpoints and take the more
+    // restrictive (larger-z) `firstVisibleFloor`. Without this, a walk
+    // *into* a building leaves the roof rendered with its iso offset
+    // landing exactly where the player's sprite arrives at the end of
+    // the step — a one-frame "player behind roof" flicker that goes
+    // away only when `onStepLand` updates `player.x/y` and the next
+    // rebuild snaps. Mirrors for exits too.
+    let firstVisibleFloor = calcFirstVisibleFloor(
       Math.floor(player.x), Math.floor(player.y), renderZ, tileMap, datIndex,
     );
+    if (walkState?.active) {
+      const destFvf = calcFirstVisibleFloor(
+        walkState.toX, walkState.toY, renderZ, tileMap, datIndex,
+      );
+      firstVisibleFloor = Math.max(firstVisibleFloor, destFvf);
+    }
     const upper = renderUpperFloors(
       tileMap, datIndex, atlasTextures, layout, visible, renderZ, firstVisibleFloor,
     );
@@ -644,6 +658,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
       const step = stepInDirection(player.x, player.y, heldDir);
       if (isTileWalkable(step.x, step.y, renderZ, tileMap, datIndex)) {
         walkState = startWalk(player, [step], performance.now(), onStepLand);
+        // Force a rebuild now so the upper-floor pass picks up the
+        // walk destination — otherwise the roof stays rendered for the
+        // source tile until onStepLand fires at end-of-walk, and its
+        // iso-offset position covers the player's arriving sprite.
+        render(true);
       } else if (player.direction !== heldDir) {
         // Face the wall even when we can't step through it, for feedback.
         // The ticker is about to return early since no walk is active, so

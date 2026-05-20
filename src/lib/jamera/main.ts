@@ -7,18 +7,35 @@ if (!root) {
 
 const params = new URLSearchParams(window.location.search);
 const proxyUrl = params.get('proxy') ?? undefined;
-const clientVersion = params.get('clientVersion')
-  ? Number(params.get('clientVersion'))
-  : undefined;
+const clientVersion = parseClientVersion(params.get('clientVersion'));
 
 mountLoginScreen(root, {
   proxyUrl,
   clientVersion,
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
-    // live-map renderer, chat UI, and movement input. For now, surface
-    // the live client on the window for ad-hoc poking in DevTools.
-    (window as unknown as { jameraClient: typeof client }).jameraClient = client;
-    console.info('[jamera] in_game — client attached to window.jameraClient');
+    // live-map renderer, chat UI, and movement input. Surface the live
+    // client on `window` only in dev builds, never in production: the
+    // GameClient instance retains the player's password (private field,
+    // but readable from any code that gets the reference) so exposing
+    // it on `window` would be a credential leak.
+    if (import.meta.env.DEV) {
+      (window as unknown as { jameraClient: typeof client }).jameraClient = client;
+      console.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
+    } else {
+      console.info('[jamera] in_game — client attached locally (suppressed from window in prod)');
+    }
   },
 });
+
+/**
+ * Coerce a `?clientVersion=` query param to a positive integer, or
+ * `undefined` to fall back to the default. Guards against `Number("bad")`
+ * silently producing `NaN` and bypassing the default in the call site.
+ */
+function parseClientVersion(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return undefined;
+  return n;
+}

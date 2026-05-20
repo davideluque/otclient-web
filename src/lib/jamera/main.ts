@@ -42,11 +42,20 @@ mountLoginScreen(root, {
  * resolution (`?version=…` + `public/assets/<version>/`) as the offline
  * demo.
  *
+ * Module-scoped guards prevent re-fetching the (large) bundle on every
+ * re-login or overlapping in-flight requests — assets only need to load
+ * once per page load.
+ *
  * No fallback drag-drop UI here — if auto-load fails we just log it and
  * let the renderer PR decide what to surface. The drag-drop fallback is
  * its own tiny follow-up PR.
  */
+let assetsLoading = false;
+let assetsLoaded = false;
+
 function loadAssetsForRendering(): void {
+  if (assetsLoaded || assetsLoading) return;
+  assetsLoading = true;
   tryAutoload({
     onStatus: (msg, isError) => {
       if (isError) console.warn('[jamera-assets]', msg);
@@ -54,6 +63,7 @@ function loadAssetsForRendering(): void {
     },
     addFileToList: (name) => console.info('[jamera-assets] loaded', name),
     startApp: async (loaded: CompleteLoadedFiles) => {
+      assetsLoaded = true;
       console.info('[jamera] assets ready (dat/spr/otb/otbm)');
       if (import.meta.env.DEV) {
         // Dev-only DevTools hook so the renderer PR can poke at the
@@ -62,9 +72,13 @@ function loadAssetsForRendering(): void {
         (window as unknown as { jameraAssets: CompleteLoadedFiles }).jameraAssets = loaded;
       }
     },
-  }).catch((err) => {
-    console.warn('[jamera] asset auto-load failed:', (err as Error).message);
-  });
+  })
+    .catch((err) => {
+      console.warn('[jamera] asset auto-load failed:', (err as Error).message);
+    })
+    .finally(() => {
+      assetsLoading = false;
+    });
 }
 
 /**

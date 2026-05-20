@@ -103,6 +103,17 @@ describe('mountLoginScreen', () => {
     expect(account.disabled).toBe(true);
   });
 
+  it('keeps the login form disabled in character_list so a second submit cannot open a duplicate socket', () => {
+    const form = root.querySelector('form') as HTMLFormElement;
+    const account = form.querySelector('input[name="account"]') as HTMLInputElement;
+    const button = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onStateChange?.('character_list');
+    expect(button.disabled).toBe(true);
+    expect(account.disabled).toBe(true);
+  });
+
   it('renders the character list when the server sends one', () => {
     // @ts-expect-error reaching into private events
     mounted.client.events.onCharacterList?.(

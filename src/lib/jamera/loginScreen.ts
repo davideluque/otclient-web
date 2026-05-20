@@ -84,6 +84,16 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   ui.form.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearError(ui);
+
+    // Defense-in-depth against re-submission once a login is in flight.
+    // The UI also disables the form (see updateState) for any non-
+    // `disconnected` state, but a programmatic form.dispatchEvent('submit')
+    // bypasses the disabled button. If we let a second login through,
+    // GameClient.login would open a fresh WebSocket on top of the existing
+    // loginConn without closing the old one, and the old socket's onclose
+    // would later null shared state out from under the new session.
+    if (client.getState() !== 'disconnected') return;
+
     const account = Number(ui.accountInput.value);
     const password = ui.passwordInput.value;
     // The wire format serialises the account number as a U32. Anything
@@ -155,10 +165,13 @@ function updateState(ui: UiHandles, state: GameClientState): void {
   ui.statusEl.textContent = STATE_LABELS[state];
   ui.statusEl.classList.toggle('error', state === 'disconnected');
 
-  // Disable the account/password form while the client is mid-flight;
-  // re-enable on disconnected/character_list so the user can retry / pick
-  // a different character.
-  const formDisabled = state === 'logging_in' || state === 'entering_game' || state === 'in_game';
+  // Disable the account/password form for every state past `disconnected`.
+  // Leaving it enabled on `character_list` would let a second submit
+  // open a fresh `loginConn` WebSocket on top of the existing one (the
+  // old socket's `onclose` would then null out the new session's state),
+  // and there's nothing for the user to re-submit after `character_list`
+  // — they pick a character from the list, they don't re-log-in.
+  const formDisabled = state !== 'disconnected';
   ui.accountInput.disabled = formDisabled;
   ui.passwordInput.disabled = formDisabled;
   ui.loginButton.disabled = formDisabled;

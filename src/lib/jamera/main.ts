@@ -41,7 +41,12 @@ mountLoginScreen(root, {
 const PING_INTERVAL_MS = 30_000;
 const TIBIA_76_CLIENT_PING_OPCODE = 0x1e;
 
+// Module-scoped so a re-entry into `in_game` (e.g. after a disconnect +
+// re-login) doesn't stack a second timer on top of the first.
+let pingIntervalId: ReturnType<typeof setInterval> | null = null;
+
 function startPingLoop(client: GameClient): void {
+  if (pingIntervalId !== null) return;
   const sendPing = () => {
     try {
       const packet = new OutputPacket();
@@ -52,7 +57,7 @@ function startPingLoop(client: GameClient): void {
     }
   };
   sendPing();
-  setInterval(sendPing, PING_INTERVAL_MS);
+  pingIntervalId = setInterval(sendPing, PING_INTERVAL_MS);
 }
 
 /**

@@ -167,8 +167,8 @@ function createDom(): UiHandles {
     </style>
     <h1>Jamera login</h1>
     <form>
-      <input name="account" type="number" placeholder="Account number" autocomplete="username" required />
-      <input name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+      <input name="account" type="number" placeholder="Account number" aria-label="Account number" autocomplete="username" required />
+      <input name="password" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required />
       <button type="submit">Log in</button>
     </form>
     <div class="status" data-role="status">Idle.</div>

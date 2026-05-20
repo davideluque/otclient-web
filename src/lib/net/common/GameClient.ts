@@ -139,8 +139,14 @@ export class GameClient {
    * payloads automatically.
    */
   send(packet: OutputPacket): void {
-    if (this.state !== 'in_game' || !this.gameConn) {
+    if (this.state !== 'in_game') {
       throw new Error(`Cannot send packet: client state is ${this.state}`);
+    }
+    if (!this.gameConn) {
+      // Defense in depth: the state machine guarantees gameConn is set
+      // whenever state is in_game, but spelling out a distinct error
+      // makes any future state/connection desync easier to spot.
+      throw new Error('Cannot send packet: game connection is not initialized');
     }
     this.gameConn.send(packet, this.protocol.config.useXTEA);
   }

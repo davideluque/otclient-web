@@ -56,6 +56,16 @@ export class GameClient {
   }
 
   /**
+   * Expose the injected protocol so consumers (GameWorld, ChatUI, etc.)
+   * can read its opcode constants and call its builders without having
+   * to construct a parallel `GameProtocol` instance just to peek at
+   * version-specific values.
+   */
+  getProtocol(): GameProtocol {
+    return this.protocol;
+  }
+
+  /**
    * Step 1: Connect to login server and request character list.
    */
   async login(accountNumber: number, password: string): Promise<void> {

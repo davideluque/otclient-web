@@ -16,3 +16,11 @@ describe('GameClient.send', () => {
     expect(() => client.send(new OutputPacket())).toThrow(/character_list/);
   });
 });
+
+describe('GameClient.getProtocol', () => {
+  it('returns the injected protocol instance', () => {
+    const protocol = new GameProtocol();
+    const client = new GameClient('ws://test', {}, protocol);
+    expect(client.getProtocol()).toBe(protocol);
+  });
+});

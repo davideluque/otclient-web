@@ -87,34 +87,79 @@ export function* gatherLights(
   }
 }
 
-export interface IlluminationOverlay {
-  sprite: Sprite;
-  texture: RenderTexture;
+/**
+ * Recycles light-bubble sprites across overlay rebuilds. Each call to
+ * {@link buildIlluminationOverlay} resets the in-use counter, then borrows
+ * sprites in order; new ones are minted only when the previous frame's high-
+ * water mark is exceeded. Sprites are detached from their parent automatically
+ * when the scratch scene is destroyed at the end of each overlay build, so
+ * `acquire` can safely re-parent them next call.
+ */
+export class LightSpritePool {
+  private sprites: Sprite[] = [];
+  private inUse = 0;
+
+  acquire(mask: Texture): Sprite {
+    let sprite = this.sprites[this.inUse];
+    if (!sprite) {
+      sprite = new Sprite(mask);
+      sprite.anchor.set(0.5);
+      sprite.blendMode = 'add';
+      this.sprites[this.inUse] = sprite;
+    }
+    this.inUse++;
+    return sprite;
+  }
+
+  reset(): void {
+    this.inUse = 0;
+  }
+
+  destroy(): void {
+    for (const sprite of this.sprites) sprite.destroy();
+    this.sprites.length = 0;
+    this.inUse = 0;
+  }
 }
 
 /**
  * Build an illumination map by rendering the ambient color + all visible lights
- * into a RenderTexture, then returning a multiply-blended Sprite that composites
- * over the rendered map. This is the OTClient approach: lights *brighten* the
- * darkness rather than overlaying it.
+ * into the caller-owned RenderTexture, then returning a multiply-blended Sprite
+ * that composites over the rendered map. This is the OTClient approach: lights
+ * *brighten* the darkness rather than overlaying it.
  *
- * Caller owns the returned RenderTexture and must destroy it before discarding
- * the sprite (PixiJS doesn't reclaim render textures automatically).
+ * Memory model: the caller owns `texture` and `pool` — both persist across
+ * rebuilds. The texture is resized in place when the visible region changes
+ * (cheap), and light bubbles are borrowed from the pool instead of allocated.
+ * The returned Sprite is short-lived (one per call) and may be destroyed by
+ * the caller without affecting the underlying texture.
  */
 export function buildIlluminationOverlay(
   app: Application,
   tileMap: TileMap,
   datIndex: Map<number, ThingType>,
   mask: Texture,
+  texture: RenderTexture,
+  pool: LightSpritePool,
   x1: number, y1: number, x2: number, y2: number, z: number,
   opts: LightingOptions,
-): IlluminationOverlay {
+): Sprite {
   const w = (x2 - x1 + 1) * TILE_SIZE;
   const h = (y2 - y1 + 1) * TILE_SIZE;
 
+  // Resize is a no-op when dimensions already match. Without this, panning
+  // even one tile would force a costly reallocation of the GPU texture.
+  if (texture.width !== w || texture.height !== h) {
+    texture.resize(w, h);
+  }
+
+  pool.reset();
   const scene = new Container();
 
   // Base ambient fill. The framebuffer color where no light reaches.
+  // Allocated per-call — Graphics holds GPU geometry that needs an explicit
+  // destroy below; pooling it would mean tracking another piece of state
+  // for very little win (one allocation vs N for the light bubbles).
   const ambient = new Graphics();
   ambient.rect(0, 0, w, h).fill({ color: opts.ambientColor });
   scene.addChild(ambient);
@@ -129,26 +174,27 @@ export function buildIlluminationOverlay(
     x2 + MAX_INTENSITY, y2 + MAX_INTENSITY,
     z,
   )) {
-    const sprite = new Sprite(mask);
-    sprite.anchor.set(0.5);
+    const sprite = pool.acquire(mask);
     sprite.x = (light.x - x1) * TILE_SIZE + TILE_SIZE / 2;
     sprite.y = (light.y - y1) * TILE_SIZE + TILE_SIZE / 2;
     const radius = Math.min(light.intensity, MAX_INTENSITY) * TILE_SIZE / 2;
     sprite.width = radius * 2;
     sprite.height = radius * 2;
     sprite.tint = light.color;
-    sprite.blendMode = 'add';
     scene.addChild(sprite);
   }
 
-  const texture = RenderTexture.create({ width: w, height: h });
   app.renderer.render({ container: scene, target: texture, clear: true });
-  scene.destroy({ children: true });
+
+  // scene.destroy() without `{ children: true }` removes children (parent =
+  // null) but does NOT destroy them — pool sprites survive for next call.
+  // The ambient Graphics is one-shot; destroy it to release its GPU geometry.
+  ambient.destroy();
+  scene.destroy();
 
   const overlay = new Sprite(texture);
   overlay.x = x1 * TILE_SIZE;
   overlay.y = y1 * TILE_SIZE;
   overlay.blendMode = 'multiply';
-
-  return { sprite: overlay, texture };
+  return overlay;
 }

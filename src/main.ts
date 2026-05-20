@@ -25,13 +25,14 @@ import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
   createLightMaskTexture,
+  LightSpritePool,
   NIGHT_AMBIENT,
   DAY_AMBIENT,
   type LightingOptions,
 } from './lib/lighting';
 import { createFileLoader } from './lib/fileLoader';
 import { tryAutoload } from './lib/assetAutoload';
-import type { RenderTexture } from 'pixi.js';
+import { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
@@ -255,7 +256,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // when the player actually moves tiles.
   let lastPlayerDirection = Number.NaN;
   let ambient: LightingOptions = NIGHT_AMBIENT;
-  let illuminationTexture: RenderTexture | null = null;
+  // Long-lived render target + sprite pool for the lighting overlay.
+  // Both are reused across every rebuild — buildIlluminationOverlay resizes
+  // the texture as the visible region changes (cheap) and recycles light
+  // bubbles from the pool, so a tile-rebuild no longer allocates a fresh
+  // RenderTexture and a Sprite per light source.
+  const illuminationTexture = RenderTexture.create({ width: 1, height: 1 });
+  const lightSpritePool = new LightSpritePool();
   let animatedSprites: AnimatedSprite[] = [];
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
@@ -286,10 +293,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (tileContainer) {
       app.stage.removeChild(tileContainer);
       tileContainer.destroy({ children: true });
-    }
-    if (illuminationTexture) {
-      illuminationTexture.destroy(true);
-      illuminationTexture = null;
     }
 
     const visible = viewport.getVisibleTiles();
@@ -386,13 +389,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
     tileContainer.addChild(below.container);
 
     if (ambient.enabled) {
-      const { sprite, texture } = buildIlluminationOverlay(
+      const sprite = buildIlluminationOverlay(
         app, tileMap, datIndex, lightMask,
+        illuminationTexture, lightSpritePool,
         visible.x1, visible.y1, visible.x2, visible.y2, 7,
         ambient,
       );
       tileContainer.addChild(sprite);
-      illuminationTexture = texture;
     }
 
     app.stage.addChild(tileContainer);

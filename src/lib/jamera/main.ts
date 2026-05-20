@@ -36,7 +36,7 @@ mountLoginScreen(root, {
     loadAssetsForRendering();
     bindGameWorld(client);
     ensurePixiApp().catch((err) => {
-      console.warn('[jamera] PIXI bootstrap failed:', (err as Error).message);
+      console.warn('[jamera] PIXI bootstrap failed:', err);
     });
   },
 });
@@ -51,34 +51,48 @@ mountLoginScreen(root, {
  * Page-lifetime singleton (unlike GameWorld, which is per-session): the
  * GPU context is expensive to spin up and there's no reason to tear it
  * down between login attempts on the same tab.
+ *
+ * Cache the in-flight Promise (not just the resolved Application) so
+ * concurrent callers — e.g. a fast disconnect + re-login that fires
+ * `onEnterGame` again before the first WebGPU init resolves — share a
+ * single bootstrap and we don't end up with two canvases stacked in
+ * the DOM. If init throws we clear the promise so the next caller can
+ * retry instead of permanently inheriting the failure.
  */
-let pixiApp: Application | null = null;
+let pixiPromise: Promise<Application> | null = null;
 
-async function ensurePixiApp(): Promise<Application> {
-  if (pixiApp) return pixiApp;
-  const app = new Application();
-  await app.init({
-    background: '#000000',
-    width: window.innerWidth,
-    height: window.innerHeight,
-    antialias: false,
-    resolution: window.devicePixelRatio,
-    autoDensity: true,
-    // Match the offline demo's preference — PixiJS falls back to WebGL
-    // automatically if WebGPU init fails or isn't supported.
-    preference: 'webgpu',
-  });
-  app.canvas.style.cssText = 'position:fixed;inset:0;z-index:0;';
-  document.body.appendChild(app.canvas);
-  window.addEventListener('resize', () => {
-    app.renderer.resize(window.innerWidth, window.innerHeight);
-  });
-  pixiApp = app;
-  console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
-  if (import.meta.env.DEV) {
-    (window as unknown as { jameraPixi: Application }).jameraPixi = app;
-  }
-  return app;
+function ensurePixiApp(): Promise<Application> {
+  if (pixiPromise) return pixiPromise;
+  pixiPromise = (async () => {
+    try {
+      const app = new Application();
+      await app.init({
+        background: '#000000',
+        width: window.innerWidth,
+        height: window.innerHeight,
+        antialias: false,
+        resolution: window.devicePixelRatio,
+        autoDensity: true,
+        // Match the offline demo's preference — PixiJS falls back to WebGL
+        // automatically if WebGPU init fails or isn't supported.
+        preference: 'webgpu',
+      });
+      app.canvas.style.cssText = 'position:fixed;inset:0;z-index:0;';
+      document.body.appendChild(app.canvas);
+      window.addEventListener('resize', () => {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+      });
+      console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
+      if (import.meta.env.DEV) {
+        (window as unknown as { jameraPixi: Application }).jameraPixi = app;
+      }
+      return app;
+    } catch (err) {
+      pixiPromise = null;
+      throw err;
+    }
+  })();
+  return pixiPromise;
 }
 
 /**

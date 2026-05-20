@@ -53,6 +53,21 @@ describe('mountLoginScreen', () => {
     expect(mounted.client.getState()).toBe('disconnected');
   });
 
+  it('rejects fractional account numbers (would be U32-truncated on the wire)', async () => {
+    const account = root.querySelector('input[name="account"]') as HTMLInputElement;
+    const password = root.querySelector('input[name="password"]') as HTMLInputElement;
+    const form = root.querySelector('form') as HTMLFormElement;
+
+    account.value = '1.5';
+    password.value = 'hunter2';
+    form.dispatchEvent(new Event('submit'));
+
+    await Promise.resolve();
+    const err = root.querySelector('[data-role="error"]');
+    expect(err?.textContent).toMatch(/integer/i);
+    expect(mounted.client.getState()).toBe('disconnected');
+  });
+
   it('disables the form once the client transitions out of disconnected', () => {
     const form = root.querySelector('form') as HTMLFormElement;
     const account = form.querySelector('input[name="account"]') as HTMLInputElement;

@@ -1,6 +1,7 @@
 import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
 import { OutputPacket } from '../net/common/OutputPacket';
+import { ClientOp } from '../net/7.6/opcodes';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -39,23 +40,40 @@ mountLoginScreen(root, {
  * via a thrown send error long before it would otherwise show up.
  */
 const PING_INTERVAL_MS = 30_000;
-const TIBIA_76_CLIENT_PING_OPCODE = 0x1e;
 
 // Module-scoped so a re-entry into `in_game` (e.g. after a disconnect +
-// re-login) doesn't stack a second timer on top of the first.
+// re-login) can clear the old timer before starting a new one.
 let pingIntervalId: ReturnType<typeof setInterval> | null = null;
 
 function startPingLoop(client: GameClient): void {
-  if (pingIntervalId !== null) return;
+  // Replace any existing loop first — back-to-back in_game transitions
+  // should never stack two timers, and after a disconnect the previous
+  // timer would otherwise keep firing send() against a dead client.
+  if (pingIntervalId !== null) {
+    clearInterval(pingIntervalId);
+    pingIntervalId = null;
+  }
+
   const sendPing = () => {
+    // Self-teardown when the client leaves in_game (disconnect path).
+    // GameClient.send() would throw on the next tick anyway; clearing
+    // here just prevents the every-30s warning spam.
+    if (client.getState() !== 'in_game') {
+      if (pingIntervalId !== null) {
+        clearInterval(pingIntervalId);
+        pingIntervalId = null;
+      }
+      return;
+    }
     try {
       const packet = new OutputPacket();
-      packet.addU8(TIBIA_76_CLIENT_PING_OPCODE);
+      packet.addU8(ClientOp.Ping);
       client.send(packet);
     } catch (err) {
       console.warn('[jamera] ping failed:', (err as Error).message);
     }
   };
+
   sendPing();
   pingIntervalId = setInterval(sendPing, PING_INTERVAL_MS);
 }

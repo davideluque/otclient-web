@@ -43,19 +43,21 @@ mountLoginScreen(root, {
  * object. **Data-binding only — nothing is rendered yet.** The
  * renderer that consumes this state is a separate follow-up PR.
  *
- * Module-scoped so a disconnect + re-login on the same page doesn't
- * create a second GameWorld stacking handlers on top of the first.
+ * Always builds a fresh GameWorld per in_game transition: a disconnect
+ * + re-login on the same page would otherwise reuse the previous
+ * session's stale tile/creature state, AND we *want* the new
+ * registration to land — `PacketDispatcher.on()` is a Map.set, so
+ * overwriting the previous closure's handler is exactly the right
+ * thing here.
  */
-let world: GameWorld | null = null;
-
 function bindGameWorld(client: GameClient): void {
-  if (world !== null) return;
-  world = new GameWorld(client.getProtocol());
+  const world = new GameWorld(client.getProtocol());
   world.registerHandlers(client.getDispatcher());
   console.info('[jamera] GameWorld bound to dispatcher (data-only, no rendering yet)');
   if (import.meta.env.DEV) {
     // Dev-only DevTools hook so we can inspect live tiles / creatures /
-    // player position while the renderer PR is being built.
+    // player position while the renderer PR is being built. Replaced on
+    // each re-login so the reference always points at the live world.
     (window as unknown as { jameraWorld: GameWorld }).jameraWorld = world;
   }
 }

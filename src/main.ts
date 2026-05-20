@@ -202,7 +202,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
     antialias: false,
     resolution: window.devicePixelRatio,
     autoDensity: true,
+    // Prefer WebGPU where available (Chrome/Edge desktop, Chrome Android 121+,
+    // Safari TP). PixiJS falls back to WebGL automatically when WebGPU init
+    // fails or isn't supported. Log which one actually got selected.
+    preference: 'webgpu',
   });
+  console.log(`[render] PixiJS renderer: ${app.renderer.name}`);
 
   // Hide loader, show canvas
   loaderEl.style.display = 'none';
@@ -868,8 +873,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
         // mobile this excludes the URL bar / soft keyboard; on desktop
         // it tracks pinch-zoom. innerWidth/innerHeight as a fallback for
         // older browsers (notably anything pre-iOS 13).
-        const w = window.visualViewport?.width ?? window.innerWidth;
-        const h = window.visualViewport?.height ?? window.innerHeight;
+        const rawW = window.visualViewport?.width ?? window.innerWidth;
+        const rawH = window.visualViewport?.height ?? window.innerHeight;
+        // visualViewport can report 0 or sub-pixel dimensions when the tab
+        // is hidden or mid-orientation; resizing the renderer to those
+        // values produces a black canvas and a divide-by-zero in
+        // computePlayZoom. Round to whole pixels and skip if either axis
+        // collapsed to zero — the next event will fire with real values.
+        const w = Math.floor(rawW);
+        const h = Math.floor(rawH);
+        if (w <= 0 || h <= 0) return;
         // visualViewport.resize fires liberally on mobile (URL-bar
         // reveal, pinch); skip if nothing actually changed.
         if (w === viewport.screenWidth && h === viewport.screenHeight) return;

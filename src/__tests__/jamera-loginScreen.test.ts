@@ -68,6 +68,24 @@ describe('mountLoginScreen', () => {
     expect(mounted.client.getState()).toBe('disconnected');
   });
 
+  it('rejects account numbers above the U32 range (would wrap on the wire)', async () => {
+    const account = root.querySelector('input[name="account"]') as HTMLInputElement;
+    const password = root.querySelector('input[name="password"]') as HTMLInputElement;
+    const form = root.querySelector('form') as HTMLFormElement;
+
+    // 2^32 — one past the U32 max. Without the upper-bound check this
+    // would serialise to 0 on the wire and silently land the user on a
+    // different account.
+    account.value = '4294967296';
+    password.value = 'hunter2';
+    form.dispatchEvent(new Event('submit'));
+
+    await Promise.resolve();
+    const err = root.querySelector('[data-role="error"]');
+    expect(err?.textContent).toMatch(/4294967295/);
+    expect(mounted.client.getState()).toBe('disconnected');
+  });
+
   it('disables the form once the client transitions out of disconnected', () => {
     const form = root.querySelector('form') as HTMLFormElement;
     const account = form.querySelector('input[name="account"]') as HTMLInputElement;

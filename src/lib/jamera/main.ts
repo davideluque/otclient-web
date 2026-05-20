@@ -29,13 +29,15 @@ mountLoginScreen(root, {
 });
 
 /**
- * Coerce a `?clientVersion=` query param to a positive integer, or
- * `undefined` to fall back to the default. Guards against `Number("bad")`
- * silently producing `NaN` and flowing through to GameProtocol.
+ * Coerce a `?clientVersion=` query param to a U16-range positive integer,
+ * or `undefined` to fall back to the default. The wire field is a U16, so
+ * values outside `[1, 65535]` would wrap on serialisation and produce a
+ * server-side version mismatch with a confusing error instead of falling
+ * back to the default. Also guards `Number("bad") === NaN`.
  */
 function parseClientVersion(raw: string | null): number | undefined {
   if (raw === null || raw === '') return undefined;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) return undefined;
+  if (!Number.isInteger(n) || n <= 0 || n > 0xffff) return undefined;
   return n;
 }

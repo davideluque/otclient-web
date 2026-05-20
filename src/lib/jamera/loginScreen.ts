@@ -86,12 +86,15 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
     clearError(ui);
     const account = Number(ui.accountInput.value);
     const password = ui.passwordInput.value;
-    // `Number.isInteger` rejects NaN, Infinity, AND fractional values like
-    // 1.5 — important because the wire format serialises this as a U32
-    // and silently coerces fractions, which would authenticate the user
-    // against a different account number than what they typed.
-    if (!Number.isInteger(account) || account <= 0) {
-      showError(ui, 'Account must be a positive integer.');
+    // The wire format serialises the account number as a U32. Anything
+    // that's not a positive integer in [1, 4_294_967_295] either silently
+    // truncates (fractions, values > 2^32) or wraps around when serialised,
+    // which would land the user on a different account than the one they
+    // typed — without raising any obvious error. Validate at the form
+    // boundary so the wire only ever sees in-range values.
+    const ACCOUNT_MAX = 0xffffffff; // 2^32 - 1
+    if (!Number.isInteger(account) || account <= 0 || account > ACCOUNT_MAX) {
+      showError(ui, `Account must be a positive integer between 1 and ${ACCOUNT_MAX}.`);
       return;
     }
     try {

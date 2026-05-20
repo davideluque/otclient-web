@@ -1,4 +1,6 @@
 import { mountLoginScreen } from './loginScreen';
+import type { GameClient } from '../net/common/GameClient';
+import { OutputPacket } from '../net/common/OutputPacket';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -25,8 +27,33 @@ mountLoginScreen(root, {
     } else {
       console.info('[jamera] in_game — client attached locally (suppressed from window in prod)');
     }
+    startPingLoop(client);
   },
 });
+
+/**
+ * Keep-alive + end-to-end send() smoke test. Tibia 7.6 servers expect
+ * a periodic Ping (client opcode `0x1E`) and treat long silence as
+ * disconnect. Running this also exercises `GameClient.send()` against
+ * the real jamera server every 30s, surfacing any wire-path regression
+ * via a thrown send error long before it would otherwise show up.
+ */
+const PING_INTERVAL_MS = 30_000;
+const TIBIA_76_CLIENT_PING_OPCODE = 0x1e;
+
+function startPingLoop(client: GameClient): void {
+  const sendPing = () => {
+    try {
+      const packet = new OutputPacket();
+      packet.addU8(TIBIA_76_CLIENT_PING_OPCODE);
+      client.send(packet);
+    } catch (err) {
+      console.warn('[jamera] ping failed:', (err as Error).message);
+    }
+  };
+  sendPing();
+  setInterval(sendPing, PING_INTERVAL_MS);
+}
 
 /**
  * Coerce a `?clientVersion=` query param to a U16-range positive integer,

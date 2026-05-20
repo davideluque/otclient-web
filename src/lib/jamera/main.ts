@@ -5,6 +5,7 @@ import { ClientOp } from '../net/7.6/opcodes';
 import { tryAutoload } from '../assetAutoload';
 import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
+import { Application } from 'pixi.js';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -34,8 +35,51 @@ mountLoginScreen(root, {
     startPingLoop(client);
     loadAssetsForRendering();
     bindGameWorld(client);
+    ensurePixiApp().catch((err) => {
+      console.warn('[jamera] PIXI bootstrap failed:', (err as Error).message);
+    });
   },
 });
+
+/**
+ * Lazy-init a PIXI Application on the first in_game transition and
+ * append its canvas to the document body. **No scene graph yet** — the
+ * renderer that draws tiles + creatures from GameWorld is a follow-up
+ * PR. This PR just gets the WebGL/WebGPU context up so subsequent PRs
+ * have somewhere to paint.
+ *
+ * Page-lifetime singleton (unlike GameWorld, which is per-session): the
+ * GPU context is expensive to spin up and there's no reason to tear it
+ * down between login attempts on the same tab.
+ */
+let pixiApp: Application | null = null;
+
+async function ensurePixiApp(): Promise<Application> {
+  if (pixiApp) return pixiApp;
+  const app = new Application();
+  await app.init({
+    background: '#000000',
+    width: window.innerWidth,
+    height: window.innerHeight,
+    antialias: false,
+    resolution: window.devicePixelRatio,
+    autoDensity: true,
+    // Match the offline demo's preference — PixiJS falls back to WebGL
+    // automatically if WebGPU init fails or isn't supported.
+    preference: 'webgpu',
+  });
+  app.canvas.style.cssText = 'position:fixed;inset:0;z-index:0;';
+  document.body.appendChild(app.canvas);
+  window.addEventListener('resize', () => {
+    app.renderer.resize(window.innerWidth, window.innerHeight);
+  });
+  pixiApp = app;
+  console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
+  if (import.meta.env.DEV) {
+    (window as unknown as { jameraPixi: Application }).jameraPixi = app;
+  }
+  return app;
+}
 
 /**
  * Spin up a GameWorld and register its handlers on the client's

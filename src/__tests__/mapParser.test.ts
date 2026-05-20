@@ -156,14 +156,29 @@ describe('parseMapDescription', () => {
     const out = new OutputPacket();
     for (let i = 0; i < 8; i++) pushItemTile(out, 1000 + i);
 
+    // Use a large player position so the perspective offset doesn't push
+    // sky-floor tiles to negative world coordinates.
     const tiles = parseMapDescription(
       new InputPacket(out.toArrayBuffer()),
-      0, 0, 0, 0, 7,
+      100, 100, 100, 100, 7,
     );
 
     expect(tiles).toHaveLength(8);
     expect(tiles.map(t => t.z)).toEqual([7, 6, 5, 4, 3, 2, 1, 0]);
     expect(tiles.map(t => t.items[0].id)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007]);
+    // Floor perspective offset: each above-ground floor shifts NW by
+    // `playerZ - z` tiles to compensate for the 2D camera angle, so a
+    // tile at screen (100, 100) on floor z is at world (100 + (z - 7), 100 + (z - 7)).
+    expect(tiles.map(t => ({ x: t.x, y: t.y, z: t.z }))).toEqual([
+      { x: 100, y: 100, z: 7 },
+      { x: 99,  y: 99,  z: 6 },
+      { x: 98,  y: 98,  z: 5 },
+      { x: 97,  y: 97,  z: 4 },
+      { x: 96,  y: 96,  z: 3 },
+      { x: 95,  y: 95,  z: 2 },
+      { x: 94,  y: 94,  z: 1 },
+      { x: 93,  y: 93,  z: 0 },
+    ]);
   });
 
   it('iterates 5 floors ascending for underground players (z-2..z+2)', () => {
@@ -173,10 +188,19 @@ describe('parseMapDescription', () => {
 
     const tiles = parseMapDescription(
       new InputPacket(out.toArrayBuffer()),
-      0, 0, 0, 0, 10,
+      100, 100, 100, 100, 10,
     );
 
     expect(tiles).toHaveLength(5);
     expect(tiles.map(t => t.z)).toEqual([8, 9, 10, 11, 12]);
+    // Underground perspective offset: shift SE by `z - playerZ` tiles
+    // (negative for floors above the player, positive for floors below).
+    expect(tiles.map(t => ({ x: t.x, y: t.y, z: t.z }))).toEqual([
+      { x: 98,  y: 98,  z: 8 },
+      { x: 99,  y: 99,  z: 9 },
+      { x: 100, y: 100, z: 10 },
+      { x: 101, y: 101, z: 11 },
+      { x: 102, y: 102, z: 12 },
+    ]);
   });
 });

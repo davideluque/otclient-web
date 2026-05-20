@@ -63,6 +63,12 @@ export function parseMapDescription(
   let skipTiles = 0;
 
   for (const z of floors) {
+    // Each visible floor is sent at a screen-position offset to preserve
+    // perspective: above-ground (z < playerZ) shifts NW (dz negative),
+    // underground (z > playerZ) shifts SE (dz positive). Translate to
+    // world coordinates as we emit each tile so callers can index by
+    // world position uniformly.
+    const dz = z - playerZ;
     for (let nx = startX; nx <= endX; nx++) {
       for (let ny = startY; ny <= endY; ny++) {
         if (skipTiles > 0) {
@@ -81,7 +87,7 @@ export function parseMapDescription(
 
         // Non-empty tile slot: parse its things, then the trailing skip
         // marker that closes the slot.
-        const tile: MapTile = { x: nx, y: ny, z, items: [], creatures: [] };
+        const tile: MapTile = { x: nx + dz, y: ny + dz, z, items: [], creatures: [] };
         skipTiles = parseTileSlot(packet, tile);
         tiles.push(tile);
       }

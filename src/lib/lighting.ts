@@ -106,6 +106,10 @@ export class LightSpritePool {
       sprite.anchor.set(0.5);
       sprite.blendMode = 'add';
       this.sprites[this.inUse] = sprite;
+    } else if (sprite.texture !== mask) {
+      // Honor the mask passed by the caller — without this, a reused sprite
+      // would silently keep the texture it was created with.
+      sprite.texture = mask;
     }
     this.inUse++;
     return sprite;

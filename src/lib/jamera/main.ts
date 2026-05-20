@@ -1,4 +1,5 @@
 import { mountLoginScreen } from './loginScreen';
+import { parseQueryInt } from '../queryParams';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -7,7 +8,7 @@ if (!root) {
 
 const params = new URLSearchParams(window.location.search);
 const proxyUrl = params.get('proxy') ?? undefined;
-const clientVersion = parseClientVersion(params.get('clientVersion'));
+const clientVersion = parseQueryInt(params.get('clientVersion'), { min: 1 });
 
 mountLoginScreen(root, {
   proxyUrl,
@@ -27,15 +28,3 @@ mountLoginScreen(root, {
     }
   },
 });
-
-/**
- * Coerce a `?clientVersion=` query param to a positive integer, or
- * `undefined` to fall back to the default. Guards against `Number("bad")`
- * silently producing `NaN` and bypassing the default in the call site.
- */
-function parseClientVersion(raw: string | null): number | undefined {
-  if (raw === null) return undefined;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) return undefined;
-  return n;
-}

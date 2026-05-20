@@ -2,6 +2,9 @@ import { GameClient } from '../net/common/GameClient';
 import type { GameClientState, GameClientEvents } from '../net/common/GameClient';
 import type { CharacterInfo } from '../net/common/types';
 import { GameProtocol } from '../net/7.6/GameProtocol';
+// Vite `?raw` import: ships the file contents as a string at build time.
+// Keeps the markup + styles out of the TS source so the file stays readable.
+import templateHtml from './loginScreen.html?raw';
 
 /**
  * Phase 2 scaffold. Mounts a minimal login + character-selection form,
@@ -74,10 +77,9 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
       }
     });
   };
-  events.onDisconnect = () => {
-    ui.statusEl.textContent = 'Disconnected.';
-    ui.statusEl.classList.add('error');
-  };
+  // Disconnect is already surfaced by `onStateChange` → `updateState`
+  // (GameClient calls setState('disconnected') immediately before
+  // triggering onDisconnect), so no extra handler needed here.
 
   ui.form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -120,61 +122,7 @@ interface UiHandles {
 function createDom(): UiHandles {
   const container = document.createElement('div');
   container.className = 'jamera-login';
-  container.innerHTML = `
-    <style>
-      .jamera-login {
-        position: fixed; inset: 0;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 1rem;
-        background: #1a1a2e; color: #e0e0e0;
-        font-family: system-ui, sans-serif; font-size: 0.9rem;
-        padding: 1rem;
-      }
-      .jamera-login h1 { font-size: 1.4rem; color: #7c5cbf; }
-      .jamera-login form {
-        display: flex; flex-direction: column; gap: 0.5rem;
-        width: min(320px, 90vw);
-      }
-      .jamera-login input {
-        background: #111; color: #eee; border: 1px solid #444;
-        border-radius: 4px; padding: 0.5rem 0.75rem;
-        font-size: 0.95rem;
-      }
-      .jamera-login input:focus { outline: none; border-color: #7c5cbf; }
-      .jamera-login button {
-        background: #7c5cbf; color: #fff; border: none;
-        border-radius: 4px; padding: 0.5rem 0.75rem;
-        font-size: 0.95rem; cursor: pointer;
-      }
-      .jamera-login button:disabled { background: #555; cursor: not-allowed; }
-      .jamera-login .status { color: #888; min-height: 1.2rem; }
-      .jamera-login .status.error { color: #ff6b6b; }
-      .jamera-login .error { color: #ff6b6b; min-height: 1.2rem; }
-      .jamera-login .characters {
-        display: flex; flex-direction: column; gap: 0.5rem;
-        width: min(320px, 90vw);
-      }
-      .jamera-login .characters button {
-        text-align: left; padding: 0.6rem 0.8rem;
-        background: #2a2a44; color: #e0e0e0;
-      }
-      .jamera-login .characters button:hover { background: #3a3a5a; }
-      .jamera-login .motd {
-        max-width: min(320px, 90vw);
-        padding: 0.5rem; background: #15152a; border-radius: 4px;
-        color: #aaa; font-size: 0.8rem; white-space: pre-wrap;
-      }
-    </style>
-    <h1>Jamera login</h1>
-    <form>
-      <input name="account" type="number" placeholder="Account number" aria-label="Account number" autocomplete="username" required />
-      <input name="password" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required />
-      <button type="submit">Log in</button>
-    </form>
-    <div class="status" data-role="status">Idle.</div>
-    <div class="error" data-role="error"></div>
-    <div class="characters" data-role="characters" hidden></div>
-  `;
+  container.innerHTML = templateHtml;
 
   return {
     container,
@@ -199,12 +147,29 @@ const STATE_LABELS: Record<GameClientState, string> = {
 function updateState(ui: UiHandles, state: GameClientState): void {
   ui.statusEl.textContent = STATE_LABELS[state];
   ui.statusEl.classList.toggle('error', state === 'disconnected');
-  // Disable the form while the client is mid-flight; re-enable on
-  // disconnected/character_list so the user can retry/cancel.
+
+  // Disable the account/password form while the client is mid-flight;
+  // re-enable on disconnected/character_list so the user can retry / pick
+  // a different character.
   const formDisabled = state === 'logging_in' || state === 'entering_game' || state === 'in_game';
   ui.accountInput.disabled = formDisabled;
   ui.passwordInput.disabled = formDisabled;
   ui.loginButton.disabled = formDisabled;
+
+  // Disable character-selection buttons once a selection is in flight so
+  // a double-click (or two different characters clicked in quick
+  // succession) can't kick off overlapping `selectCharacter` calls that
+  // race state transitions and disconnect handlers.
+  const selectionInFlight = state === 'entering_game' || state === 'in_game';
+  for (const btn of ui.characterListEl.querySelectorAll('button')) {
+    (btn as HTMLButtonElement).disabled = selectionInFlight;
+  }
+
+  // Hide the stale character list when we drop back to the pre-character
+  // states — keeping it visible would suggest selection is still possible.
+  if (state === 'disconnected' || state === 'logging_in') {
+    ui.characterListEl.hidden = true;
+  }
 }
 
 function showError(ui: UiHandles, message: string): void {

@@ -1,0 +1,53 @@
+<style>
+  .jamera-login {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1rem;
+    background: #1a1a2e; color: #e0e0e0;
+    font-family: system-ui, sans-serif; font-size: 0.9rem;
+    padding: 1rem;
+  }
+  .jamera-login h1 { font-size: 1.4rem; color: #7c5cbf; }
+  .jamera-login form {
+    display: flex; flex-direction: column; gap: 0.5rem;
+    width: min(320px, 90vw);
+  }
+  .jamera-login input {
+    background: #111; color: #eee; border: 1px solid #444;
+    border-radius: 4px; padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  .jamera-login input:focus { outline: none; border-color: #7c5cbf; }
+  .jamera-login button {
+    background: #7c5cbf; color: #fff; border: none;
+    border-radius: 4px; padding: 0.5rem 0.75rem;
+    font-size: 0.95rem; cursor: pointer;
+  }
+  .jamera-login button:disabled { background: #555; cursor: not-allowed; }
+  .jamera-login .status { color: #888; min-height: 1.2rem; }
+  .jamera-login .status.error { color: #ff6b6b; }
+  .jamera-login .error { color: #ff6b6b; min-height: 1.2rem; }
+  .jamera-login .characters {
+    display: flex; flex-direction: column; gap: 0.5rem;
+    width: min(320px, 90vw);
+  }
+  .jamera-login .characters button {
+    text-align: left; padding: 0.6rem 0.8rem;
+    background: #2a2a44; color: #e0e0e0;
+  }
+  .jamera-login .characters button:hover { background: #3a3a5a; }
+  .jamera-login .motd {
+    max-width: min(320px, 90vw);
+    padding: 0.5rem; background: #15152a; border-radius: 4px;
+    color: #aaa; font-size: 0.8rem; white-space: pre-wrap;
+  }
+</style>
+<h1>Jamera login</h1>
+<form>
+  <input name="account" type="number" placeholder="Account number" aria-label="Account number" autocomplete="username" required />
+  <input name="password" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required />
+  <button type="submit">Log in</button>
+</form>
+<div class="status" data-role="status">Idle.</div>
+<div class="error" data-role="error"></div>
+<div class="characters" data-role="characters" hidden></div>

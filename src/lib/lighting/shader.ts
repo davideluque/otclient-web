@@ -61,7 +61,10 @@ void main() {
   // Linear ramp first; squaring after the clamp gives a smoother roll-off
   // than a single pow(1-r, n) without a core.
   float t = clamp(1.0 - (r - uCoreSize) / (1.0 - uCoreSize), 0.0, 1.0);
-  float intensity = t * t;
+  // Scale the peak contribution down so a bright tint + the night ambient
+  // stays under the per-channel LDR cap. Without this, torch centers
+  // saturate to white and the tint only reads at the bubble's edge.
+  float intensity = t * t * 0.55;
   // uTime is plumbed but unused — reserved for a future torch flicker pass
   // (e.g. intensity *= 1.0 + 0.05 * sin(uTime * 6.0)) without CPU work.
   outColor = vec4(uTint * intensity, intensity);
@@ -110,7 +113,8 @@ fn mainFrag(input: VSOut) -> @location(0) vec4<f32> {
   let d = input.vUV - vec2<f32>(0.5);
   let r = length(d) * 2.0;
   let t = clamp(1.0 - (r - lightUniforms.uCoreSize) / (1.0 - lightUniforms.uCoreSize), 0.0, 1.0);
-  let intensity = t * t;
+  // See GLSL fragment: scale down so tint + ambient stays under the LDR cap.
+  let intensity = t * t * 0.55;
   return vec4<f32>(lightUniforms.uTint * intensity, intensity);
 }`;
 

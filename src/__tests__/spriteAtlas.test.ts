@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildSpriteAtlas } from '../lib/spriteAtlas';
+import * as tileRenderer from '../lib/tileRenderer';
 import { DatAttr, ITEM_ID_OFFSET } from '../lib/dat';
 
 function pushU16(bytes: number[], value: number) {
@@ -84,7 +85,17 @@ describe('buildSpriteAtlas', () => {
   it('memoises .get() — repeated calls return the same Texture instance', () => {
     const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
     expect(atlas.get(1)).toBe(atlas.get(1));
-    // Cache the null branch too so repeated misses don't reallocate.
-    expect(atlas.get(9999)).toBe(atlas.get(9999));
+  });
+
+  it('memoises .get() null misses — underlying slice runs once per unknown id', () => {
+    // Spy *before* building so the construction-time call (which probes
+    // the layout once during atlas creation) is captured in `mockClear`.
+    const spy = vi.spyOn(tileRenderer, 'getSpriteTexture');
+    const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
+    spy.mockClear();
+    atlas.get(9999);
+    atlas.get(9999);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });

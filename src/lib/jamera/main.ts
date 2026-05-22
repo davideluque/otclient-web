@@ -166,7 +166,9 @@ function loadAssetsForRendering(): void {
         // Leave `assetsLoaded` false so the next in_game transition gets
         // another shot. Still expose `jameraAssets` below — the raw
         // buffers are useful for diagnosing the failure in DevTools.
-        console.warn('[jamera] atlas build failed:', (err as Error).message);
+        // `instanceof Error` because JS allows throwing anything; the
+        // cast-and-`.message` form crashes if a non-Error is thrown.
+        console.warn('[jamera] atlas build failed:', err instanceof Error ? err.message : err);
       }
       if (import.meta.env.DEV) {
         // Dev-only DevTools hooks so the renderer PR can poke at the
@@ -180,7 +182,7 @@ function loadAssetsForRendering(): void {
     },
   })
     .catch((err) => {
-      console.warn('[jamera] asset auto-load failed:', (err as Error).message);
+      console.warn('[jamera] asset auto-load failed:', err instanceof Error ? err.message : err);
     })
     .finally(() => {
       assetsLoading = false;

@@ -117,6 +117,10 @@ export class GameClient {
     console.info(
       `[net] game phase: announced ${character.worldIp}:${character.worldPort}, routing via proxy ${this.proxyUrl}`,
     );
+    // Disconnect any prior gameConn before reassigning — otherwise a
+    // second selectCharacter call (rapid retry, future programmatic
+    // re-select) would orphan the previous WebSocket.
+    this.gameConn?.disconnect();
     this.gameConn = new Connection(this.proxyUrl);
 
     this.gameConn.setPacketHandler((packet) => {

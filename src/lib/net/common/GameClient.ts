@@ -30,6 +30,7 @@ export interface GameClientEvents {
  * injection rather than importing version-specific builders/parsers directly.
  */
 export class GameClient {
+  private proxyUrl: string;
   private loginConn: Connection;
   private gameConn: Connection | null = null;
   private xteaKey: XteaKey | null = null;
@@ -41,6 +42,7 @@ export class GameClient {
   private password = '';
 
   constructor(proxyUrl: string, events: GameClientEvents, protocol: GameProtocol) {
+    this.proxyUrl = proxyUrl;
     this.loginConn = new Connection(proxyUrl);
     this.events = events;
     this.dispatcher = new PacketDispatcher();
@@ -93,12 +95,29 @@ export class GameClient {
 
   /**
    * Step 2: Select a character and connect to the game server.
+   *
+   * The game phase routes through the same WebSocket proxy as the login
+   * phase, NOT `character.worldIp:worldPort`. Browsers cannot open raw
+   * TCP sockets, so a WS↔TCP bridge is always in the path; our proxy is
+   * single-target (one `OT_HOST` env var, routes by `/login` vs `/game`
+   * path), which means `character.worldIp` — the OT server's view of
+   * itself — isn't a usable target from the browser. It's logged for
+   * diagnostics and so the announced address remains visible.
+   *
+   * `worldIp` becomes a real target again only if (a) the OT server
+   * speaks WebSocket natively, removing the proxy from the path, or
+   * (b) the proxy learns to route on a client-supplied target (multi-
+   * world support). Both require paired client+proxy changes; out of
+   * scope here.
    */
   async selectCharacter(character: CharacterInfo): Promise<void> {
     this.setState('entering_game');
     this.loginConn.disconnect();
 
-    this.gameConn = new Connection(`ws://${character.worldIp}:8090`);
+    console.info(
+      `[net] game phase: announced ${character.worldIp}:${character.worldPort}, routing via proxy ${this.proxyUrl}`,
+    );
+    this.gameConn = new Connection(this.proxyUrl);
 
     this.gameConn.setPacketHandler((packet) => {
       this.dispatcher.dispatch(packet);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildJameraAtlas } from '../lib/jamera/atlasCache';
+import { buildSpriteAtlas } from '../lib/spriteAtlas';
 import { DatAttr, ITEM_ID_OFFSET } from '../lib/dat';
 
 function pushU16(bytes: number[], value: number) {
@@ -56,20 +56,20 @@ function buildSpr(count: number): ArrayBuffer {
   return new Uint8Array(bytes).buffer;
 }
 
-describe('buildJameraAtlas', () => {
+describe('buildSpriteAtlas', () => {
   it('wires .dat → datIndex with the parsed item', () => {
-    const atlas = buildJameraAtlas(buildDat(), buildSpr(1));
+    const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
     expect(atlas.datIndex.has(ITEM_ID_OFFSET)).toBe(true);
     expect(atlas.dat.items).toHaveLength(1);
   });
 
   it('builds atlas layout for the sprite referenced by the .dat', () => {
-    const atlas = buildJameraAtlas(buildDat(), buildSpr(1));
+    const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
     expect(atlas.layout.get(1)).toEqual({ page: 0, x: 0, y: 0 });
   });
 
   it('exposes a .get() that returns a Texture for known sprite IDs', () => {
-    const atlas = buildJameraAtlas(buildDat(), buildSpr(1));
+    const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
     const tex = atlas.get(1);
     expect(tex).not.toBeNull();
     expect(tex?.frame.width).toBe(32);
@@ -77,7 +77,14 @@ describe('buildJameraAtlas', () => {
   });
 
   it('returns null for unknown sprite IDs', () => {
-    const atlas = buildJameraAtlas(buildDat(), buildSpr(1));
+    const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
     expect(atlas.get(9999)).toBeNull();
+  });
+
+  it('memoises .get() — repeated calls return the same Texture instance', () => {
+    const atlas = buildSpriteAtlas(buildDat(), buildSpr(1));
+    expect(atlas.get(1)).toBe(atlas.get(1));
+    // Cache the null branch too so repeated misses don't reallocate.
+    expect(atlas.get(9999)).toBe(atlas.get(9999));
   });
 });

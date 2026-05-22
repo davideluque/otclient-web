@@ -5,7 +5,7 @@ import { ClientOp } from '../net/7.6/opcodes';
 import { tryAutoload } from '../assetAutoload';
 import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
-import { buildJameraAtlas, type JameraAtlas } from './atlasCache';
+import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { Application } from 'pixi.js';
 
 const root = document.getElementById('jamera-root');
@@ -140,7 +140,7 @@ let assetsLoading = false;
 let assetsLoaded = false;
 // Page-lifetime cache: assets don't change between re-logins, so the
 // expensive sprite-decode + GPU upload only runs once per tab.
-let jameraAtlas: JameraAtlas | null = null;
+let jameraAtlas: SpriteAtlas | null = null;
 
 function loadAssetsForRendering(): void {
   if (assetsLoaded || assetsLoading) return;
@@ -152,17 +152,20 @@ function loadAssetsForRendering(): void {
     },
     addFileToList: (name) => console.info('[jamera-assets] loaded', name),
     startApp: async (loaded: CompleteLoadedFiles) => {
-      assetsLoaded = true;
       console.info('[jamera] assets ready (dat/spr/otb/otbm)');
       try {
-        jameraAtlas = buildJameraAtlas(loaded.dat, loaded.spr);
+        jameraAtlas = buildSpriteAtlas(loaded.dat, loaded.spr);
+        // Only flip `assetsLoaded` once the atlas exists — otherwise a
+        // build failure here would permanently short-circuit the guard
+        // in `loadAssetsForRendering`, and a re-login could never retry.
+        assetsLoaded = true;
         console.info(
           `[jamera] atlas cache ready (${jameraAtlas.atlasTextures.pages.size} page(s), ${jameraAtlas.layout.size} sprites)`,
         );
       } catch (err) {
-        // Don't kill the dev hook below if atlas build fails — the
-        // renderer PR can still inspect raw .dat/.spr buffers via
-        // `window.jameraAssets` to diagnose the failure.
+        // Leave `assetsLoaded` false so the next in_game transition gets
+        // another shot. Still expose `jameraAssets` below — the raw
+        // buffers are useful for diagnosing the failure in DevTools.
         console.warn('[jamera] atlas build failed:', (err as Error).message);
       }
       if (import.meta.env.DEV) {
@@ -171,7 +174,7 @@ function loadAssetsForRendering(): void {
         // prod for the same reason as window.jameraClient.
         (window as unknown as { jameraAssets: CompleteLoadedFiles }).jameraAssets = loaded;
         if (jameraAtlas) {
-          (window as unknown as { jameraAtlas: JameraAtlas }).jameraAtlas = jameraAtlas;
+          (window as unknown as { jameraAtlas: SpriteAtlas }).jameraAtlas = jameraAtlas;
         }
       }
     },

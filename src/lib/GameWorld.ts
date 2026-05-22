@@ -1,6 +1,7 @@
 import type { InputPacket } from './net/common/InputPacket';
 import type { PacketDispatcher } from './net/common/PacketDispatcher';
 import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
+import type { ResolvedTile } from './tileMap';
 
 export interface WorldCreature {
   id: number;
@@ -63,6 +64,37 @@ export class GameWorld {
 
   getAllCreatures(): WorldCreature[] {
     return [...this.creatures.values()];
+  }
+
+  /**
+   * Yield live tiles in the region in the shape `renderTileRegion`
+   * consumes (the `TileSource` interface). Wire-side item IDs are
+   * already the client-side dat IDs, so `clientId` maps 1:1 from
+   * `item.id`. `flags` and `floorChange` are absent on the wire —
+   * synthesised as `0` / `undefined`; `renderTile` reads neither.
+   *
+   * Creatures aren't yielded here — they need outfit-tint rendering
+   * via `renderPlayer`, which is its own concern (separate PR).
+   */
+  *tilesInRegion(
+    x1: number, y1: number, x2: number, y2: number, z: number,
+  ): Generator<ResolvedTile> {
+    for (let x = x1; x <= x2; x++) {
+      for (let y = y1; y <= y2; y++) {
+        const tile = this.tiles.get(`${x}:${y}:${z}`);
+        if (!tile) continue;
+        yield {
+          x: tile.x,
+          y: tile.y,
+          z: tile.z,
+          flags: 0,
+          items: tile.items.map((item) => ({
+            clientId: item.id,
+            count: item.count,
+          })),
+        };
+      }
+    }
   }
 
   private setTile(tile: MapTile): void {

@@ -6,6 +6,7 @@ import { tryAutoload } from '../assetAutoload';
 import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
+import { bindRenderer } from './renderer';
 import { Application } from 'pixi.js';
 
 const root = document.getElementById('jamera-root');
@@ -35,10 +36,11 @@ mountLoginScreen(root, {
     }
     startPingLoop(client);
     loadAssetsForRendering();
-    bindGameWorld(client);
+    const world = bindGameWorld(client);
     ensurePixiApp().catch((err) => {
       console.warn('[jamera] PIXI bootstrap failed:', err);
     });
+    void mountRenderer(world);
   },
 });
 
@@ -109,15 +111,55 @@ function ensurePixiApp(): Promise<Application> {
  * overwriting the previous closure's handler is exactly the right
  * thing here.
  */
-function bindGameWorld(client: GameClient): void {
+function bindGameWorld(client: GameClient): GameWorld {
   const world = new GameWorld(client.getProtocol());
   world.registerHandlers(client.getDispatcher());
-  console.info('[jamera] GameWorld bound to dispatcher (data-only, no rendering yet)');
+  console.info('[jamera] GameWorld bound to dispatcher');
   if (import.meta.env.DEV) {
     // Dev-only DevTools hook so we can inspect live tiles / creatures /
-    // player position while the renderer PR is being built. Replaced on
-    // each re-login so the reference always points at the live world.
+    // player position. Replaced on each re-login so the reference
+    // always points at the live world.
     (window as unknown as { jameraWorld: GameWorld }).jameraWorld = world;
+  }
+  return world;
+}
+
+/**
+ * Coordinate the three async deps (PIXI, asset atlas, fresh GameWorld)
+ * and invoke `bindRenderer` once all are ready. PIXI and the atlas are
+ * page-lifetime singletons; the world is per-session. On re-login we
+ * tear down the previous renderer first so the old session's container
+ * doesn't leak into the new stage.
+ *
+ * Atlas may arrive before or after this mount runs:
+ *   - Already cached (re-login): `jameraAtlas` is set, bind immediately.
+ *   - Still loading: register a one-shot callback that the asset-load
+ *     path fires once the atlas finishes building.
+ */
+let teardownRenderer: (() => void) | null = null;
+let onAtlasReady: ((atlas: SpriteAtlas) => void) | null = null;
+
+async function mountRenderer(world: GameWorld): Promise<void> {
+  teardownRenderer?.();
+  teardownRenderer = null;
+
+  let app: Application;
+  try {
+    app = await ensurePixiApp();
+  } catch (err) {
+    console.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
+    return;
+  }
+
+  const mount = (atlas: SpriteAtlas): void => {
+    teardownRenderer = bindRenderer(world, atlas, app);
+    console.info('[jamera] renderer bound to GameWorld');
+  };
+
+  if (jameraAtlas) {
+    mount(jameraAtlas);
+  } else {
+    onAtlasReady = mount;
   }
 }
 
@@ -162,6 +204,11 @@ function loadAssetsForRendering(): void {
         console.info(
           `[jamera] atlas cache ready (${jameraAtlas.atlasTextures.pages.size} page(s), ${jameraAtlas.layout.size} sprites)`,
         );
+        // Notify any renderer mount that was waiting for the atlas.
+        // Consumed exactly once — re-logins re-register from scratch.
+        const pending = onAtlasReady;
+        onAtlasReady = null;
+        pending?.(jameraAtlas);
       } catch (err) {
         // Leave `assetsLoaded` false so the next in_game transition gets
         // another shot. Still expose `jameraAssets` below — the raw

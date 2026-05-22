@@ -5,6 +5,7 @@ import { ClientOp } from '../net/7.6/opcodes';
 import { tryAutoload } from '../assetAutoload';
 import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
+import { buildJameraAtlas, type JameraAtlas } from './atlasCache';
 import { Application } from 'pixi.js';
 
 const root = document.getElementById('jamera-root');
@@ -137,6 +138,9 @@ function bindGameWorld(client: GameClient): void {
  */
 let assetsLoading = false;
 let assetsLoaded = false;
+// Page-lifetime cache: assets don't change between re-logins, so the
+// expensive sprite-decode + GPU upload only runs once per tab.
+let jameraAtlas: JameraAtlas | null = null;
 
 function loadAssetsForRendering(): void {
   if (assetsLoaded || assetsLoading) return;
@@ -150,11 +154,25 @@ function loadAssetsForRendering(): void {
     startApp: async (loaded: CompleteLoadedFiles) => {
       assetsLoaded = true;
       console.info('[jamera] assets ready (dat/spr/otb/otbm)');
+      try {
+        jameraAtlas = buildJameraAtlas(loaded.dat, loaded.spr);
+        console.info(
+          `[jamera] atlas cache ready (${jameraAtlas.atlasTextures.pages.size} page(s), ${jameraAtlas.layout.size} sprites)`,
+        );
+      } catch (err) {
+        // Don't kill the dev hook below if atlas build fails — the
+        // renderer PR can still inspect raw .dat/.spr buffers via
+        // `window.jameraAssets` to diagnose the failure.
+        console.warn('[jamera] atlas build failed:', (err as Error).message);
+      }
       if (import.meta.env.DEV) {
-        // Dev-only DevTools hook so the renderer PR can poke at the
-        // parsed assets while it's being built. Not exposed in prod for
-        // the same reason as window.jameraClient.
+        // Dev-only DevTools hooks so the renderer PR can poke at the
+        // parsed assets + atlas while it's being built. Not exposed in
+        // prod for the same reason as window.jameraClient.
         (window as unknown as { jameraAssets: CompleteLoadedFiles }).jameraAssets = loaded;
+        if (jameraAtlas) {
+          (window as unknown as { jameraAtlas: JameraAtlas }).jameraAtlas = jameraAtlas;
+        }
       }
     },
   })

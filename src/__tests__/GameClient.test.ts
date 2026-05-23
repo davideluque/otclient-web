@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { GameClient } from '../lib/net/common/GameClient';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
+import { InputPacket } from '../lib/net/common/InputPacket';
 
 describe('GameClient.send', () => {
   it('throws when called before login (state: disconnected)', () => {
@@ -22,6 +23,39 @@ describe('GameClient.getProtocol', () => {
     const protocol = new GameProtocol();
     const client = new GameClient('ws://test', {}, protocol);
     expect(client.getProtocol()).toBe(protocol);
+  });
+});
+
+describe('GameClient auto-pong', () => {
+  it('responds to server Ping (0x1E) with a client Pong on the game socket', () => {
+    const protocol = new GameProtocol();
+    const client = new GameClient('ws://test', {}, protocol);
+
+    // Stub the game socket with a send-capture mock; the real Connection
+    // would require a live WS and isn't available in this env anyway.
+    const send = vi.fn();
+    // @ts-expect-error driving private state for the test
+    client.gameConn = { send };
+
+    // Server-sent Ping packet: one byte, the opcode itself.
+    const pingFromServer = new InputPacket(new Uint8Array([protocol.serverOpcodes.Ping]).buffer);
+    client.getDispatcher().dispatch(pingFromServer);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const [packet, encrypt] = send.mock.calls[0];
+    expect(packet).toBeInstanceOf(OutputPacket);
+    expect((packet as OutputPacket).toUint8Array()[0]).toBe(protocol.clientOpcodes.Ping);
+    // 7.6 has no XTEA so encrypt should be false.
+    expect(encrypt).toBe(false);
+  });
+
+  it('no-ops if gameConn is not set yet (Ping arrives before selectCharacter completes)', () => {
+    const protocol = new GameProtocol();
+    const client = new GameClient('ws://test', {}, protocol);
+
+    const pingFromServer = new InputPacket(new Uint8Array([protocol.serverOpcodes.Ping]).buffer);
+    // Should not throw even though gameConn is null.
+    expect(() => client.getDispatcher().dispatch(pingFromServer)).not.toThrow();
   });
 });
 

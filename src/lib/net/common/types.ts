@@ -230,6 +230,7 @@ export interface ServerOpcodes {
   readonly LoginMotd: number;
   readonly LoginCharacterList: number;
   readonly SelfAppear: number;
+  readonly GMActions: number;
   readonly Ping: number;
   readonly MapDescription: number;
   readonly MoveNorth: number;

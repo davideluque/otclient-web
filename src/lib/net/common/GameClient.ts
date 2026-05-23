@@ -54,7 +54,9 @@ export class GameClient {
     // pass game login fine, then get disconnected after the first
     // server-side ping interval expires. Registered on construction so
     // any consumer that wants to also handle Ping can overwrite —
-    // `PacketDispatcher.on` is last-write-wins.
+    // `PacketDispatcher.on` is last-write-wins. Other opcode-handling
+    // decisions (which packets to skip vs render) belong to consumers,
+    // not this protocol-level client.
     this.dispatcher.on(this.protocol.serverOpcodes.Ping, () => this.sendPong());
   }
 

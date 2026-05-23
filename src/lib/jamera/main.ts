@@ -7,6 +7,7 @@ import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
+import { applyJameraQuirks } from './protocolQuirks';
 import { Application } from 'pixi.js';
 
 const root = document.getElementById('jamera-root');
@@ -34,6 +35,7 @@ mountLoginScreen(root, {
     } else {
       console.info('[jamera] in_game — client attached locally (suppressed from window in prod)');
     }
+    applyJameraQuirks(client);
     startPingLoop(client);
     loadAssetsForRendering();
     const world = bindGameWorld(client);

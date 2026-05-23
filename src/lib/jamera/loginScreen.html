@@ -10,6 +10,11 @@
     font-family: system-ui, sans-serif; font-size: 0.9rem;
     padding: 1rem;
   }
+  /* The `display: flex` above overrides the user-agent `[hidden] { display:
+     none }` rule, so a JS `el.hidden = true` alone leaves the overlay
+     visible. Force `display: none` when hidden so the canvas underneath
+     becomes visible once we reach `in_game`. */
+  .jamera-login[hidden] { display: none; }
   .jamera-login h1 { font-size: 1.4rem; color: #7c5cbf; }
   .jamera-login form {
     display: flex; flex-direction: column; gap: 0.5rem;

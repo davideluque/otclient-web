@@ -49,9 +49,11 @@ export function bindRenderer(
 
     // Center the player tile on the canvas. The 0.5 offset puts the
     // *center* of the player's tile at the canvas center instead of
-    // the tile's top-left corner.
-    container.x = app.canvas.width / 2 - (world.playerX + 0.5) * TILE_SIZE;
-    container.y = app.canvas.height / 2 - (world.playerY + 0.5) * TILE_SIZE;
+    // the tile's top-left corner. Use `app.screen` (CSS pixels — what
+    // the scene graph uses) rather than `app.canvas` (device pixels,
+    // off by `devicePixelRatio` with autoDensity).
+    container.x = app.screen.width / 2 - (world.playerX + 0.5) * TILE_SIZE;
+    container.y = app.screen.height / 2 - (world.playerY + 0.5) * TILE_SIZE;
 
     if (currentContainer) {
       app.stage.removeChild(currentContainer);

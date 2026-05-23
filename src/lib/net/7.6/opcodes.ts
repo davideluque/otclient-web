@@ -44,6 +44,7 @@ export const ServerOp = {
 
   // Game server responses
   SelfAppear: 0x0a,
+  GMActions: 0x0b,
   Ping: 0x1e,
 
   // Map

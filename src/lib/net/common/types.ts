@@ -241,6 +241,8 @@ export interface ServerOpcodes {
   readonly TileAddThing: number;
   readonly TileTransformThing: number;
   readonly TileRemoveThing: number;
+  readonly InventorySet: number;
+  readonly InventoryClear: number;
   readonly CreatureMove: number;
   readonly ContainerOpen: number;
   readonly ContainerClose: number;

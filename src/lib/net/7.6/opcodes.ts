@@ -58,6 +58,10 @@ export const ServerOp = {
   TileTransformThing: 0x6b,
   TileRemoveThing: 0x6c,
 
+  // Inventory
+  InventorySet: 0x78,
+  InventoryClear: 0x79,
+
   // Creature
   CreatureMove: 0x6d,
   ContainerOpen: 0x6e,

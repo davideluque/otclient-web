@@ -27,4 +27,8 @@ export function applyJameraQuirks(client: GameClient): void {
   // MagicEffect: `U16 x, U16 y, U8 z, U8 effectType` = 6 bytes. Will
   // become a real handler when the effects PR lands.
   dispatcher.on(op.MagicEffect, (p) => p.skip(6));
+
+  // InventoryClear: 1-byte slot id. The inventory UI PR will replace
+  // this with a real handler that updates a player-inventory store.
+  dispatcher.on(op.InventoryClear, (p) => p.skip(1));
 }

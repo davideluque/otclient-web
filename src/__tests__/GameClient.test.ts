@@ -1,7 +1,74 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameClient } from '../lib/net/common/GameClient';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
+import type { CharacterInfo } from '../lib/net/common/types';
+
+const realWebSocket = globalThis.WebSocket;
+
+class MockWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  static instances: MockWebSocket[] = [];
+
+  binaryType: BinaryType = 'arraybuffer';
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  readyState = MockWebSocket.CONNECTING;
+  sent: Array<string | ArrayBufferLike | Blob | ArrayBufferView> = [];
+
+  constructor(public readonly url: string) {
+    MockWebSocket.instances.push(this);
+  }
+
+  open(): void {
+    this.readyState = MockWebSocket.OPEN;
+    this.onopen?.();
+  }
+
+  close(): void {
+    this.readyState = MockWebSocket.CLOSING;
+  }
+
+  finishClose(): void {
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.();
+  }
+
+  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+    this.sent.push(data);
+  }
+}
+
+const character: CharacterInfo = {
+  name: 'Trinity',
+  worldName: 'Jamera',
+  worldIp: '172.25.0.3',
+  worldPort: 7172,
+};
+
+async function enterGame(client: GameClient): Promise<MockWebSocket> {
+  const selecting = client.selectCharacter(character);
+  const ws = MockWebSocket.instances.at(-1);
+  expect(ws).toBeDefined();
+  ws!.open();
+  await selecting;
+  expect(client.getState()).toBe('in_game');
+  return ws!;
+}
+
+beforeEach(() => {
+  MockWebSocket.instances = [];
+  globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+});
+
+afterEach(() => {
+  globalThis.WebSocket = realWebSocket;
+});
 
 describe('GameClient.send', () => {
   it('throws when called before login (state: disconnected)', () => {
@@ -26,7 +93,7 @@ describe('GameClient.getProtocol', () => {
 });
 
 describe('GameClient.selectCharacter', () => {
-  it('routes the game-phase Connection through the constructor proxyUrl, not character.worldIp', () => {
+  it('routes the game-phase Connection through the constructor proxyUrl, not character.worldIp', async () => {
     // Regression guard: previously the game phase derived its URL from
     // `character.worldIp` (the OT server's view of itself), which in a
     // browser via WS proxy is never reachable — Docker bridge IPs,
@@ -37,17 +104,10 @@ describe('GameClient.selectCharacter', () => {
     // @ts-expect-error driving the state machine for the test
     client.state = 'character_list';
 
-    const character = {
-      name: 'Trinity',
-      worldName: 'Jamera',
-      worldIp: '172.25.0.3',
-      worldPort: 7172,
-    };
     // selectCharacter creates gameConn synchronously, then awaits
-    // gameConn.connect('/game') which rejects in this test env. We
-    // don't care about the rejection — only that gameConn was
-    // constructed with the proxy URL, not a derived `ws://${worldIp}…`.
-    void client.selectCharacter(character).catch(() => {});
+    // gameConn.connect('/game'). Inspect the constructed connection before
+    // completing the mocked open.
+    const selecting = client.selectCharacter(character);
 
     // @ts-expect-error reading private fields for the test
     const conn = client.gameConn;
@@ -56,5 +116,25 @@ describe('GameClient.selectCharacter', () => {
     expect(conn.proxyUrl).toBe(proxy);
     // @ts-expect-error confirming the docker-internal worldIp didn't leak
     expect(conn.proxyUrl).not.toContain(character.worldIp);
+
+    const ws = MockWebSocket.instances.at(-1);
+    expect(ws).toBeDefined();
+    ws!.open();
+    await selecting;
+  });
+
+  it('ignores stale game WebSocket close events after a same-page reconnect', async () => {
+    const onDisconnect = vi.fn();
+    const client = new GameClient('ws://test', { onDisconnect }, new GameProtocol());
+
+    const firstWs = await enterGame(client);
+    client.disconnect();
+    expect(client.getState()).toBe('disconnected');
+
+    await enterGame(client);
+    firstWs.finishClose();
+
+    expect(client.getState()).toBe('in_game');
+    expect(onDisconnect).not.toHaveBeenCalled();
   });
 });

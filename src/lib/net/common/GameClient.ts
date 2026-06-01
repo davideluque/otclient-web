@@ -120,7 +120,7 @@ export class GameClient {
     // Disconnect any prior gameConn before reassigning — otherwise a
     // second selectCharacter call (rapid retry, future programmatic
     // re-select) would orphan the previous WebSocket.
-    this.gameConn?.disconnect();
+    this.closeGameConnection();
     this.gameConn = new Connection(this.proxyUrl);
 
     this.gameConn.setPacketHandler((packet) => {
@@ -160,7 +160,7 @@ export class GameClient {
 
   disconnect(): void {
     this.loginConn.disconnect();
-    this.gameConn?.disconnect();
+    this.closeGameConnection();
     this.setState('disconnected');
   }
 
@@ -205,5 +205,21 @@ export class GameClient {
   private setState(state: GameClientState): void {
     this.state = state;
     this.events.onStateChange?.(state);
+  }
+
+  private closeGameConnection(): void {
+    const conn = this.gameConn;
+    if (!conn) return;
+
+    // Browser close/error events can arrive after close() returns. Once a
+    // connection is no longer current, those stale callbacks must not mutate
+    // the state for a newly-created session on the same page.
+    conn.setPacketHandler(() => {});
+    conn.setCloseHandler(() => {});
+    conn.setErrorHandler(() => {});
+    conn.disconnect();
+    if (this.gameConn === conn) {
+      this.gameConn = null;
+    }
   }
 }

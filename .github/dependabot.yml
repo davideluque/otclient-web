@@ -7,13 +7,14 @@ updates:
       day: monday
       time: "08:00"
       timezone: Europe/Copenhagen
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - npm
     commit-message:
       prefix: deps
     groups:
+      # Runtime deps — low volume, keep batched.
       production-dependencies:
         dependency-type: production
         patterns:
@@ -21,10 +22,44 @@ updates:
         update-types:
           - patch
           - minor
-      development-dependencies:
+      # Dev deps are split by which CI job a regression would break,
+      # so a failing check points at one category instead of the whole batch.
+      # A bump matches the first group whose patterns it satisfies; any dev
+      # dep not matched below gets its own individual PR.
+      linting:
         dependency-type: development
         patterns:
-          - "*"
+          - "eslint"
+          - "@eslint/*"
+          - "typescript-eslint"
+        update-types:
+          - patch
+          - minor
+      testing:
+        dependency-type: development
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "happy-dom"
+          - "jsdom"
+        update-types:
+          - patch
+          - minor
+      build-tooling:
+        dependency-type: development
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "tsx"
+          - "wrangler"
+        update-types:
+          - patch
+          - minor
+      types:
+        dependency-type: development
+        patterns:
+          - "@types/*"
         update-types:
           - patch
           - minor

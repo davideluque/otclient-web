@@ -20,8 +20,10 @@ class MockWebSocket {
   onmessage: ((event: MessageEvent) => void) | null = null;
   readyState = MockWebSocket.CONNECTING;
   sent: Array<string | ArrayBufferLike | Blob | ArrayBufferView> = [];
+  readonly url: string;
 
-  constructor(public readonly url: string) {
+  constructor(url: string) {
+    this.url = url;
     MockWebSocket.instances.push(this);
   }
 

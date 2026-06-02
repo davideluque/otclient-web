@@ -1,0 +1,31 @@
+import { describe, expect, it } from 'vitest';
+import { resolveProxyOverride } from '../lib/jamera/proxyUrl';
+
+function page(hostname: string): Pick<Location, 'hostname'> {
+  return { hostname };
+}
+
+describe('resolveProxyOverride', () => {
+  it('ignores missing, blank, malformed, and non-WebSocket overrides', () => {
+    expect(resolveProxyOverride(null, page('official.example'))).toBeUndefined();
+    expect(resolveProxyOverride('   ', page('official.example'))).toBeUndefined();
+    expect(resolveProxyOverride('not a url', page('official.example'))).toBeUndefined();
+    expect(resolveProxyOverride('https://official.example:8090', page('official.example'))).toBeUndefined();
+  });
+
+  it('rejects remote proxy hosts controlled by the query string', () => {
+    expect(resolveProxyOverride('wss://attacker.example', page('official.example'))).toBeUndefined();
+  });
+
+  it('allows loopback proxy overrides for local development', () => {
+    expect(resolveProxyOverride('ws://localhost:8090/', page('official.example'))).toBe('ws://localhost:8090');
+    expect(resolveProxyOverride('ws://127.42.0.1:8090', page('official.example'))).toBe('ws://127.42.0.1:8090');
+    expect(resolveProxyOverride('ws://[::1]:8090', page('official.example'))).toBe('ws://[::1]:8090');
+  });
+
+  it('allows same-host proxy overrides for trusted deployments', () => {
+    expect(resolveProxyOverride('wss://official.example:8443', page('official.example'))).toBe(
+      'wss://official.example:8443',
+    );
+  });
+});

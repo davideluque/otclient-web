@@ -42,24 +42,31 @@ export class Connection {
   connect(path: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const url = `${this.proxyUrl}${path}`;
-      this.ws = new WebSocket(url);
-      this.ws.binaryType = 'arraybuffer';
+      const socket = new WebSocket(url);
+      this.ws = socket;
+      socket.binaryType = 'arraybuffer';
 
-      this.ws.onopen = () => resolve();
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
+        resolve();
+      };
 
-      this.ws.onerror = () => {
+      socket.onerror = () => {
+        if (this.ws !== socket) return;
         const msg = `WebSocket connection failed: ${url}`;
         this.onError?.(msg);
         reject(new Error(msg));
       };
 
-      this.ws.onclose = () => {
+      socket.onclose = () => {
+        if (this.ws !== socket) return;
         this.ws = null;
         this.receiveBuffer = new Uint8Array(0);
         this.onClose?.();
       };
 
-      this.ws.onmessage = (event: MessageEvent) => {
+      socket.onmessage = (event: MessageEvent) => {
+        if (this.ws !== socket) return;
         this.handleData(new Uint8Array(event.data as ArrayBuffer));
       };
     });

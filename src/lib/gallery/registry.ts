@@ -18,6 +18,8 @@ import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
+import { createChangelogPane } from '../changelogPane';
+import { CHANGELOG } from '../changelog';
 import { ChatManager } from '../chat/ChatManager';
 import { createChatUI } from '../chat/ChatUI';
 import { GameProtocol } from '../net/7.6/GameProtocol';
@@ -210,6 +212,17 @@ export const ENTRIES: GalleryEntry[] = [
         attacking = !attacking;
         log(`external flip → ${attacking}; reopen to see the switch sync`);
       });
+    name: 'Changelog',
+    description:
+      'In-game changelog (menu → Changelog): one line per user-visible '
+      + 'change merged to main, newest first, grouped by date — what to '
+      + 'test and what changed. Every merge appends its line.',
+    mount({ knobs, log }) {
+      const pane = createChangelogPane();
+      knobs.button('Open', () => pane.open());
+      knobs.button('Close', () => pane.close());
+      knobs.button('Toggle', () => pane.toggle());
+      log(`${CHANGELOG.length} entries, latest: ${CHANGELOG[0]?.text}`);
       return () => pane.destroy();
     },
   },

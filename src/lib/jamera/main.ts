@@ -20,11 +20,8 @@ import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
-<<<<<<< HEAD
 import { bindCombatModes, type CombatModesBindingHandle } from './combatModesBinding';
-=======
 import { bindStatus, type StatusBindingHandle } from './statusBinding';
->>>>>>> e873079 (feat(jamera): status bar — 0xA2 condition icons under the HUD)
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { createJoystick } from '../joystick';
@@ -91,13 +88,10 @@ mountLoginScreen(root, {
     settingsPane = null;
     teardownMinimap?.destroy();
     teardownMinimap = null;
-<<<<<<< HEAD
     teardownCombatModes?.destroy();
     teardownCombatModes = null;
-=======
     teardownStatus?.destroy();
     teardownStatus = null;
->>>>>>> e873079 (feat(jamera): status bar — 0xA2 condition icons under the HUD)
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
@@ -140,13 +134,10 @@ mountLoginScreen(root, {
     teardownStats?.destroy();
     teardownMinimap?.destroy();
     teardownMinimap = bindMinimap(world, () => jameraAtlas?.datIndex ?? null);
-<<<<<<< HEAD
     teardownCombatModes?.destroy();
     teardownCombatModes = bindCombatModes(client);
-=======
     teardownStatus?.destroy();
     teardownStatus = bindStatus(client);
->>>>>>> e873079 (feat(jamera): status bar — 0xA2 condition icons under the HUD)
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
     // current session even across re-logins.
@@ -594,11 +585,8 @@ let teardownInteractions: InteractionsHandle | null = null;
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
-<<<<<<< HEAD
 let teardownCombatModes: CombatModesBindingHandle | null = null;
-=======
 let teardownStatus: StatusBindingHandle | null = null;
->>>>>>> e873079 (feat(jamera): status bar — 0xA2 condition icons under the HUD)
 let metricsOverlay: MetricsOverlayHandle | null = null;
 
 function setMetricsVisible(on: boolean): void {

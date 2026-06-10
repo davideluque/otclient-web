@@ -19,11 +19,8 @@ import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
-<<<<<<< HEAD
 import { createCombatModes } from '../combatModes';
-=======
 import { createStatusBar, StatusIcon } from '../statusBar';
->>>>>>> e873079 (feat(jamera): status bar — 0xA2 condition icons under the HUD)
 import { createMetricsOverlay } from '../jamera/metricsOverlay';
 import { reportMetric } from '../jamera/metrics';
 import { createChangelogPane } from '../changelogPane';
@@ -230,7 +227,6 @@ export const ENTRIES: GalleryEntry[] = [
   },
 
   {
-<<<<<<< HEAD
     name: 'Combat modes',
     description:
       'The classic trio (right edge, above the spell bar): fight stance '
@@ -243,7 +239,10 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Force defensive externally', () => modes.setState({ fightMode: 3 }));
       knobs.toggle('Visible', true, (on) => modes.setVisible(on));
       return () => modes.destroy();
-=======
+    },
+  },
+
+  {
     name: 'Status bar',
     description:
       'Player condition chips (top-left, under the HUD) from the 0xA2 '
@@ -259,7 +258,6 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Everything at once', () => { mask = 255; apply(); });
       knobs.button('Clear', () => { mask = 0; apply(); });
       return () => bar.destroy();
->>>>>>> e873079 (feat(jamera): status bar — 0xA2 condition icons under the HUD)
     },
   },
 

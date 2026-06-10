@@ -60,6 +60,14 @@ export class GameWorld {
   playerY = 0;
   playerZ = 7;
 
+  /**
+   * Count of confirmed self steps (position actually changed). The walk
+   * controller uses this to attribute confirmations to its outstanding
+   * sends — with one-step lookahead there can be two in flight, and
+   * position snapshots alone can't tell how many landed.
+   */
+  selfSteps = 0;
+
   /** Callback when map or creatures change. */
   onChange: (() => void) | null = null;
 
@@ -363,6 +371,7 @@ export class GameWorld {
   private syncSelfCreature(oldX: number, oldY: number, oldZ: number): void {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
+    if (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ) this.selfSteps++;
     const facing = directionFromDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);

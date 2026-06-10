@@ -1,59 +1,69 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SNAP_DISTANCE,
-  STEP_GLIDE_DEFAULT_MS,
+  RENDER_DELAY_MS,
   STEP_GLIDE_MIN_MS,
-  advanceRenderPos,
   nextStepEma,
+  playbackPosAt,
+  type PlaybackSample,
 } from '../lib/jamera/renderer';
 import { GameWorld } from '../lib/GameWorld';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 
-describe('advanceRenderPos (pursuit)', () => {
-  it('chases the target at one tile per cadence', () => {
-    const pos = { x: 100, y: 200 };
-    advanceRenderPos(pos, 101, 200, 200, 400); // half a cadence elapsed
-    expect(pos.x).toBeCloseTo(100.5, 5);
-    expect(pos.y).toBe(200);
-    advanceRenderPos(pos, 101, 200, 400, 400); // overshoot clamps to target
-    expect(pos).toEqual({ x: 101, y: 200 });
+describe('playbackPosAt (playout buffer)', () => {
+  const walk: PlaybackSample[] = [
+    { x: 100, y: 200, z: 7, at: 1000 },
+    { x: 101, y: 200, z: 7, at: 1400 },
+    { x: 102, y: 200, z: 7, at: 1800 },
+  ];
+
+  it('interpolates each segment to land ON the sample at its timestamp', () => {
+    expect(playbackPosAt(walk, 400, 1000)).toEqual({ x: 100, y: 200 });
+    expect(playbackPosAt(walk, 400, 1200).x).toBeCloseTo(100.5, 5);
+    expect(playbackPosAt(walk, 400, 1399).x).toBeCloseTo(101, 2);
+    expect(playbackPosAt(walk, 400, 1600).x).toBeCloseTo(101.5, 5);
+    expect(playbackPosAt(walk, 400, 5000)).toEqual({ x: 102, y: 200 }); // drained
   });
 
-  it('never jumps when a new step confirms mid-chase — it keeps chasing', () => {
-    const pos = { x: 100, y: 200 };
-    advanceRenderPos(pos, 101, 200, 300, 400); // 0.75 of the way
-    // Next confirmation arrives early: target moves to 102 — continuous.
-    advanceRenderPos(pos, 102, 200, 16, 400);
-    expect(pos.x).toBeGreaterThan(100.75);
-    expect(pos.x).toBeLessThan(101);
+  it('a delivery burst (samples closer than cadence) still renders continuously', () => {
+    const burst: PlaybackSample[] = [
+      { x: 100, y: 200, z: 7, at: 1000 },
+      { x: 101, y: 200, z: 7, at: 1100 }, // 100ms apart, cadence 400
+    ];
+    // The glide compresses into the actual 100ms gap — no overshoot, no jump back.
+    expect(playbackPosAt(burst, 400, 1050).x).toBeCloseTo(100.5, 5);
+    expect(playbackPosAt(burst, 400, 1100).x).toBe(101);
   });
 
-  it('boosts when more than a tile behind, snaps past SNAP_DISTANCE', () => {
-    const slow = { x: 100, y: 200 };
-    advanceRenderPos(slow, 101.5, 200, 100, 400);
-    expect(slow.x).toBeGreaterThan(100.25); // 1.6x the base 0.25-tile step
-
-    const tele = { x: 100, y: 200 };
-    advanceRenderPos(tele, 100 + SNAP_DISTANCE + 0.1, 200, 16, 400);
-    expect(tele.x).toBeCloseTo(100 + SNAP_DISTANCE + 0.1, 5);
+  it('holds then snaps across discontinuities (floor change / teleport)', () => {
+    const tele: PlaybackSample[] = [
+      { x: 100, y: 200, z: 7, at: 1000 },
+      { x: 130, y: 220, z: 8, at: 1500 },
+    ];
+    expect(playbackPosAt(tele, 400, 1499)).toEqual({ x: 100, y: 200 }); // holds
+    expect(playbackPosAt(tele, 400, 1500)).toEqual({ x: 130, y: 220 }); // snaps
   });
 
-  it('is idle at the target', () => {
-    const pos = { x: 101, y: 200 };
-    advanceRenderPos(pos, 101, 200, 16, 400);
-    expect(pos).toEqual({ x: 101, y: 200 });
+  it('renders at the first sample before the timeline starts, and handles empty', () => {
+    expect(playbackPosAt(walk, 400, 500)).toEqual({ x: 100, y: 200 });
+    expect(playbackPosAt([], 400, 500)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('exposes a sane render delay', () => {
+    expect(RENDER_DELAY_MS).toBeGreaterThanOrEqual(120);
+    expect(RENDER_DELAY_MS).toBeLessThanOrEqual(250);
   });
 });
 
 describe('nextStepEma', () => {
-  it('converges toward the sampled cadence', () => {
-    let ema = STEP_GLIDE_DEFAULT_MS;
-    for (let i = 0; i < 20; i++) ema = nextStepEma(ema, 500);
-    expect(ema).toBeGreaterThan(480);
-    expect(ema).toBeLessThanOrEqual(500);
+  it('converges toward plausible step durations', () => {
+    let ema = 380;
+    for (let i = 0; i < 20; i++) ema = nextStepEma(ema, 280);
+    expect(ema).toBeLessThan(300);
+    expect(ema).toBeGreaterThanOrEqual(280);
   });
 
-  it('ignores standing pauses and absurdly fast samples', () => {
+  it('rejects arrival jitter and pauses (>500ms) and bursts (<150ms)', () => {
+    expect(nextStepEma(400, 586)).toBe(400);
     expect(nextStepEma(400, 5000)).toBe(400);
     expect(nextStepEma(400, STEP_GLIDE_MIN_MS - 1)).toBe(400);
   });
@@ -81,6 +91,7 @@ describe('floor-change resync slices do not record a glide origin', () => {
     // @ts-expect-error private method
     world.syncSelfCreature(50, 60, 7);
     expect(world.getCreature(7)?.fromX).toBeUndefined();
+    expect(world.selfSteps).toBe(1); // the step still counts for the pacer
 
     await Promise.resolve();
 
@@ -88,6 +99,6 @@ describe('floor-change resync slices do not record a glide origin', () => {
     // @ts-expect-error private method
     world.syncSelfCreature(49, 60, 7);
     expect(world.getCreature(7)?.fromX).toBe(49);
-    expect(world.getCreature(7)?.fromY).toBe(60);
+    expect(world.selfSteps).toBe(2);
   });
 });

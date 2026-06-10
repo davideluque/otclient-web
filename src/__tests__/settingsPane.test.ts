@@ -15,6 +15,8 @@ describe('createSettingsPane', () => {
     const pane = createSettingsPane([
       { label: 'Auto-attack', get: () => on, set: (v) => { on = v; } },
     ]);
+    // role="switch" must carry aria-checked from creation, pre-open.
+    expect(sw('Auto-attack').getAttribute('aria-checked')).toBe('false');
     pane.open();
     expect(sw('Auto-attack').getAttribute('aria-checked')).toBe('false');
 
@@ -61,6 +63,10 @@ describe('createSettingsPane', () => {
 
     pane.open();
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(el.classList.contains('open')).toBe(false);
+
+    pane.open();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(el.classList.contains('open')).toBe(false);
 
     pane.destroy();

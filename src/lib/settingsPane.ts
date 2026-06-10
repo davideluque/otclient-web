@@ -54,6 +54,9 @@ function ensureStyles(): void {
       font-size: 1rem; cursor: pointer; padding: 2px 6px;
     }
     .settings-head button:hover, .settings-head button:active { color: #fff; }
+    .settings-head button:focus-visible {
+      color: #fff; outline: 2px solid #888; outline-offset: 2px; border-radius: 4px;
+    }
     .settings-list { overflow-y: auto; padding: 4px 0 10px; }
     .settings-row {
       display: flex; align-items: center; justify-content: space-between;
@@ -74,6 +77,7 @@ function ensureStyles(): void {
       width: 20px; height: 20px; border-radius: 50%;
       background: #888; transition: transform 0.15s ease, background 0.15s ease;
     }
+    .settings-switch:focus-visible { outline: 2px solid #888; outline-offset: 2px; }
     .settings-switch[aria-checked="true"] { background: #3c3c5a; }
     .settings-switch[aria-checked="true"]::after {
       transform: translateX(20px); background: #e0e0e0;
@@ -151,17 +155,37 @@ export function createSettingsPane(
       btn.setAttribute('aria-checked', String(toggle.get()));
     }
   };
+  // role="switch" requires aria-checked from the start, not only after
+  // the first open.
+  syncAll();
 
+  // Escape closes too; the listener only exists while the pane is open
+  // so a closed pane costs nothing and can't leak past destroy().
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
   const open = (): void => {
     syncAll(); // live state may have changed from other surfaces (⚔)
     el.classList.add('open');
+    document.addEventListener('keydown', onKeyDown);
   };
-  const close = (): void => { el.classList.remove('open'); };
+  const close = (): void => {
+    el.classList.remove('open');
+    document.removeEventListener('keydown', onKeyDown);
+  };
 
   closeBtn.addEventListener('click', close);
   el.addEventListener('click', (e) => {
     if (e.target === el) close();
   });
 
-  return { el, open, close, destroy: () => el.remove() };
+  return {
+    el,
+    open,
+    close,
+    destroy: () => {
+      document.removeEventListener('keydown', onKeyDown);
+      el.remove();
+    },
+  };
 }

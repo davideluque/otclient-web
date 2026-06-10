@@ -10,6 +10,7 @@ import { bindRenderer } from './renderer';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
+import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
@@ -78,10 +79,14 @@ mountLoginScreen(root, {
     teardownChat = bindChat(client);
     teardownStats?.destroy();
     teardownStats = bindStats(client);
+    if (import.meta.env.DEV) {
+      // Dev hook for E2E assertions on bubbles/messages.
+      (window as unknown as { jameraChat: typeof teardownChat }).jameraChat = teardownChat;
+    }
     ensurePixiApp().catch((err) => {
       console.warn('[jamera] PIXI bootstrap failed:', err);
     });
-    void mountRenderer(world);
+    void mountRenderer(world, teardownChat.manager);
   },
 });
 
@@ -186,7 +191,7 @@ let onAtlasReady: ((atlas: SpriteAtlas) => void) | null = null;
 // mounts — can bind a dead session's world and leak its container.
 let mountEpoch = 0;
 
-async function mountRenderer(world: GameWorld): Promise<void> {
+async function mountRenderer(world: GameWorld, chatManager?: ChatManager): Promise<void> {
   const epoch = ++mountEpoch;
   teardownRenderer?.();
   teardownRenderer = null;
@@ -205,7 +210,7 @@ async function mountRenderer(world: GameWorld): Promise<void> {
   const mount = (atlas: SpriteAtlas): void => {
     if (epoch !== mountEpoch) return; // stale atlas callback
     teardownRenderer?.(); // never stack two bindings
-    teardownRenderer = bindRenderer(world, atlas, app);
+    teardownRenderer = bindRenderer(world, atlas, app, chatManager);
     console.info('[jamera] renderer bound to GameWorld');
   };
 

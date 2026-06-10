@@ -1,6 +1,8 @@
 import type { Application, Container } from 'pixi.js';
 import { renderTileRegion, renderPlayer, type TintedTextureCache } from '../tileRenderer';
 import { createNameplate, type NameplateHandle } from './nameplate';
+import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
+import type { ChatManager } from '../chat/ChatManager';
 import type { GameWorld, WorldCreature } from '../GameWorld';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
@@ -51,6 +53,7 @@ export function bindRenderer(
   world: GameWorld,
   atlas: SpriteAtlas,
   app: Application,
+  chatManager?: ChatManager,
 ): () => void {
   let currentContainer: Container | null = null;
   // Snapshot of what the current container was painted from: player
@@ -63,6 +66,10 @@ export function bindRenderer(
   // Nameplates persist across rebuilds (PIXI Text layout is costly);
   // keyed by creature id, evicted when the creature leaves view.
   const nameplates = new Map<number, NameplateHandle>();
+  // Speech bubbles live in their own persistent layer, reparented on top
+  // of each rebuilt container and updated every frame — bubble motion and
+  // expiry must not depend on tiles changing.
+  const bubbles = chatManager ? new SpeechBubbleRenderer() : null;
 
   // Center the player tile on the canvas. The 0.5 offset puts the
   // *center* of the player's tile at the canvas center instead of
@@ -83,8 +90,16 @@ export function bindRenderer(
     const anyWalking = world.getAllCreatures().some(
       (c) => c.z === world.playerZ && c.lastMoveAt !== undefined && now - c.lastMoveAt < WALK_ANIM_MS,
     );
+    // Bubble lifecycle: ChatManager expiry runs on wall-clock time
+    // (expiresAt comes from Date.now()), and the layer updates every
+    // call — including ones the tile short-circuit below skips.
+    let bubblesActive = false;
+    if (chatManager && bubbles) {
+      bubbles.update(chatManager, 0, 0, 1, Date.now());
+      bubblesActive = chatManager.speechBubbles.length > 0;
+    }
     const walkTick = anyWalking ? Math.floor(now / WALK_FRAME_MS) : -1;
-    if (anyWalking && rafId === 0) {
+    if ((anyWalking || bubblesActive) && rafId === 0) {
       const tick = (): void => {
         rafId = 0;
         update();
@@ -104,6 +119,7 @@ export function bindRenderer(
       world.playerZ,
     );
     drawCreatures(world, atlas, container, tintedCache, nameplates);
+    if (bubbles) container.addChild(bubbles.getContainer());
     recenter(container);
 
     if (currentContainer) {
@@ -136,6 +152,7 @@ export function bindRenderer(
     tintedCache.clear();
     for (const plate of nameplates.values()) plate.destroy();
     nameplates.clear();
+    bubbles?.destroy();
     window.removeEventListener('resize', onResize);
     if (world.onChange === update) world.onChange = null;
     if (currentContainer) {

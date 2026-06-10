@@ -59,6 +59,12 @@ try {
 } catch { fail('chat echo never rendered'); }
 console.log('CHAT: echo rendered');
 
+// Speech bubble: the echoed 0xAA carries a position, so a bubble must be
+// live in the ChatManager (the renderer draws from the same list).
+const bubbleCount = await page.evaluate(() => window.jameraChat?.manager.speechBubbles.length ?? -1);
+if (bubbleCount < 1) fail(`expected a live speech bubble, got ${bubbleCount}`);
+console.log('BUBBLES:', bubbleCount);
+
 await page.screenshot({ path: process.env.E2E_SHOT ?? '/tmp/e2e-jamera.png' });
 const warnings = logs.filter((l) => l.startsWith('warning') && l.includes('Unhandled opcode'));
 console.log('unhandled-opcode warnings:', warnings.length);

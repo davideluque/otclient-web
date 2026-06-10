@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { InputPacket } from '../lib/net/common/InputPacket';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
+import { ParseError } from '../lib/parseError';
 
 describe('OutputPacket', () => {
   it('writes and reads U8', () => {
@@ -131,5 +132,29 @@ describe('InputPacket', () => {
 
     const inp = new InputPacket(out.toArrayBuffer(), 2);
     expect(inp.getU8()).toBe(42);
+  });
+});
+
+describe('InputPacket bounds checking', () => {
+  it('throws ParseError when reading past the end of a packet', () => {
+    const inp = new InputPacket(new Uint8Array([0x01]).buffer);
+    inp.getU8();
+    expect(() => inp.getU8()).toThrowError(ParseError);
+    expect(() => inp.getU16()).toThrowError(/[Tt]runcated/);
+    expect(() => inp.getBytes(1)).toThrowError(ParseError);
+  });
+
+  it('throws ParseError on a string whose declared length exceeds the packet', () => {
+    // Declared length 200, only 1 byte of payload follows.
+    const inp = new InputPacket(new Uint8Array([0xc8, 0x00, 0x41]).buffer);
+    expect(() => inp.getString()).toThrowError(ParseError);
+  });
+
+  it('throws ParseError on skip/peek past the end', () => {
+    const inp = new InputPacket(new Uint8Array([0x01, 0x02]).buffer);
+    expect(() => inp.skip(3)).toThrowError(ParseError);
+    inp.skip(2);
+    expect(() => inp.peekU8()).toThrowError(ParseError);
+    expect(() => inp.peekU16()).toThrowError(ParseError);
   });
 });

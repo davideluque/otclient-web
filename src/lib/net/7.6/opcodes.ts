@@ -31,6 +31,8 @@ export const ClientOp = {
   TurnWest: 0x72,
 
   // Actions
+  UseItem: 0x82,
+  LookAt: 0x8c,
   Say: 0x96,
 } as const;
 

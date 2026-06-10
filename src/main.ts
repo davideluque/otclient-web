@@ -497,6 +497,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const exhaustedDirections = new Set<string>();
 
   function expansionKey(b: Bounds | null, region: OtbmRegion): string {
+    // Null bounds collapse to '' — two attempts at the same center then
+    // share a key. Practically unreachable (bounds exist before any
+    // expansion is attempted), and harmless if it ever happens: the
+    // second attempt is just skipped until bounds grow.
     const bk = b ? `${b.minX},${b.minY},${b.maxX},${b.maxY}` : '';
     return `${bk}@${region.centerX},${region.centerY}`;
   }

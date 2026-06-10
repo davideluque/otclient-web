@@ -26,6 +26,13 @@ const NO_SIGNATURES: ClientSignatures = { dat: 0, spr: 0, pic: 0 };
  * Wire layout: `U8 0x01, U16 os, U16 clientVersion, U32 datSig, U32 sprSig,
  * U32 picSig, U32 account, String password`. No RSA, no XTEA — those came
  * in later Tibia versions and are not part of the 7.6 protocol.
+ *
+ * Security note: with no protocol-level credential protection in 7.6, the
+ * *transport* is the only confidentiality layer. Fine on localhost; any
+ * networked deployment must serve the page over https and point at a
+ * `wss://` proxy (browser mixed-content rules enforce this on https
+ * pages). Credentials over plain `ws://` across a network are readable by
+ * anyone on the path.
  */
 export function buildLoginPacket(
   accountNumber: number,

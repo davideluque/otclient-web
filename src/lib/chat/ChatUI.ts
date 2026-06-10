@@ -94,12 +94,19 @@ export function createChatUI(
     const channel = chatManager.activeChannel;
     if (!channel) return;
 
-    messagesEl.innerHTML = '';
+    messagesEl.replaceChildren();
     for (const msg of channel.messages) {
       const div = document.createElement('div');
       div.className = 'msg';
       const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      div.innerHTML = `<span class="timestamp">${time}</span><span class="sender">${msg.senderName}: </span><span class="text">${escapeHtml(msg.text)}</span>`;
+      // Built with textContent, never innerHTML: senderName and text are
+      // server/player-controlled, so any HTML interpolation here is a DOM
+      // XSS sink (a player named `<img onerror=…>` would execute).
+      div.append(
+        makeSpan('timestamp', time),
+        makeSpan('sender', `${msg.senderName}: `),
+        makeSpan('text', msg.text),
+      );
       messagesEl.appendChild(div);
     }
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -195,6 +202,9 @@ function parsePrivateOrNull(rest: string, protocol: GameProtocol): OutputPacket 
   return protocol.chat.buildPrivateMessage(match[1], match[2]);
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function makeSpan(className: string, text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
 }

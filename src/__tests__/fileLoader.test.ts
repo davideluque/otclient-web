@@ -51,3 +51,26 @@ describe('createFileLoader', () => {
     expect(statuses.at(-1)).toBe('Loading assets...');
   });
 });
+
+describe('createFileLoader size cap', () => {
+  it('rejects oversized files before reading them into memory', async () => {
+    const statuses: string[] = [];
+    const startApp = vi.fn().mockResolvedValue(undefined);
+    const handleFiles = createFileLoader({
+      setStatus: msg => statuses.push(msg),
+      addFileToList: vi.fn(),
+      startApp,
+    });
+
+    // A File whose reported size is huge; arrayBuffer() must never run.
+    const huge = new File([new Uint8Array(1)], 'Tibia.spr');
+    Object.defineProperty(huge, 'size', { value: 300 * 1024 * 1024 });
+    const arrayBuffer = vi.spyOn(huge, 'arrayBuffer');
+
+    await handleFiles([huge]);
+
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(startApp).not.toHaveBeenCalled();
+    expect(statuses.at(-1)).toMatch(/too large/);
+  });
+});

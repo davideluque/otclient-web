@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Fixed heavy stutter around houses/towns — the map no longer redraws everything 8× a second while walking.' },
   { date: '2026-06-10', text: 'Walking flows through network hiccups (no more stutter every few tiles) and the black edge behind you while moving is gone.' },
   { date: '2026-06-10', text: 'Continuous walking: steps now glide at your real walking rhythm — no more micro-pause between tiles.' },
   { date: '2026-06-10', text: 'Walking is smooth now: the camera and creatures glide between tiles instead of snapping.' },

@@ -165,6 +165,13 @@ function updateState(ui: UiHandles, state: GameClientState): void {
   ui.statusEl.textContent = STATE_LABELS[state];
   ui.statusEl.classList.toggle('error', state === 'disconnected');
 
+  // Hide the login overlay once we're actually `in_game` so the PIXI
+  // canvas below becomes visible. Without this the overlay's solid
+  // background covers the canvas even while the renderer is painting.
+  // Any other state re-shows it (e.g., `disconnected` after a kick, or
+  // `character_list` on retry).
+  ui.container.hidden = state === 'in_game';
+
   // Disable the account/password form for every state past `disconnected`.
   // Leaving it enabled on `character_list` would let a second submit
   // open a fresh `loginConn` WebSocket on top of the existing one (the

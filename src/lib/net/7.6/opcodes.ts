@@ -44,6 +44,7 @@ export const ServerOp = {
 
   // Game server responses
   SelfAppear: 0x0a,
+  GMActions: 0x0b,
   Ping: 0x1e,
 
   // Map
@@ -56,6 +57,10 @@ export const ServerOp = {
   TileAddThing: 0x6a,
   TileTransformThing: 0x6b,
   TileRemoveThing: 0x6c,
+
+  // Inventory
+  InventorySet: 0x78,
+  InventoryClear: 0x79,
 
   // Creature
   CreatureMove: 0x6d,

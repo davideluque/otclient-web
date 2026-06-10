@@ -14,6 +14,8 @@ import { MessageType } from '../net/common/types';
  * toggle — a 40vh chat overlay on a phone would bury the joystick.
  */
 export interface ChatBindingHandle {
+  /** The live ChatManager — the renderer reads speech bubbles from it. */
+  manager: ChatManager;
   destroy(): void;
 }
 
@@ -75,6 +77,7 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   parent.appendChild(toggle);
 
   return {
+    manager,
     destroy: () => {
       dispatcher.off(op.CreatureSpeak);
       dispatcher.off(op.TextMessage);

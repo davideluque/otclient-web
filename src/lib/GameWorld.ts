@@ -73,6 +73,8 @@ export class GameWorld {
     dispatcher.on(op.CreatureHealth, (p) => this.handleCreatureHealth(p));
     dispatcher.on(op.CreatureOutfit, (p) => this.handleCreatureOutfit(p));
     dispatcher.on(op.CreatureSpeed, (p) => this.handleCreatureSpeed(p));
+    dispatcher.on(op.FloorChangeUp, (p) => this.handleFloorChange(p, -1));
+    dispatcher.on(op.FloorChangeDown, (p) => this.handleFloorChange(p, +1));
   }
 
   getTile(x: number, y: number, z: number): MapTile | undefined {
@@ -356,6 +358,61 @@ export class GameWorld {
       this.playerZ,
     );
     for (const tile of tiles) this.setTile(tile);
+    this.onChange?.();
+  }
+
+  /**
+   * 0xBE / 0xBF — the player moved a floor. The frame carries newly
+   * visible floor blocks (verified against the server's MoveUpCreature /
+   * MoveDownCreature) followed by 0x65–0x68 resync slices that the
+   * regular move handlers consume.
+   *
+   * Position math: the same screen centre maps to a different world
+   * coordinate on the new floor (perspective offset), so going up is
+   * (x+1, y+1, z-1) and down (x-1, y-1, z+1) — the embedded west+north
+   * (up) or east+south (down) slices then walk x/y back to the player's
+   * true coordinate while topping up the shifted view edge.
+   */
+  private handleFloorChange(packet: InputPacket, dz: -1 | 1): void {
+    const oldX = this.playerX;
+    const oldY = this.playerY;
+    const oldZ = this.playerZ;
+    const newZ = oldZ + dz;
+    const startX = oldX - 8;
+    const startY = oldY - 6;
+
+    let floors: Array<{ z: number; offset: number }> = [];
+    if (dz === -1) {
+      if (newZ === 7) {
+        // Surfacing: floors 5..0 become visible (7 and 6 already known).
+        floors = [5, 4, 3, 2, 1, 0].map((z) => ({ z, offset: 8 - z }));
+      } else if (newZ > 7) {
+        // Still underground: one new floor scrolls into the z-2..z+2 window.
+        floors = [{ z: oldZ - 3, offset: 3 }];
+      }
+      // Above-ground up (e.g. 6 → 5): every floor is already known.
+    } else {
+      if (newZ === 8) {
+        // Going underground: the surface stack is replaced by z 8..10.
+        floors = [
+          { z: newZ, offset: -1 },
+          { z: newZ + 1, offset: -2 },
+          { z: newZ + 2, offset: -3 },
+        ];
+      } else if (newZ > 8 && newZ < 14) {
+        floors = [{ z: newZ + 2, offset: -3 }];
+      }
+    }
+
+    if (floors.length > 0) {
+      const tiles = this.protocol.map.parseFloorStream(packet, startX, startY, floors, 18, 14);
+      for (const tile of tiles) this.setTile(tile);
+    }
+
+    this.playerX = oldX - dz; // up: +1, down: -1 (covered offset)
+    this.playerY = oldY - dz;
+    this.playerZ = newZ;
+    this.tileRevision++;
     this.onChange?.();
   }
 

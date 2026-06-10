@@ -302,3 +302,91 @@ describe('GameWorld tile operations', () => {
     expect(w.getCreature(9)?.health).toBe(35);
   });
 });
+
+describe('GameWorld floor changes', () => {
+  function world(): GameWorld {
+    return new GameWorld(new GameProtocol());
+  }
+
+  function dispatcherFor(w: GameWorld): PacketDispatcher {
+    const d = new PacketDispatcher();
+    w.registerHandlers(d);
+    return d;
+  }
+
+  function setPos(w: GameWorld, x: number, y: number, z: number): void {
+    w.playerX = x; w.playerY = y; w.playerZ = z;
+  }
+
+  /** Emit skip markers covering exactly `cells` empty tile slots. */
+  function emptyCells(out: OutputPacket, cells: number): void {
+    while (cells > 0) {
+      const chunk = Math.min(cells, 256); // marker covers 1 + count cells
+      out.addU8(chunk - 1);
+      out.addU8(0xff);
+      cells -= chunk;
+    }
+  }
+
+  it('0xBE surfacing: parses 6 floor blocks, lands on the same x/y one floor up', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    setPos(w, 100, 200, 8);
+
+    const out = new OutputPacket();
+    out.addU8(0xbe);
+    // Floor z=5 (offset 3): first cell is a real tile, marker covers 255 more.
+    out.addU16(PLAIN_ID);
+    out.addU8(255); out.addU8(0xff);
+    // Remaining cells of the 6-floor stream: 18*14*6 - 1 - 255.
+    emptyCells(out, 18 * 14 * 6 - 1 - 255);
+    // Embedded resync slices are multi-floor like every map slice:
+    // 8 visible layers above ground → west column 14×8, north row 18×8.
+    out.addU8(0x68);
+    emptyCells(out, 14 * 8);
+    out.addU8(0x65);
+    emptyCells(out, 18 * 8);
+
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 7]);
+    // The tile landed at (startX + offset, startY + offset, 5).
+    expect(w.getTile(92 + 3, 194 + 3, 5)?.items).toEqual([{ id: PLAIN_ID }]);
+  });
+
+  it('0xBF going underground: parses 3 floor blocks, lands on the same x/y one floor down', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    setPos(w, 100, 200, 7);
+
+    const out = new OutputPacket();
+    out.addU8(0xbf);
+    emptyCells(out, 18 * 14 * 3);
+    // Underground (z=8): 5 visible layers → east column 14×5, south row 18×5.
+    out.addU8(0x66);
+    emptyCells(out, 14 * 5);
+    out.addU8(0x67);
+    emptyCells(out, 18 * 5);
+
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 8]);
+  });
+
+  it('0xBE above ground carries no floor blocks, only the resync slices', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    setPos(w, 100, 200, 6);
+
+    const out = new OutputPacket();
+    out.addU8(0xbe);
+    out.addU8(0x68);
+    emptyCells(out, 14 * 8);
+    out.addU8(0x65);
+    emptyCells(out, 18 * 8);
+
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 5]);
+  });
+});

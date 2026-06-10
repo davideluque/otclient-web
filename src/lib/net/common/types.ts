@@ -217,6 +217,19 @@ export interface MapProtocol {
   parseCreature(packet: InputPacket, isNew: boolean): MapCreature;
 
   /**
+   * Parse the floor blocks of a floor-change frame (0xBE/0xBF): floors
+   * written back-to-back with one shared skip counter, each shifted by
+   * its perspective offset. Consumes exactly width×height cells per
+   * floor — floor-change frames continue with more opcodes after.
+   */
+  parseFloorStream(
+    packet: InputPacket,
+    startX: number, startY: number,
+    floors: ReadonlyArray<{ z: number; offset: number }>,
+    width: number, height: number,
+  ): MapTile[];
+
+  /**
    * Parse a rectangular map region across all currently-visible floors,
    * based on `playerZ` (the server sends 8 layers above ground or 5
    * layers underground). A single skip counter carries tiles across

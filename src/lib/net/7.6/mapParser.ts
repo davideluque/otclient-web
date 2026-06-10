@@ -201,3 +201,52 @@ export function parseCreature(packet: InputPacket, isNew: boolean): MapCreature 
     speed,
   };
 }
+
+/**
+ * Parse a floor-change stream: one or more single-floor descriptions
+ * written back-to-back with a SHARED skip counter (the server threads
+ * one `skip` int through consecutive GetFloorDescription calls and
+ * flushes the final marker once). Each floor's window is shifted by its
+ * perspective `offset` — tiles land at (startX + offset + col,
+ * startY + offset + row, z).
+ *
+ * Unlike parseMapDescription this cannot rely on running out of bytes:
+ * floor-change frames continue with more opcodes (the 0x65/0x66/0x67/
+ * 0x68 resync slices), so exactly width×height cells are consumed per
+ * floor and not a byte more.
+ */
+export function parseFloorStream(
+  packet: InputPacket,
+  startX: number, startY: number,
+  floors: ReadonlyArray<{ z: number; offset: number }>,
+  width: number, height: number,
+): MapTile[] {
+  const tiles: MapTile[] = [];
+  let skipTiles = 0;
+
+  for (const { z, offset } of floors) {
+    for (let col = 0; col < width; col++) {
+      for (let row = 0; row < height; row++) {
+        if (skipTiles > 0) {
+          skipTiles--;
+          continue;
+        }
+        const peek = packet.peekU16();
+        if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
+          skipTiles = packet.getU16() & SKIP_COUNT_MASK;
+          continue;
+        }
+        const tile: MapTile = {
+          x: startX + offset + col,
+          y: startY + offset + row,
+          z,
+          items: [],
+          creatures: [],
+        };
+        skipTiles = parseTileSlot(packet, tile);
+        tiles.push(tile);
+      }
+    }
+  }
+  return tiles;
+}

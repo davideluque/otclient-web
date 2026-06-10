@@ -75,8 +75,23 @@ for (const entry of ENTRIES) {
 }
 
 // Auto-open the entry named in the hash (e.g. /ui-components.html#chat),
-// else the first one — the page should never load empty.
-const fromHash = decodeURIComponent(window.location.hash.slice(1)).toLowerCase();
-const initial = ENTRIES.findIndex((e) => e.name.toLowerCase() === fromHash);
-const index = initial >= 0 ? initial : 0;
-activate(ENTRIES[index], sidebar.children[index] as HTMLButtonElement);
+// else the first one — the page should never load empty. A malformed
+// percent-encoding in the hash must not crash the page, and editing the
+// hash after load should switch entries like a navigation would.
+function getHashName(): string {
+  try {
+    return decodeURIComponent(window.location.hash.slice(1)).toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function activateFromHash(): void {
+  const fromHash = getHashName();
+  const initial = ENTRIES.findIndex((e) => e.name.toLowerCase() === fromHash);
+  const index = initial >= 0 ? initial : 0;
+  activate(ENTRIES[index], sidebar.children[index] as HTMLButtonElement);
+}
+
+activateFromHash();
+window.addEventListener('hashchange', activateFromHash);

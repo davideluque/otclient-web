@@ -17,6 +17,7 @@ import { createSkillPane, SKILL_NAMES } from '../skillPane';
 import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
+import { createSettingsPane } from '../settingsPane';
 import { ChatManager } from '../chat/ChatManager';
 import { createChatUI } from '../chat/ChatUI';
 import { GameProtocol } from '../net/7.6/GameProtocol';
@@ -177,6 +178,38 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Stack arrows +25', () => { pane.setSlot('ammo', 2544, 63); log('ammo count 63'); });
       knobs.toggle('Visible', true, (on) => pane.setVisible(on));
       log(`slots: ${INVENTORY_SLOTS.join(', ')}`);
+      return () => pane.destroy();
+    },
+  },
+
+  {
+    name: 'Settings',
+    description:
+      'Settings overlay (menu → Settings): toggle rows that adapt live '
+      + 'game state via get/set — the pane re-reads state every open, so '
+      + 'it stays in sync with other control surfaces like the ⚔ circle.',
+    mount({ knobs, log }) {
+      let attacking = false;
+      let sound = true;
+      const pane = createSettingsPane([
+        {
+          label: 'Auto-attack',
+          hint: 'Same switch as the ⚔ circle on the combat bar.',
+          get: () => attacking,
+          set: (on) => { attacking = on; log(`auto-attack: ${on}`); },
+        },
+        {
+          label: 'Sound (demo row)',
+          get: () => sound,
+          set: (on) => { sound = on; log(`sound: ${on}`); },
+        },
+      ]);
+      knobs.button('Open', () => pane.open());
+      knobs.button('Close', () => pane.close());
+      knobs.button('Flip auto-attack externally (⚔)', () => {
+        attacking = !attacking;
+        log(`external flip → ${attacking}; reopen to see the switch sync`);
+      });
       return () => pane.destroy();
     },
   },

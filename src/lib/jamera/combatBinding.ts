@@ -17,8 +17,10 @@ import type { GameWorld } from '../GameWorld';
  *   target dancing. Toggling off sends Attack(0) (stop).
  */
 export interface CombatBindingHandle {
-  /** Exposed for tests: whether auto-attack is engaged. */
+  /** Whether auto-attack is engaged (tests + the Settings toggle read this). */
   readonly attacking: boolean;
+  /** Programmatic engage/disengage — the Settings toggle's entry point. */
+  setAttacking(on: boolean): void;
   destroy(): void;
 }
 
@@ -93,8 +95,11 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   };
   const timer = setInterval(retarget, RETARGET_MS);
 
-  attackBtn.addEventListener('click', () => {
-    attacking = !attacking;
+  // One state function shared by every control surface (the ⚔ circle
+  // and the menu's Settings toggle) so they can't drift apart.
+  const setAttacking = (on: boolean): void => {
+    if (on === attacking) return;
+    attacking = on;
     attackBtn.textContent = attacking ? '✋' : '⚔';
     attackBtn.style.borderColor = attacking ? '#d9534f' : '#555';
     if (!attacking && currentTarget !== 0) {
@@ -103,10 +108,13 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     } else {
       retarget();
     }
-  });
+  };
+
+  attackBtn.addEventListener('click', () => setAttacking(!attacking));
 
   return {
     get attacking() { return attacking; },
+    setAttacking,
     destroy: () => {
       clearInterval(timer);
       if (attacking && currentTarget !== 0) send(protocol.actions.buildAttack(0));

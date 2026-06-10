@@ -8,6 +8,7 @@ import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
+import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
@@ -70,6 +71,8 @@ mountLoginScreen(root, {
     teardownInteractions = null;
     teardownCombat?.destroy();
     teardownCombat = null;
+    settingsPane?.destroy();
+    settingsPane = null;
   },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
@@ -99,8 +102,21 @@ mountLoginScreen(root, {
     teardownInventory?.destroy();
     teardownInventory = bindInventory(client);
     teardownStats?.destroy();
+    // Per-session: the toggles adapt the live combat binding; reading
+    // through the teardownCombat reference keeps them pointing at the
+    // current session even across re-logins.
+    settingsPane?.destroy();
+    settingsPane = createSettingsPane([
+      {
+        label: 'Auto-attack',
+        hint: 'Same switch as the ⚔ circle on the combat bar.',
+        get: () => teardownCombat?.attacking ?? false,
+        set: (on) => teardownCombat?.setAttacking(on),
+      },
+    ]);
     teardownStats = bindStats(client, document.body, [
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
+      { label: 'Settings', onSelect: () => settingsPane?.open() },
       {
         label: 'Log out',
         onSelect: () => {
@@ -483,3 +499,4 @@ let teardownInteractions: InteractionsHandle | null = null;
 
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
+let settingsPane: SettingsPaneHandle | null = null;

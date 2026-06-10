@@ -2,11 +2,52 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>OTClient Web — Jamera scaffold</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>OTClient Web — Play online</title>
+    <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="/icon-512.png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <meta name="theme-color" content="#000000" />
     <style>
-      html, body { margin: 0; padding: 0; height: 100%; background: #1a1a2e; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      /* Prevent browser-initiated touch gestures (double-tap-to-zoom,
+         pull-to-refresh). We handle pan, tap, long-press, and joystick
+         ourselves. iOS Safari ignores user-scalable=no since iOS 10,
+         so this CSS rule is the only reliable way. */
+      html, body, canvas { touch-action: none; }
+      /* Kill iOS long-press text selection + callout menu on game UI.
+         Without -webkit-touch-callout, long-pressing the joystick or
+         canvas pops up the "Copy/Look Up" sheet and selects nearby
+         text. -webkit-user-select is the iOS Safari prefix that the
+         unprefixed user-select doesn't cover. Inputs opt back in below
+         so chat and the login form stay typable/selectable. */
+      html, body {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      input, textarea, [contenteditable] {
+        -webkit-touch-callout: default;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      /* `-webkit-fill-available` gives iOS Safari/PWA the actually-visible
+         viewport height (post-status-bar layout), avoiding the
+         pre-layout-measured `100%` that leaves a black strip at the top
+         on installed PWAs. The plain `100%` line is the fallback for
+         non-WebKit browsers. Black background: any sliver the canvas
+         doesn't cover mid-rotation must read as letterbox, not page. */
+      html, body {
+        width: 100%;
+        height: 100%;
+        height: -webkit-fill-available;
+        overflow: hidden;
+        background: #000;
+        font-family: system-ui, sans-serif;
+      }
+      canvas { display: block; }
     </style>
   </head>
   <body>

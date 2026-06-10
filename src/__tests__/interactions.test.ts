@@ -26,6 +26,14 @@ describe('screenToWorldTile', () => {
     expect(screenToWorldTile(app, world, 400 + 15, 300).x).toBe(100);
     expect(screenToWorldTile(app, world, 400 + 17, 300).x).toBe(101);
   });
+
+  it('accounts for the stage cover-zoom', () => {
+    // At zoom 2 one tile is 64 canvas px; 64px east of center is +1 tile.
+    const zoomed = { ...app, stage: { scale: { x: 2 } } } as unknown as Application;
+    expect(screenToWorldTile(zoomed, world, 400 + 64, 300)).toEqual({ x: 101, y: 200, z: 7 });
+    // Tile spans ±32px around center at zoom 2 — +31px is still the player tile.
+    expect(screenToWorldTile(zoomed, world, 400 + 31, 300).x).toBe(100);
+  });
 });
 
 describe('actions packets', () => {

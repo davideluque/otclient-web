@@ -7,17 +7,8 @@ import type { GameWorld, WorldCreature } from '../GameWorld';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
 import { TILE_SIZE } from '../../constants';
-
-/**
- * Tibia-canonical visible-region half-extents around the player. The
- * server feeds an 18×14 window (`playerX-8 … playerX+9`, `playerY-6 …
- * playerY+7`); we render the same span so the renderer paints whatever
- * the server has sent and not a tile more.
- */
-const HALF_W_LEFT = 8;
-const HALF_W_RIGHT = 9;
-const HALF_H_TOP = 6;
-const HALF_H_BOTTOM = 7;
+import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
+import { VIEWPORT_EVENT } from './viewport';
 
 /** How long after a confirmed step a creature keeps its walk pose. */
 const WALK_ANIM_MS = 400;
@@ -86,10 +77,13 @@ export function bindRenderer(
   // *center* of the player's tile at the canvas center instead of
   // the tile's top-left corner. Use `app.screen` (CSS pixels — what
   // the scene graph uses) rather than `app.canvas` (device pixels,
-  // off by `devicePixelRatio` with autoDensity).
+  // off by `devicePixelRatio` with autoDensity). The stage carries the
+  // cover zoom (see viewport.ts), so screen px → stage units divides
+  // by the stage scale.
   const recenter = (container: Container): void => {
-    container.x = app.screen.width / 2 - (world.playerX + 0.5) * TILE_SIZE;
-    container.y = app.screen.height / 2 - (world.playerY + 0.5) * TILE_SIZE;
+    const zoom = app.stage.scale.x || 1;
+    container.x = app.screen.width / 2 / zoom - (world.playerX + 0.5) * TILE_SIZE;
+    container.y = app.screen.height / 2 / zoom - (world.playerY + 0.5) * TILE_SIZE;
   };
 
   let rafId = 0;
@@ -142,12 +136,17 @@ export function bindRenderer(
     paintedKey = key;
   };
 
-  // A window resize changes `app.screen` but fires no world change —
-  // recenter the existing container without rebuilding it.
+  // A viewport change alters `app.screen` and the stage zoom but fires
+  // no world change — recenter the existing container without
+  // rebuilding it. VIEWPORT_EVENT arrives *after* the app-level
+  // debounce actually resized the renderer (a plain `resize` listener
+  // would read pre-resize dimensions); the raw `resize` listener stays
+  // as a fallback for tests / non-cover hosts.
   const onResize = (): void => {
     if (currentContainer) recenter(currentContainer);
   };
   window.addEventListener('resize', onResize);
+  window.addEventListener(VIEWPORT_EVENT, onResize);
 
   world.onChange = update;
   // Render immediately in case MapDescription has already populated the
@@ -166,6 +165,7 @@ export function bindRenderer(
     nameplates.clear();
     bubbles?.destroy();
     window.removeEventListener('resize', onResize);
+    window.removeEventListener(VIEWPORT_EVENT, onResize);
     if (world.onChange === update) world.onChange = null;
     if (currentContainer) {
       app.stage.removeChild(currentContainer);

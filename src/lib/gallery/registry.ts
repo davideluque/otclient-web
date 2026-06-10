@@ -16,6 +16,7 @@ import { createSpellBar } from '../spellBar';
 import { createSkillPane, SKILL_NAMES } from '../skillPane';
 import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
+import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { ChatManager } from '../chat/ChatManager';
 import { createChatUI } from '../chat/ChatUI';
 import { GameProtocol } from '../net/7.6/GameProtocol';
@@ -154,6 +155,29 @@ export const ENTRIES: GalleryEntry[] = [
         log('items swapped');
       });
       return () => menu.destroy();
+    },
+  },
+
+  {
+    name: 'Inventory',
+    description:
+      'Classic 10-slot equipment cross (right edge), wire order per the '
+      + 'server\'s creature.h. Item visuals are textual (#id + count) until '
+      + 'the sprite-thumbnail pass; slot semantics are final.',
+    mount({ knobs, log }) {
+      const pane = createInventoryPane();
+      knobs.button('Equip a kit', () => {
+        pane.setSlot('head', 2457); pane.setSlot('armor', 2463);
+        pane.setSlot('legs', 2647); pane.setSlot('feet', 2643);
+        pane.setSlot('left', 2376); pane.setSlot('right', 2530);
+        pane.setSlot('backpack', 1988); pane.setSlot('ammo', 2544, 38);
+        log('full kit equipped');
+      });
+      knobs.button('Clear armor slot', () => { pane.setSlot('armor', null); log('armor cleared'); });
+      knobs.button('Stack arrows +25', () => { pane.setSlot('ammo', 2544, 63); log('ammo count 63'); });
+      knobs.toggle('Visible', true, (on) => pane.setVisible(on));
+      log(`slots: ${INVENTORY_SLOTS.join(', ')}`);
+      return () => pane.destroy();
     },
   },
 

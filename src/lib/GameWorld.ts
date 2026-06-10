@@ -32,6 +32,13 @@ export interface WorldCreature {
   outfit: MapCreature['outfit'];
   /** performance.now()-style stamp of the last confirmed step (for walk animation). */
   lastMoveAt?: number;
+  /**
+   * Tile the last confirmed step departed from (same z) — the renderer
+   * interpolates screen positions from here to (x, y) over the step
+   * duration. Unset (or a >1-tile delta / z change) means teleport: snap.
+   */
+  fromX?: number;
+  fromY?: number;
 }
 
 /**
@@ -69,6 +76,15 @@ export class GameWorld {
    * tileRevision, so the renderer can key its repaints on both.
    */
   creatureRevision = 0;
+
+  /**
+   * While true, syncSelfCreature records no glide origin. Set by
+   * handleFloorChange and cleared in a microtask: the 0x65–0x68 resync
+   * slices embedded in (and trailing) a floor-change message dispatch
+   * synchronously in the same task, so exactly the transition's syncs
+   * snap and the first real step afterwards glides again.
+   */
+  private snapSelfSync = false;
 
   private protocol: GameProtocol;
 
@@ -361,6 +377,14 @@ export class GameWorld {
     // Missing destination tile: leave the MapCreature where it is — the
     // registry below still tracks the true position, and dropping the
     // creature entirely would erase the player from the tile model.
+    // Interpolation origin only for true single-tile steps on the same
+    // floor — floor changes (including their same-z resync slices, see
+    // snapSelfSync) and teleports must snap, not glide.
+    const isStep = !this.snapSelfSync
+      && oldZ === this.playerZ
+      && Math.abs(this.playerX - oldX) <= 1 && Math.abs(this.playerY - oldY) <= 1;
+    self.fromX = isStep ? oldX : undefined;
+    self.fromY = isStep ? oldY : undefined;
     self.x = this.playerX;
     self.y = this.playerY;
     self.z = this.playerZ;
@@ -480,6 +504,12 @@ export class GameWorld {
     this.playerX = oldX - dz; // up: +1, down: -1 (covered offset)
     this.playerY = oldY - dz;
     this.playerZ = newZ;
+    // The transition's trailing 0x65–0x68 resync slices arrive in this
+    // same synchronous dispatch — none of them are steps to glide.
+    this.snapSelfSync = true;
+    queueMicrotask(() => { this.snapSelfSync = false; });
+    const selfC = this.creatures.get(this.playerCreatureId);
+    if (selfC) { selfC.fromX = undefined; selfC.fromY = undefined; }
     this.tileRevision++;
     this.onChange?.();
   }
@@ -508,6 +538,10 @@ export class GameWorld {
       );
       const wc = this.creatures.get(creature.id);
       if (wc) {
+        const isStep = event.fromZ === event.toZ
+          && Math.abs(event.toX - event.fromX) <= 1 && Math.abs(event.toY - event.fromY) <= 1;
+        wc.fromX = isStep ? event.fromX : undefined;
+        wc.fromY = isStep ? event.fromY : undefined;
         wc.x = event.toX;
         wc.y = event.toY;
         wc.z = event.toZ;

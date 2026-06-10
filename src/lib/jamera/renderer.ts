@@ -16,6 +16,34 @@ const WALK_ANIM_MS = 400;
 /** Walk frame duration — two alternating walk poses at ~8 fps. */
 const WALK_FRAME_MS = 125;
 
+/**
+ * How long a confirmed step glides from the departed tile to the new
+ * one. Slightly under the ~400ms base step pacing the server enforces,
+ * so the glide completes just before the next confirmation lands —
+ * measured on-device: step avg ~380ms, repaint ~8ms, so a per-frame
+ * position pass is far cheaper than the rebuilds we already do.
+ */
+export const STEP_GLIDE_MS = 350;
+
+/**
+ * Screen-position interpolation for a confirmed step: from (fromX,
+ * fromY) toward (x, y) over STEP_GLIDE_MS. Teleports and floor changes
+ * have no from-tile and snap.
+ */
+export function interpPos(c: WorldCreature, now: number): { x: number; y: number } {
+  if (
+    c.fromX === undefined || c.fromY === undefined ||
+    c.lastMoveAt === undefined || now - c.lastMoveAt >= STEP_GLIDE_MS
+  ) {
+    return { x: c.x, y: c.y };
+  }
+  const t = (now - c.lastMoveAt) / STEP_GLIDE_MS;
+  return {
+    x: c.fromX + (c.x - c.fromX) * t,
+    y: c.fromY + (c.y - c.fromY) * t,
+  };
+}
+
 function walkPhase(c: WorldCreature, now: number): number {
   // performance.now() starts near 0, so an undefined stamp must mean
   // idle explicitly rather than defaulting to 0 and looking recent.
@@ -81,10 +109,27 @@ export function bindRenderer(
   // off by `devicePixelRatio` with autoDensity). The stage carries the
   // cover zoom (see viewport.ts), so screen px → stage units divides
   // by the stage scale.
-  const recenter = (container: Container): void => {
+  const recenter = (container: Container, camX = world.playerX, camY = world.playerY): void => {
     const zoom = app.stage?.scale?.x || 1;
-    container.x = app.screen.width / 2 / zoom - (world.playerX + 0.5) * TILE_SIZE;
-    container.y = app.screen.height / 2 / zoom - (world.playerY + 0.5) * TILE_SIZE;
+    container.x = app.screen.width / 2 / zoom - (camX + 0.5) * TILE_SIZE;
+    container.y = app.screen.height / 2 / zoom - (camY + 0.5) * TILE_SIZE;
+  };
+
+  // Per-rebuild registry of creature display nodes at their build-time
+  // base positions — the per-frame glide pass nudges these (and the
+  // camera) by the interpolated fraction without rebuilding anything.
+  let movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
+
+  const glide = (now: number): void => {
+    if (!currentContainer) return;
+    const self = world.getCreature(world.playerCreatureId);
+    const cam = self ? interpPos(self, now) : { x: world.playerX, y: world.playerY };
+    recenter(currentContainer, cam.x, cam.y);
+    for (const m of movables) {
+      const p = interpPos(m.c, now);
+      m.node.x = m.baseX + (p.x - m.c.x) * TILE_SIZE;
+      m.node.y = m.baseY + (p.y - m.c.y) * TILE_SIZE;
+    }
   };
 
   let rafId = 0;
@@ -113,7 +158,12 @@ export function bindRenderer(
       rafId = requestAnimationFrame(tick);
     }
     const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}:${world.creatureRevision}:${walkTick}`;
-    if (key === paintedKey && currentContainer) return;
+    if (key === paintedKey && currentContainer) {
+      // Nothing structural changed — but mid-step glides still need
+      // their per-frame camera/sprite nudge.
+      glide(now);
+      return;
+    }
 
     const repaintStart = performance.now();
     const { container } = renderTileRegion(
@@ -125,7 +175,7 @@ export function bindRenderer(
       world.playerX + HALF_W_RIGHT, world.playerY + HALF_H_BOTTOM,
       world.playerZ,
     );
-    drawCreatures(world, atlas, container, tintedCache, nameplates);
+    movables = drawCreatures(world, atlas, container, tintedCache, nameplates);
     if (bubbles) container.addChild(bubbles.getContainer());
     recenter(container);
 
@@ -136,6 +186,7 @@ export function bindRenderer(
     app.stage.addChild(container);
     currentContainer = container;
     paintedKey = key;
+    glide(now);
     // Full-region rebuild cost on this device — the phone-CPU half of
     // the walk-lag decomposition.
     reportMetric('repaint', performance.now() - repaintStart);
@@ -191,7 +242,8 @@ function drawCreatures(
   container: Container,
   tintedCache: TintedTextureCache,
   nameplates: Map<number, NameplateHandle>,
-): void {
+): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
+  const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
   const x1 = world.playerX - HALF_W_LEFT;
   const x2 = world.playerX + HALF_W_RIGHT;
   const y1 = world.playerY - HALF_H_TOP;
@@ -206,7 +258,10 @@ function drawCreatures(
   const seen = new Set<number>();
   for (const c of visible) {
     const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
-    if (sprite) container.addChild(sprite);
+    if (sprite) {
+      container.addChild(sprite);
+      movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });
+    }
 
     // Nameplate (name + six-band health bar) above the creature's tile.
     // Reparented into the fresh container each rebuild; updated in place.
@@ -221,6 +276,7 @@ function drawCreatures(
     plate.container.x = (c.x + 0.5) * TILE_SIZE;
     plate.container.y = c.y * TILE_SIZE - 14;
     container.addChild(plate.container);
+    movables.push({ node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c });
   }
   for (const [id, plate] of nameplates) {
     if (!seen.has(id)) {
@@ -228,6 +284,7 @@ function drawCreatures(
       nameplates.delete(id);
     }
   }
+  return movables;
 }
 
 function renderCreature(

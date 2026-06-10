@@ -185,6 +185,23 @@ describe('mountLoginScreen autoLogin', () => {
     mounted.unmount();
   });
 
+  it('a drop back to disconnected (proxy offline) disarms the auto-pick', async () => {
+    const mounted = mountLoginScreen(root, { autoLogin: { account: 1, password: '1' } });
+    await Promise.resolve();
+    // Connection failure path: no onLoginError fires, just a state
+    // transition back to disconnected. A later manual login must not
+    // be hijacked by the stale auto-pick.
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onStateChange?.('logging_in');
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onStateChange?.('disconnected');
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).not.toHaveBeenCalled();
+    mounted.unmount();
+  });
+
   it('a login error disarms the auto-pick', async () => {
     const mounted = mountLoginScreen(root, { autoLogin: { account: 1, password: 'wrong' } });
     await Promise.resolve();

@@ -89,16 +89,20 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   const events: GameClientEvents = {};
   const client = new GameClient(proxyUrl, events, protocol);
 
+  // One-shot auto-pilot flag; cleared when the pick fires — and on any
+  // failure: a login error (bad dev password must not loop) or a drop
+  // back to disconnected (proxy offline kills the connection without an
+  // onLoginError), so a later manual login is never hijacked by a stale
+  // auto-pick.
+  let autoPickCharacter = opts.autoLogin !== undefined;
   let lastState: GameClientState = 'disconnected';
   events.onStateChange = (state) => {
     updateState(ui, state);
+    if (state === 'disconnected') autoPickCharacter = false;
     if (state === 'in_game') opts.onEnterGame?.(client);
     if (lastState === 'in_game' && state !== 'in_game') opts.onLeaveGame?.();
     lastState = state;
   };
-  // One-shot auto-pilot flags; cleared as each leg completes (and on
-  // login error, so a bad dev password doesn't loop).
-  let autoPickCharacter = opts.autoLogin !== undefined;
   events.onLoginError = (msg) => {
     autoPickCharacter = false;
     showError(ui, msg);

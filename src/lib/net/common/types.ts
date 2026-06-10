@@ -275,6 +275,8 @@ export interface ActionsProtocol {
   buildUseItem(pos: WirePosition, spriteId: number, stackPos: number, index?: number): OutputPacket;
   /** 0x14 — clean logout; the server saves the character and closes. */
   buildLogout(): OutputPacket;
+  /** 0xA1 — set the attacked creature; id 0 stops attacking. */
+  buildAttack(creatureId: number): OutputPacket;
 }
 
 export interface PlayerStats {

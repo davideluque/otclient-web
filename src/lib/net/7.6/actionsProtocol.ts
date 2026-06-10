@@ -39,3 +39,11 @@ export function buildLogoutPacket(): OutputPacket {
   out.addU8(ClientOp.Logout);
   return out;
 }
+
+/** 0xA1 — set the attacked creature; id 0 stops attacking. */
+export function buildAttackPacket(creatureId: number): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.Attack);
+  out.addU32(creatureId);
+  return out;
+}

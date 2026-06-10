@@ -112,30 +112,37 @@ export function bindInteractions(
     use(e.clientX, e.clientY);
   };
 
-  // Touch: a press held LONG_PRESS_MS without wandering looks.
+  // Touch: a press held LONG_PRESS_MS without wandering looks. The press
+  // is bound to one pointerId — a second finger (e.g. on the joystick)
+  // must neither cancel the timer nor hijack the press position.
   let pressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressX = 0;
   let pressY = 0;
-  const cancelPress = (): void => {
+  let activePointerId: number | null = null;
+  const cancelPress = (e?: PointerEvent): void => {
+    if (e && e.pointerId !== activePointerId) return;
     if (pressTimer !== null) {
       clearTimeout(pressTimer);
       pressTimer = null;
     }
+    activePointerId = null;
   };
   const onPointerDown = (e: PointerEvent): void => {
     if (e.pointerType !== 'touch') return;
+    if (activePointerId !== null) return; // a press is already in flight
+    activePointerId = e.pointerId;
     pressX = e.clientX;
     pressY = e.clientY;
-    cancelPress();
     pressTimer = setTimeout(() => {
       pressTimer = null;
+      activePointerId = null;
       look(pressX, pressY);
     }, LONG_PRESS_MS);
   };
   const onPointerMove = (e: PointerEvent): void => {
-    if (pressTimer === null) return;
+    if (pressTimer === null || e.pointerId !== activePointerId) return;
     if (Math.abs(e.clientX - pressX) > MOVE_TOLERANCE_PX || Math.abs(e.clientY - pressY) > MOVE_TOLERANCE_PX) {
-      cancelPress();
+      cancelPress(e);
     }
   };
 

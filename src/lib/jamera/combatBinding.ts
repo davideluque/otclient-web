@@ -19,8 +19,16 @@ import type { GameWorld } from '../GameWorld';
 export interface CombatBindingHandle {
   /** Whether auto-attack is engaged (tests + the Settings toggle read this). */
   readonly attacking: boolean;
+  /** The currently attacked creature id (0 = none) — battle list highlight. */
+  readonly targetId: number;
   /** Programmatic engage/disengage — the Settings toggle's entry point. */
   setAttacking(on: boolean): void;
+  /**
+   * Attack a specific creature (battle list tap): engages auto-attack
+   * with this exact target; the sticky logic keeps it until it dies.
+   * The same id again disengages (classic battle-list toggle).
+   */
+  attackTarget(id: number): void;
   destroy(): void;
 }
 
@@ -112,9 +120,23 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
 
   attackBtn.addEventListener('click', () => setAttacking(!attacking));
 
+  const attackTarget = (id: number): void => {
+    if (attacking && currentTarget === id) {
+      setAttacking(false); // tap the engaged target again = stop
+      return;
+    }
+    attacking = true;
+    attackBtn.textContent = '✋';
+    attackBtn.style.borderColor = '#d9534f';
+    currentTarget = id;
+    send(protocol.actions.buildAttack(id));
+  };
+
   return {
     get attacking() { return attacking; },
+    get targetId() { return attacking ? currentTarget : 0; },
     setAttacking,
+    attackTarget,
     destroy: () => {
       clearInterval(timer);
       if (attacking && currentTarget !== 0) send(protocol.actions.buildAttack(0));

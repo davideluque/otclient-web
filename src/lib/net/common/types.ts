@@ -230,6 +230,7 @@ export interface ServerOpcodes {
   readonly LoginMotd: number;
   readonly LoginCharacterList: number;
   readonly SelfAppear: number;
+  readonly GMActions: number;
   readonly Ping: number;
   readonly MapDescription: number;
   readonly MoveNorth: number;
@@ -240,6 +241,8 @@ export interface ServerOpcodes {
   readonly TileAddThing: number;
   readonly TileTransformThing: number;
   readonly TileRemoveThing: number;
+  readonly InventorySet: number;
+  readonly InventoryClear: number;
   readonly CreatureMove: number;
   readonly ContainerOpen: number;
   readonly ContainerClose: number;

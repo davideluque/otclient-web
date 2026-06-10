@@ -1,6 +1,7 @@
 import type { InputPacket } from './net/common/InputPacket';
 import type { PacketDispatcher } from './net/common/PacketDispatcher';
 import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
+import type { ResolvedTile } from './tileMap';
 
 export interface WorldCreature {
   id: number;
@@ -36,6 +37,13 @@ export class GameWorld {
   /** Callback when map or creatures change. */
   onChange: (() => void) | null = null;
 
+  /**
+   * Bumped whenever tile contents change (not on creature-only updates).
+   * Lets the renderer skip full repaints for creature moves, which fire
+   * `onChange` far more often than the map actually changes.
+   */
+  tileRevision = 0;
+
   private protocol: GameProtocol;
 
   constructor(protocol: GameProtocol) {
@@ -65,8 +73,43 @@ export class GameWorld {
     return [...this.creatures.values()];
   }
 
+  /**
+   * Yield live tiles in the region in the shape `renderTileRegion`
+   * consumes (the `TileSource` interface). Wire-side item IDs are
+   * already the client-side dat IDs, so `clientId` maps 1:1 from
+   * `item.id`. `flags` and `floorChange` are absent on the wire —
+   * synthesised as `0` / `undefined`; `renderTile` reads neither.
+   *
+   * Creatures aren't yielded here — they need outfit-tint rendering
+   * via `renderPlayer`, which is its own concern (separate PR).
+   */
+  *tilesInRegion(
+    x1: number, y1: number, x2: number, y2: number, z: number,
+  ): Generator<ResolvedTile> {
+    // Row-major (y outer), matching TileMap.tilesInRegion: sprites stack
+    // in insertion order, so southern rows must paint after northern ones
+    // for 2.5D overlap (trees, wall tops) to layer correctly.
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
+        const tile = this.tiles.get(`${x}:${y}:${z}`);
+        if (!tile) continue;
+        yield {
+          x: tile.x,
+          y: tile.y,
+          z: tile.z,
+          flags: 0,
+          items: tile.items.map((item) => ({
+            clientId: item.id,
+            count: item.count,
+          })),
+        };
+      }
+    }
+  }
+
   private setTile(tile: MapTile): void {
     this.tiles.set(`${tile.x}:${tile.y}:${tile.z}`, tile);
+    this.tileRevision++;
 
     // Register any creatures on this tile
     for (const c of tile.creatures) {

@@ -2,7 +2,7 @@ import { Connection } from './Connection';
 import { PacketDispatcher } from './PacketDispatcher';
 import { generateXteaKey, type XteaKey } from './xtea';
 import type { InputPacket } from './InputPacket';
-import type { OutputPacket } from './OutputPacket';
+import { OutputPacket } from './OutputPacket';
 import type {
   GameProtocol,
   CharacterInfo,
@@ -47,6 +47,35 @@ export class GameClient {
     this.events = events;
     this.dispatcher = new PacketDispatcher();
     this.protocol = protocol;
+
+    // Auto-pong the server's keepalive. Canonical Tibia 7.x: the server
+    // sends a Ping every few seconds and treats the session as dead if
+    // we don't respond with the same opcode promptly. Without this, we
+    // pass game login fine, then get disconnected after the first
+    // server-side ping interval expires. Registered on construction so
+    // any consumer that wants to also handle Ping can overwrite —
+    // `PacketDispatcher.on` is last-write-wins. Other opcode-handling
+    // decisions (which packets to skip vs render) belong to consumers,
+    // not this protocol-level client.
+    this.dispatcher.on(this.protocol.serverOpcodes.Ping, () => this.sendPong());
+  }
+
+  /**
+   * Reply to a server-initiated Ping. Uses `gameConn.send` directly so
+   * we can respond during `entering_game` too (packets can arrive on
+   * the game socket before `setState('in_game')` has run). Silent if
+   * `gameConn` isn't up — Connection.send already no-ops on a closed
+   * WebSocket.
+   */
+  private sendPong(): void {
+    if (!this.gameConn) return;
+    const pong = new OutputPacket();
+    pong.addU8(this.protocol.clientOpcodes.Ping);
+    try {
+      this.gameConn.send(pong, this.protocol.config.useXTEA);
+    } catch (err) {
+      console.warn('[net] pong failed:', err instanceof Error ? err.message : err);
+    }
   }
 
   getState(): GameClientState {

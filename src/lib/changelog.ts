@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Added the VIP list (menu → VIP): see who is online, add and remove friends.' },
   { date: '2026-06-10', text: 'Spell slots are customizable (menu → Spells) and every known spell has an icon now.' },
   { date: '2026-06-10', text: 'Added the status bar: condition icons (poison, burn, haste, in-combat, …) appear under the health bar.' },
   { date: '2026-06-10', text: 'Added the battle list (menu → Battle): see every creature around you and tap one to attack it.' },

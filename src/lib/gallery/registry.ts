@@ -20,6 +20,7 @@ import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
 import { createBattleList } from '../battleList';
+import { createVipList } from '../vipList';
 import { createSpellCustomizer } from '../spellCustomizer';
 import { DEFAULT_SLOTS } from '../spells';
 import { createCombatModes } from '../combatModes';
@@ -309,6 +310,33 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Open', () => customizer.open());
       knobs.button('Close', () => customizer.close());
       return () => customizer.destroy();
+    },
+  },
+
+  {
+    name: 'VIP list',
+    description:
+      'Friends with online status (menu → VIP): 0xD2 entries, 0xD3/0xD4 '
+      + 'online flips, add by name (0xDC), remove by guid (0xDD). Online '
+      + 'first, then alphabetical.',
+    mount({ knobs, log }) {
+      const entries = [
+        { guid: 1, name: 'GOD Bruno', online: true },
+        { guid: 2, name: 'Squirrel', online: false },
+        { guid: 3, name: 'Gurz', online: true },
+      ];
+      const vip = createVipList({
+        onAdd: (name) => { log(`0xDC add "${name}"`); },
+        onRemove: (guid) => { log(`0xDD remove #${guid}`); },
+      });
+      vip.setEntries(entries);
+      knobs.button('Open', () => vip.open());
+      knobs.button('Squirrel logs in', () => {
+        entries[1].online = true;
+        vip.setEntries(entries);
+        log('0xD3 → Squirrel online');
+      });
+      return () => vip.destroy();
     },
   },
 

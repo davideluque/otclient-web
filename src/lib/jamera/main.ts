@@ -21,6 +21,7 @@ import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindBattleList, type BattleBindingHandle } from './battleBinding';
+import { bindVip, type VipBindingHandle } from './vipBinding';
 import { createSpellCustomizer, type SpellCustomizerHandle } from '../spellCustomizer';
 import { loadSpellSlots, saveSpellSlots } from '../spells';
 import { bindCombatModes, type CombatModesBindingHandle } from './combatModesBinding';
@@ -93,6 +94,8 @@ mountLoginScreen(root, {
     teardownMinimap = null;
     teardownBattle?.destroy();
     teardownBattle = null;
+    teardownVip?.destroy();
+    teardownVip = null;
     spellCustomizer?.destroy();
     spellCustomizer = null;
     teardownCombatModes?.destroy();
@@ -144,6 +147,8 @@ mountLoginScreen(root, {
     teardownBattle?.destroy();
     teardownBattle = bindBattleList(world, () => teardownCombat);
     teardownBattle.setVisible(false); // opt-in from the menu
+    teardownVip?.destroy();
+    teardownVip = bindVip(client);
     teardownCombatModes?.destroy();
     teardownCombatModes = bindCombatModes(client);
     teardownStatus?.destroy();
@@ -178,6 +183,7 @@ mountLoginScreen(root, {
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
       { label: 'Chat', onSelect: () => teardownChat?.fullView.open() },
       { label: 'Battle', onSelect: () => teardownBattle?.setVisible(!teardownBattle.visible) },
+      { label: 'VIP', onSelect: () => teardownVip?.list.open() },
       {
         label: 'Spells',
         onSelect: () => {
@@ -610,6 +616,7 @@ let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownBattle: BattleBindingHandle | null = null;
+let teardownVip: VipBindingHandle | null = null;
 let spellCustomizer: SpellCustomizerHandle | null = null;
 let teardownCombatModes: CombatModesBindingHandle | null = null;
 let teardownStatus: StatusBindingHandle | null = null;

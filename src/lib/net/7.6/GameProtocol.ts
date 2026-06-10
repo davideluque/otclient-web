@@ -20,7 +20,7 @@ import {
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
 import { buildMovePacket, buildAutoWalkPacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
-import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket } from './actionsProtocol';
+import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket } from './actionsProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -132,6 +132,8 @@ export class GameProtocol implements GameProtocolSpec {
       buildUseItem: buildUseItemPacket,
       buildLogout: buildLogoutPacket,
       buildFightModes: buildFightModesPacket,
+      buildAddVip: buildAddVipPacket,
+      buildRemoveVip: buildRemoveVipPacket,
       buildAttack: buildAttackPacket,
     };
 

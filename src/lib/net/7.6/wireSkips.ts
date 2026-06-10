@@ -82,6 +82,9 @@ export function registerWireSkips(dispatcher: PacketDispatcher, protocol: GamePr
   dispatcher.on(op.PlayerStats, skip(20)); // hp(2) maxhp(2) cap(2) exp(4) lvl(2) lvl%(1) mana(2) maxmana(2) mlvl(1) mlvl%(1) soul(1)
   dispatcher.on(op.PlayerSkills, skip(14)); // 7 × (level, percent)
   dispatcher.on(op.Icons, skip(1));
+  dispatcher.on(op.VipState, (p) => { p.skip(4); p.getString(); p.skip(1); }); // guid, name, online
+  dispatcher.on(op.VipLogin, skip(4));
+  dispatcher.on(op.VipLogout, skip(4));
   dispatcher.on(op.CancelTarget, nothing);
   dispatcher.on(op.TextMessage, (p) => { p.skip(1); p.getString(); }); // class, text
   dispatcher.on(op.CancelWalk, skip(1)); // direction to face

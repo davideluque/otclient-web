@@ -5,8 +5,10 @@ import {
   buildAtlasPages,
   collectReferencedSpriteIds,
   computeAtlasLayout,
+  type AtlasPages,
   type SpriteLocation,
 } from './atlas';
+import { buildCreatureIndex } from './player';
 import {
   createAtlasTextures,
   getSpriteTexture,
@@ -34,6 +36,13 @@ export interface SpriteAtlas {
   layout: Map<number, SpriteLocation>;
   datIndex: Map<number, ThingType>;
   dat: DatFile;
+  /**
+   * CPU-side atlas pages, retained for outfit tinting (renderPlayer
+   * composes base + colour-mask layers from raw pixels). ~16 MB per page.
+   */
+  atlasPages: AtlasPages;
+  /** lookType → creature ThingType, for rendering creatures/players. */
+  creatureIndex: Map<number, ThingType>;
 }
 
 export function buildSpriteAtlas(datBuffer: ArrayBuffer, sprBuffer: ArrayBuffer): SpriteAtlas {
@@ -47,6 +56,7 @@ export function buildSpriteAtlas(datBuffer: ArrayBuffer, sprBuffer: ArrayBuffer)
   const atlasTextures = createAtlasTextures(atlasPages);
   const layout = computeAtlasLayout(spr.spriteCount, referencedSpriteIds);
   const datIndex = buildDatIndex(dat);
+  const creatureIndex = buildCreatureIndex(dat);
   const textureCache = new Map<number, Texture | null>();
 
   return {
@@ -54,6 +64,8 @@ export function buildSpriteAtlas(datBuffer: ArrayBuffer, sprBuffer: ArrayBuffer)
     layout,
     datIndex,
     dat,
+    atlasPages,
+    creatureIndex,
     get(spriteId) {
       const cached = textureCache.get(spriteId);
       if (cached !== undefined) return cached;

@@ -141,10 +141,19 @@ function bindGameWorld(client: GameClient): GameWorld {
  */
 let teardownRenderer: (() => void) | null = null;
 let onAtlasReady: ((atlas: SpriteAtlas) => void) | null = null;
+// Monotonic mount generation. Every mountRenderer call claims a new epoch;
+// any continuation (post-await resume, queued atlas callback) belonging to
+// an older epoch is stale and must not bind. Without this, a re-login during
+// the `ensurePixiApp` await — or an atlas that finishes building between two
+// mounts — can bind a dead session's world and leak its container.
+let mountEpoch = 0;
 
 async function mountRenderer(world: GameWorld): Promise<void> {
+  const epoch = ++mountEpoch;
   teardownRenderer?.();
   teardownRenderer = null;
+  // Cancel a waiter queued by a previous session — its world is dead.
+  onAtlasReady = null;
 
   let app: Application;
   try {
@@ -153,8 +162,11 @@ async function mountRenderer(world: GameWorld): Promise<void> {
     console.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
     return;
   }
+  if (epoch !== mountEpoch) return; // superseded while awaiting PIXI
 
   const mount = (atlas: SpriteAtlas): void => {
+    if (epoch !== mountEpoch) return; // stale atlas callback
+    teardownRenderer?.(); // never stack two bindings
     teardownRenderer = bindRenderer(world, atlas, app);
     console.info('[jamera] renderer bound to GameWorld');
   };

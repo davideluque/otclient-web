@@ -35,8 +35,26 @@ export function bindRenderer(
   app: Application,
 ): () => void {
   let currentContainer: Container | null = null;
+  // Snapshot of what the current container was painted from. Creature
+  // moves fire `onChange` constantly but don't touch tiles — when neither
+  // the player position nor the tile revision moved, skip the ~250-tile
+  // rebuild (this renderer draws tiles only; see header comment).
+  let paintedKey = '';
+
+  // Center the player tile on the canvas. The 0.5 offset puts the
+  // *center* of the player's tile at the canvas center instead of
+  // the tile's top-left corner. Use `app.screen` (CSS pixels — what
+  // the scene graph uses) rather than `app.canvas` (device pixels,
+  // off by `devicePixelRatio` with autoDensity).
+  const recenter = (container: Container): void => {
+    container.x = app.screen.width / 2 - (world.playerX + 0.5) * TILE_SIZE;
+    container.y = app.screen.height / 2 - (world.playerY + 0.5) * TILE_SIZE;
+  };
 
   const update = (): void => {
+    const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}`;
+    if (key === paintedKey && currentContainer) return;
+
     const { container } = renderTileRegion(
       world,
       atlas.datIndex,
@@ -46,14 +64,7 @@ export function bindRenderer(
       world.playerX + HALF_W_RIGHT, world.playerY + HALF_H_BOTTOM,
       world.playerZ,
     );
-
-    // Center the player tile on the canvas. The 0.5 offset puts the
-    // *center* of the player's tile at the canvas center instead of
-    // the tile's top-left corner. Use `app.screen` (CSS pixels — what
-    // the scene graph uses) rather than `app.canvas` (device pixels,
-    // off by `devicePixelRatio` with autoDensity).
-    container.x = app.screen.width / 2 - (world.playerX + 0.5) * TILE_SIZE;
-    container.y = app.screen.height / 2 - (world.playerY + 0.5) * TILE_SIZE;
+    recenter(container);
 
     if (currentContainer) {
       app.stage.removeChild(currentContainer);
@@ -61,7 +72,15 @@ export function bindRenderer(
     }
     app.stage.addChild(container);
     currentContainer = container;
+    paintedKey = key;
   };
+
+  // A window resize changes `app.screen` but fires no world change —
+  // recenter the existing container without rebuilding it.
+  const onResize = (): void => {
+    if (currentContainer) recenter(currentContainer);
+  };
+  window.addEventListener('resize', onResize);
 
   world.onChange = update;
   // Render immediately in case MapDescription has already populated the
@@ -70,6 +89,7 @@ export function bindRenderer(
   update();
 
   return () => {
+    window.removeEventListener('resize', onResize);
     if (world.onChange === update) world.onChange = null;
     if (currentContainer) {
       app.stage.removeChild(currentContainer);

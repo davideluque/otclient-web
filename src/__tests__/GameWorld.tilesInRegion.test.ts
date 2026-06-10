@@ -33,6 +33,31 @@ describe('GameWorld.tilesInRegion', () => {
     expect(tiles.map((t) => `${t.x}:${t.y}`).sort()).toEqual(['10:10', '11:10']);
   });
 
+  it('yields row-major (y outer), matching TileMap painter order for 2.5D stacking', () => {
+    const world = new GameWorld(new GameProtocol());
+    seed(world, mkTile(2, 2, 7, [100]));
+    seed(world, mkTile(1, 2, 7, [101]));
+    seed(world, mkTile(2, 1, 7, [102]));
+    seed(world, mkTile(1, 1, 7, [103]));
+
+    const order = [...world.tilesInRegion(1, 1, 2, 2, 7)].map((t) => `${t.x}:${t.y}`);
+    expect(order).toEqual(['1:1', '2:1', '1:2', '2:2']);
+  });
+
+  it('bumps tileRevision on tile ingestion but not on creature-only changes', () => {
+    const world = new GameWorld(new GameProtocol());
+    const before = world.tileRevision;
+
+    // @ts-expect-error driving the private tile path for the test
+    world.setTile(mkTile(1, 1, 7, [100]));
+    expect(world.tileRevision).toBe(before + 1);
+
+    // Creature registry mutations don't touch tiles.
+    // @ts-expect-error driving private state
+    world.creatures.set(42, { id: 42, name: 'rat', x: 1, y: 1, z: 7 });
+    expect(world.tileRevision).toBe(before + 1);
+  });
+
   it('skips tiles on a different floor', () => {
     const world = new GameWorld(new GameProtocol());
     seed(world, mkTile(5, 5, 7, [100]));

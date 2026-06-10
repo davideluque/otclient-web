@@ -37,6 +37,13 @@ export class GameWorld {
   /** Callback when map or creatures change. */
   onChange: (() => void) | null = null;
 
+  /**
+   * Bumped whenever tile contents change (not on creature-only updates).
+   * Lets the renderer skip full repaints for creature moves, which fire
+   * `onChange` far more often than the map actually changes.
+   */
+  tileRevision = 0;
+
   private protocol: GameProtocol;
 
   constructor(protocol: GameProtocol) {
@@ -79,8 +86,11 @@ export class GameWorld {
   *tilesInRegion(
     x1: number, y1: number, x2: number, y2: number, z: number,
   ): Generator<ResolvedTile> {
-    for (let x = x1; x <= x2; x++) {
-      for (let y = y1; y <= y2; y++) {
+    // Row-major (y outer), matching TileMap.tilesInRegion: sprites stack
+    // in insertion order, so southern rows must paint after northern ones
+    // for 2.5D overlap (trees, wall tops) to layer correctly.
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
         const tile = this.tiles.get(`${x}:${y}:${z}`);
         if (!tile) continue;
         yield {
@@ -99,6 +109,7 @@ export class GameWorld {
 
   private setTile(tile: MapTile): void {
     this.tiles.set(`${tile.x}:${tile.y}:${tile.z}`, tile);
+    this.tileRevision++;
 
     // Register any creatures on this tile
     for (const c of tile.creatures) {

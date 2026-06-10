@@ -1,4 +1,5 @@
-import type { Application, Container } from 'pixi.js';
+import { Container } from 'pixi.js';
+import type { Application } from 'pixi.js';
 import { renderTileRegion, renderPlayer, type TintedTextureCache } from '../tileRenderer';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
@@ -36,7 +37,18 @@ const STEP_SAMPLE_MAX_MS = 800;
  * the trailing edge must show the (already-known, lingering) tiles
  * there instead of black.
  */
-const GLIDE_PAD = 2;
+const GLIDE_PAD = 3;
+
+/**
+ * Tile-layer rebuild policy. Rebuilding the tile layer is the expensive
+ * operation (hundreds to thousands of sprites in dense town areas), so
+ * it no longer runs per walk-pose frame: only when the player has moved
+ * HYSTERESIS tiles from the painted center (the pad keeps the screen
+ * covered in between), on a floor change, or — throttled — when tile
+ * contents change in place (doors, dropped items).
+ */
+const TILE_REBUILD_HYSTERESIS = 2;
+const TILE_REVISION_THROTTLE_MS = 300;
 
 /**
  * Exponential moving average of a creature's step cadence. Exported for
@@ -127,11 +139,18 @@ export function bindRenderer(
   app: Application,
   chatManager?: ChatManager,
 ): () => void {
-  let currentContainer: Container | null = null;
-  // Snapshot of what the current container was painted from: player
-  // position plus the tile and creature revision counters — onChange
-  // fires for plenty of packets that change none of these.
-  let paintedKey = '';
+  // Persistent scene root (recentered by the camera) holding three
+  // layers: tiles (expensive, rebuilt with hysteresis), creatures
+  // (cheap, rebuilt per pose/state change), bubbles (persistent).
+  let root: Container | null = null;
+  let tileLayer: Container | null = null;
+  let creatureLayer: Container | null = null;
+  let paintedCenterX = NaN;
+  let paintedCenterY = NaN;
+  let paintedCenterZ = NaN;
+  let paintedTileRevision = -1;
+  let lastTileRebuildAt = 0;
+  let creatureKey = '';
   // Outfit tint compositions are expensive; cache them for the lifetime
   // of this binding (i.e. per session).
   const tintedCache: TintedTextureCache = new Map();
@@ -199,12 +218,12 @@ export function bindRenderer(
   };
 
   const glide = (now: number): void => {
-    if (!currentContainer) return;
+    if (!root) return;
     const dtMs = lastGlideAt === 0 ? 0 : Math.min(100, now - lastGlideAt);
     lastGlideAt = now;
     const self = world.getCreature(world.playerCreatureId);
     const cam = self ? renderPosFor(self, dtMs) : { x: world.playerX, y: world.playerY };
-    recenter(currentContainer, cam.x, cam.y);
+    recenter(root, cam.x, cam.y);
     for (const m of movables) {
       if (m.c.id === world.playerCreatureId) {
         // Already advanced above as the camera — reuse, don't advance twice.
@@ -245,45 +264,68 @@ export function bindRenderer(
       };
       rafId = requestAnimationFrame(tick);
     }
-    const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}:${world.creatureRevision}:${walkTick}`;
-    if (key === paintedKey && currentContainer) {
-      // Nothing structural changed — but mid-step glides still need
-      // their per-frame camera/sprite nudge.
-      glide(now);
-      return;
+    if (!root) {
+      root = new Container();
+      app.stage.addChild(root);
+      if (bubbles) root.addChild(bubbles.getContainer());
     }
 
-    const repaintStart = performance.now();
-    // GLIDE_PAD: while the camera pursues the player it trails up to a
-    // tile behind the confirmed position — paint beyond the server
-    // window so the trailing edge shows the lingering already-known
-    // tiles instead of black. Tiles the server never described stay
-    // black, but they're always on the leading edge, behind the player
-    // center, never visible.
-    const { container } = renderTileRegion(
-      world,
-      atlas.datIndex,
-      atlas.atlasTextures,
-      atlas.layout,
-      world.playerX - HALF_W_LEFT - GLIDE_PAD, world.playerY - HALF_H_TOP - GLIDE_PAD,
-      world.playerX + HALF_W_RIGHT + GLIDE_PAD, world.playerY + HALF_H_BOTTOM + GLIDE_PAD,
-      world.playerZ,
-    );
-    movables = drawCreatures(world, atlas, container, tintedCache, nameplates);
-    if (bubbles) container.addChild(bubbles.getContainer());
-    recenter(container);
-
-    if (currentContainer) {
-      app.stage.removeChild(currentContainer);
-      currentContainer.destroy({ children: true });
+    // ── Tile layer (expensive): hysteresis + throttle ──
+    const movedFar =
+      Number.isNaN(paintedCenterX) ||
+      Math.abs(world.playerX - paintedCenterX) >= TILE_REBUILD_HYSTERESIS ||
+      Math.abs(world.playerY - paintedCenterY) >= TILE_REBUILD_HYSTERESIS;
+    const zChanged = world.playerZ !== paintedCenterZ;
+    const revChanged = world.tileRevision !== paintedTileRevision;
+    if (!tileLayer || zChanged || movedFar
+      || (revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS)) {
+      const repaintStart = performance.now();
+      // GLIDE_PAD: covers both the pursuing camera trailing behind the
+      // confirmed position AND the hysteresis lag of the painted center
+      // — the trailing/lagging edges show lingering known tiles instead
+      // of black. Undescribed tiles stay black but sit past the leading
+      // edge, never on screen.
+      const { container: nextTiles } = renderTileRegion(
+        world,
+        atlas.datIndex,
+        atlas.atlasTextures,
+        atlas.layout,
+        world.playerX - HALF_W_LEFT - GLIDE_PAD, world.playerY - HALF_H_TOP - GLIDE_PAD,
+        world.playerX + HALF_W_RIGHT + GLIDE_PAD, world.playerY + HALF_H_BOTTOM + GLIDE_PAD,
+        world.playerZ,
+      );
+      root.addChildAt(nextTiles, 0);
+      if (tileLayer) {
+        root.removeChild(tileLayer);
+        tileLayer.destroy({ children: true });
+      }
+      tileLayer = nextTiles;
+      paintedCenterX = world.playerX;
+      paintedCenterY = world.playerY;
+      paintedCenterZ = world.playerZ;
+      paintedTileRevision = world.tileRevision;
+      lastTileRebuildAt = now;
+      // Tile rebuild cost — the phone-CPU half of the lag decomposition.
+      reportMetric('repaint', performance.now() - repaintStart);
     }
-    app.stage.addChild(container);
-    currentContainer = container;
-    paintedKey = key;
+
+    // ── Creature layer (cheap): poses + creature state ──
+    const ck = `${world.creatureRevision}:${walkTick}:${world.playerZ}:${world.playerX}:${world.playerY}`;
+    if (!creatureLayer || ck !== creatureKey) {
+      const nextCreatures = new Container();
+      // Build first, destroy after: drawCreatures reparents persistent
+      // nameplates into the new layer, keeping them out of the destroy.
+      movables = drawCreatures(world, atlas, nextCreatures, tintedCache, nameplates);
+      root.addChildAt(nextCreatures, tileLayer ? 1 : 0);
+      if (creatureLayer) {
+        root.removeChild(creatureLayer);
+        creatureLayer.destroy({ children: true });
+      }
+      creatureLayer = nextCreatures;
+      creatureKey = ck;
+    }
+
     glide(now);
-    // Full-region rebuild cost on this device — the phone-CPU half of
-    // the walk-lag decomposition.
-    reportMetric('repaint', performance.now() - repaintStart);
   };
 
   // A viewport change alters `app.screen` and the stage zoom but fires
@@ -293,7 +335,7 @@ export function bindRenderer(
   // would read pre-resize dimensions); the raw `resize` listener stays
   // as a fallback for tests / non-cover hosts.
   const onResize = (): void => {
-    if (currentContainer) recenter(currentContainer);
+    if (root) recenter(root);
   };
   window.addEventListener('resize', onResize);
   window.addEventListener(VIEWPORT_EVENT, onResize);
@@ -318,10 +360,12 @@ export function bindRenderer(
     window.removeEventListener('resize', onResize);
     window.removeEventListener(VIEWPORT_EVENT, onResize);
     if (world.onChange === update) world.onChange = null;
-    if (currentContainer) {
-      app.stage.removeChild(currentContainer);
-      currentContainer.destroy({ children: true });
-      currentContainer = null;
+    if (root) {
+      app.stage.removeChild(root);
+      root.destroy({ children: true });
+      root = null;
+      tileLayer = null;
+      creatureLayer = null;
     }
   };
 }

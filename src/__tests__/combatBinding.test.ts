@@ -73,4 +73,34 @@ describe('bindCombat', () => {
 
     binding.destroy();
   });
+
+  it('sticks to the engaged target until it dies, then re-acquires the nearest', () => {
+    const { client, sent } = makeClient();
+    const creatures = [
+      { id: 1, x: 100, y: 100, z: 7, health: 100 }, // self
+      { id: 7, x: 102, y: 100, z: 7, health: 100 }, // nearest at engage time
+    ];
+    const world = makeWorld(creatures);
+    const binding = bindCombat(client, world);
+
+    const toggle = [...document.querySelectorAll('.spell-bar button')]
+      .find((b) => b.textContent === '⚔') as HTMLButtonElement;
+    toggle.click();
+    expect(sent).toHaveLength(1);
+    expect(sent[0][1]).toBe(7);
+
+    // A closer creature walks by — the engaged target must NOT change.
+    creatures.push({ id: 9, x: 101, y: 100, z: 7, health: 100 });
+    vi.advanceTimersByTime(1600);
+    expect(sent).toHaveLength(1);
+
+    // The engaged target dies — re-acquire the nearest living one.
+    creatures[1].health = 0;
+    vi.advanceTimersByTime(600);
+    expect(sent).toHaveLength(2);
+    expect(sent[1][0]).toBe(0xa1);
+    expect(sent[1][1]).toBe(9);
+
+    binding.destroy();
+  });
 });

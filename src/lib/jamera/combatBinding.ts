@@ -9,10 +9,12 @@ import type { GameWorld } from '../GameWorld';
  * - Spells in 7.6 are cast by SAYING the words — onCast routes through
  *   the regular Say packet, so casts also appear in chat/bubbles like
  *   the original client.
- * - Auto-attack (⚔ toggle circle): every 500ms pick the nearest other
- *   creature on the player's floor and send 0xA1 when the target
- *   changes; the server keeps swinging at a set target on its own.
- *   Toggling off sends Attack(0) (stop).
+ * - Auto-attack (⚔ toggle circle): acquire the nearest other creature
+ *   on the player's floor and send 0xA1; the server keeps swinging at a
+ *   set target on its own. The target is sticky — every 500ms it is
+ *   only re-checked for validity (alive, same floor), and a new nearest
+ *   is acquired when it drops, so a closer passer-by doesn't cause
+ *   target dancing. Toggling off sends Attack(0) (stop).
  */
 export interface CombatBindingHandle {
   /** Exposed for tests: whether auto-attack is engaged. */
@@ -62,6 +64,12 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   bar.el.prepend(attackBtn);
 
   function nearestCreatureId(): number {
+    // Sticky: keep the engaged target while it's still a valid kill
+    // (alive, same floor) — only re-acquire when it drops out.
+    if (currentTarget !== 0) {
+      const current = world.getAllCreatures().find((c) => c.id === currentTarget);
+      if (current && current.z === world.playerZ && current.health > 0) return currentTarget;
+    }
     let best = 0;
     let bestDist = Infinity;
     for (const c of world.getAllCreatures()) {

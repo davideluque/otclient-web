@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from 'vitest';
-import { screenToWorldTile } from '../lib/jamera/interactions';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { bindInteractions, screenToWorldTile } from '../lib/jamera/interactions';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from '../lib/net/7.6/actionsProtocol';
+import { GameProtocol } from '../lib/net/7.6/GameProtocol';
+import type { GameClient } from '../lib/net/common/GameClient';
 import type { Application } from 'pixi.js';
 import type { GameWorld } from '../lib/GameWorld';
 
@@ -39,6 +41,58 @@ describe('actions packets', () => {
 
   it('Logout is the bare opcode', () => {
     expect([...buildLogoutPacket().toUint8Array()]).toEqual([0x14]);
+  });
+});
+
+describe('long-press pointer tracking', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function mount() {
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    document.body.appendChild(canvas);
+    const liveApp = { canvas, screen: { width: 800, height: 600 } } as unknown as Application;
+    const liveWorld = {
+      playerX: 100, playerY: 200, playerZ: 7,
+      getTile: () => ({ items: [{ id: 1987 }] }),
+    } as unknown as GameWorld;
+    const sent: number[][] = [];
+    const client = {
+      getProtocol: () => new GameProtocol(),
+      send: (p: { toUint8Array(): Uint8Array }) => sent.push([...p.toUint8Array()]),
+    } as unknown as GameClient;
+    const handle = bindInteractions(client, liveWorld, liveApp);
+    const touch = (type: string, pointerId: number, clientX: number, clientY: number) =>
+      canvas.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', pointerId, clientX, clientY, bubbles: true }));
+    return { handle, canvas, sent, touch };
+  }
+
+  it('a second finger neither cancels nor hijacks the press', () => {
+    const { handle, sent, touch } = mount();
+    touch('pointerdown', 1, 400, 300);
+    // Second finger lands elsewhere, wiggles, and lifts — joystick-style.
+    touch('pointerdown', 2, 50, 550);
+    touch('pointermove', 2, 90, 500);
+    touch('pointerup', 2, 90, 500);
+    vi.advanceTimersByTime(600);
+    expect(sent).toHaveLength(1);
+    expect(sent[0][0]).toBe(0x8c); // LookAt fired from finger 1's press
+    handle.destroy();
+  });
+
+  it('the pressing finger still cancels by moving or lifting', () => {
+    const { handle, sent, touch } = mount();
+    touch('pointerdown', 1, 400, 300);
+    touch('pointermove', 1, 440, 300); // beyond tolerance
+    vi.advanceTimersByTime(600);
+    expect(sent).toHaveLength(0);
+
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 400, 300);
+    vi.advanceTimersByTime(600);
+    expect(sent).toHaveLength(0);
+    handle.destroy();
   });
 });
 

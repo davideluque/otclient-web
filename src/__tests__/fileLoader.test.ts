@@ -29,4 +29,25 @@ describe('createFileLoader', () => {
     expect(statuses).toContain('Loading assets...');
     expect(statuses.at(-1)).toBe('Already loaded. Refresh the page to load a different file set.');
   });
+
+  it('allows a retry with different files after a failed boot', async () => {
+    const statuses: string[] = [];
+    const startApp = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('corrupt spr'))
+      .mockResolvedValueOnce(undefined);
+    const handleFiles = createFileLoader({
+      setStatus: msg => statuses.push(msg),
+      addFileToList: vi.fn(),
+      startApp,
+    });
+
+    await handleFiles(makeFiles());
+    expect(statuses.at(-1)).toMatch(/corrupt spr/);
+
+    await handleFiles(makeFiles());
+
+    expect(startApp).toHaveBeenCalledTimes(2);
+    expect(statuses.at(-1)).toBe('Loading assets...');
+  });
 });

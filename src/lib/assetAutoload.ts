@@ -60,8 +60,11 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
     } catch (e) {
       // Stale or corrupt bundle — drop it and fall through to the live
       // manifest/upload paths so one bad cache write can't brick the app.
+      // Reset the status too: if the manifest path bails silently (e.g.
+      // offline), "Loading cached assets..." must not linger as a lie.
       console.warn('Cached assets failed to boot; clearing cache:', e);
       await clearCached(version);
+      options.onStatus('Could not start from saved assets. Drop files to load manually.', true);
     }
   }
 

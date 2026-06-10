@@ -93,6 +93,13 @@ export async function clearCached(version: string): Promise<void> {
     try {
       const tx = db.transaction(STORE, 'readwrite');
       await promisifyRequest(tx.objectStore(STORE).delete(version));
+      // Wait for the transaction itself — the corruption-recovery path
+      // depends on the record actually being gone before the next boot.
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
     } finally {
       db.close();
     }

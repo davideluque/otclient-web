@@ -67,9 +67,13 @@ const MAX_EXPANSION_RADIUS = 500;
  * the loaded map bounds. If so, return a region that covers both the
  * destination and the gap from current bounds.
  *
- * The region is centered on the midpoint between the bounds center and
- * the destination, with radius clamped to [MIN, MAX]. One bigger
- * expansion is cheaper than several iterative ones.
+ * The region is centered on the midpoint between the destination and its
+ * nearest point on the bounds rectangle, with radius clamped to
+ * [MIN, MAX]. Measuring from the nearest edge (not the bounds center)
+ * matters on large explored maps: a tap just past the east edge should
+ * grow the map eastward, not produce a region centered deep inside
+ * already-loaded tiles. One bigger expansion is still cheaper than
+ * several iterative ones, so the radius keeps a generous +50 buffer.
  */
 export function needsExpansionForDestination(
   bounds: Bounds | null,
@@ -87,20 +91,28 @@ export function needsExpansionForDestination(
 
   if (!nearLeft && !nearRight && !nearTop && !nearBottom) return null;
 
-  // Center the region on the midpoint between the closest bounds edge
-  // and the destination, with enough radius to cover both.
-  const boundsCenter = {
-    x: Math.floor((bounds.minX + bounds.maxX) / 2),
-    y: Math.floor((bounds.minY + bounds.maxY) / 2),
-  };
+  // Nearest point on the bounds rectangle to the destination — the spot
+  // the expansion should grow outward from.
+  const edgeX = Math.min(Math.max(destX, bounds.minX), bounds.maxX);
+  const edgeY = Math.min(Math.max(destY, bounds.minY), bounds.maxY);
 
-  const midX = Math.floor((boundsCenter.x + destX) / 2);
-  const midY = Math.floor((boundsCenter.y + destY) / 2);
+  const midX = Math.floor((edgeX + destX) / 2);
+  const midY = Math.floor((edgeY + destY) / 2);
   const halfDist = Math.max(
-    Math.abs(destX - boundsCenter.x),
-    Math.abs(destY - boundsCenter.y),
+    Math.abs(destX - edgeX),
+    Math.abs(destY - edgeY),
   ) / 2;
   const radius = Math.min(MAX_EXPANSION_RADIUS, Math.max(MIN_EXPANSION_RADIUS, Math.floor(halfDist) + 50));
 
-  return { centerX: midX, centerY: midY, radius, z };
+  const region = { centerX: midX, centerY: midY, radius, z };
+  if (import.meta.env.DEV && (
+    Math.abs(destX - midX) > radius || Math.abs(destY - midY) > radius
+  )) {
+    // Diagnostic for the iterative-expansion case: the destination is so
+    // far out that even MAX_EXPANSION_RADIUS can't reach it in one parse.
+    console.warn(
+      `regionExpansion: computed region (center ${midX},${midY} r${radius}) does not contain destination (${destX},${destY})`,
+    );
+  }
+  return region;
 }

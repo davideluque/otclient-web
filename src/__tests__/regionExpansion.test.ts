@@ -86,4 +86,42 @@ describe('needsExpansionForDestination', () => {
     const region = needsExpansionForDestination(bounds, 200, 290, 7, 30);
     expect(region).not.toBeNull();
   });
+
+  it('centers between the nearest bounds edge and the destination, not the bounds center', () => {
+    // Destination 200 tiles east of maxX. Measured from the nearest edge
+    // (x=300), the region centers at x=400 and reaches the destination.
+    // The old bounds-center math would have centered at x=350 with the
+    // same y-skew problem on tall maps.
+    const region = needsExpansionForDestination(bounds, 500, 200, 7, 30)!;
+    expect(region.centerX).toBe(400);
+    expect(region.centerY).toBe(200);
+    // The region must actually contain the destination.
+    expect(Math.abs(500 - region.centerX)).toBeLessThanOrEqual(region.radius);
+  });
+
+  it('reaches a far destination on a large explored map (regression: bounds-center skew)', () => {
+    // Big map: bounds center is at x=1000, destination just past the east
+    // edge at x=2050. Edge-based measurement puts the center at 2025 with
+    // the minimum radius — and the destination inside the region. The old
+    // center-based math produced center 1525 / radius ~500: the region's
+    // east edge barely grazed the destination while re-parsing ~1000
+    // already-loaded tiles.
+    const big: Bounds = { minX: 0, maxX: 2000, minY: 0, maxY: 2000 };
+    const region = needsExpansionForDestination(big, 2050, 1000, 7, 30)!;
+    expect(Math.abs(2050 - region.centerX)).toBeLessThanOrEqual(region.radius);
+    expect(region.centerX).toBeGreaterThan(2000);
+  });
+});
+
+describe('needsExpansion edge precedence', () => {
+  it('prefers west over north when the viewport is near both edges', () => {
+    // Documented behavior, not an accident: the edge checks run
+    // west → east → north → south and return on the first hit. A
+    // viewport hugging the top-left corner expands west first; the
+    // north expansion happens on a later call once west is satisfied.
+    const visible = { x1: 110, y1: 110, x2: 150, y2: 150 };
+    const region = needsExpansion(bounds, visible, 7, 30)!;
+    expect(region.centerX).toBeLessThan(bounds.minX);
+    expect(region.centerY).toBe(Math.floor((visible.y1 + visible.y2) / 2));
+  });
 });

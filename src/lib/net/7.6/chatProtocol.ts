@@ -25,13 +25,18 @@ export function parseCreatureSpeak(packet: InputPacket): ChatMessage {
       break;
     case MessageType.Channel:
     case MessageType.ChannelRed:
-    case MessageType.ChannelHighlight:
-    case MessageType.ChannelManagement:
+    case MessageType.ChannelOrange:
+    case MessageType.ChannelRedAnonymous:
       channelId = packet.getU16();
+      break;
+    case MessageType.RuleViolationChannel:
+      packet.skip(4); // elapsed-seconds U32; nothing renders it yet
       break;
     case MessageType.PrivateFrom:
     case MessageType.PrivateRed:
     case MessageType.Broadcast:
+    case MessageType.RuleViolationAnswer:
+    case MessageType.RuleViolationContinue:
       // No extra data
       break;
   }

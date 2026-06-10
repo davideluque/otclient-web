@@ -1,12 +1,20 @@
 <style>
   .jamera-login {
-    position: fixed; inset: 0;
+    /* Explicit z-index above the PIXI canvas (which is appended later to
+       document.body with z-index: 0). Both are position: fixed at the
+       root, so without this the canvas would paint on top by DOM order. */
+    position: fixed; inset: 0; z-index: 10;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 1rem;
     background: #1a1a2e; color: #e0e0e0;
     font-family: system-ui, sans-serif; font-size: 0.9rem;
     padding: 1rem;
   }
+  /* The `display: flex` above overrides the user-agent `[hidden] { display:
+     none }` rule, so a JS `el.hidden = true` alone leaves the overlay
+     visible. Force `display: none` when hidden so the canvas underneath
+     becomes visible once we reach `in_game`. */
+  .jamera-login[hidden] { display: none; }
   .jamera-login h1 { font-size: 1.4rem; color: #7c5cbf; }
   .jamera-login form {
     display: flex; flex-direction: column; gap: 0.5rem;

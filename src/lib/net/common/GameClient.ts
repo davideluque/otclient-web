@@ -2,7 +2,7 @@ import { Connection } from './Connection';
 import { PacketDispatcher } from './PacketDispatcher';
 import { generateXteaKey, type XteaKey } from './xtea';
 import type { InputPacket } from './InputPacket';
-import type { OutputPacket } from './OutputPacket';
+import { OutputPacket } from './OutputPacket';
 import type {
   GameProtocol,
   CharacterInfo,
@@ -30,6 +30,7 @@ export interface GameClientEvents {
  * injection rather than importing version-specific builders/parsers directly.
  */
 export class GameClient {
+  private proxyUrl: string;
   private loginConn: Connection;
   private gameConn: Connection | null = null;
   private xteaKey: XteaKey | null = null;
@@ -41,10 +42,40 @@ export class GameClient {
   private password = '';
 
   constructor(proxyUrl: string, events: GameClientEvents, protocol: GameProtocol) {
+    this.proxyUrl = proxyUrl;
     this.loginConn = new Connection(proxyUrl);
     this.events = events;
     this.dispatcher = new PacketDispatcher();
     this.protocol = protocol;
+
+    // Auto-pong the server's keepalive. Canonical Tibia 7.x: the server
+    // sends a Ping every few seconds and treats the session as dead if
+    // we don't respond with the same opcode promptly. Without this, we
+    // pass game login fine, then get disconnected after the first
+    // server-side ping interval expires. Registered on construction so
+    // any consumer that wants to also handle Ping can overwrite —
+    // `PacketDispatcher.on` is last-write-wins. Other opcode-handling
+    // decisions (which packets to skip vs render) belong to consumers,
+    // not this protocol-level client.
+    this.dispatcher.on(this.protocol.serverOpcodes.Ping, () => this.sendPong());
+  }
+
+  /**
+   * Reply to a server-initiated Ping. Uses `gameConn.send` directly so
+   * we can respond during `entering_game` too (packets can arrive on
+   * the game socket before `setState('in_game')` has run). Silent if
+   * `gameConn` isn't up — Connection.send already no-ops on a closed
+   * WebSocket.
+   */
+  private sendPong(): void {
+    if (!this.gameConn) return;
+    const pong = new OutputPacket();
+    pong.addU8(this.protocol.clientOpcodes.Ping);
+    try {
+      this.gameConn.send(pong, this.protocol.config.useXTEA);
+    } catch (err) {
+      console.warn('[net] pong failed:', err instanceof Error ? err.message : err);
+    }
   }
 
   getState(): GameClientState {
@@ -53,6 +84,16 @@ export class GameClient {
 
   getDispatcher(): PacketDispatcher {
     return this.dispatcher;
+  }
+
+  /**
+   * Expose the injected protocol so consumers (GameWorld, ChatUI, etc.)
+   * can read its opcode constants and call its builders without having
+   * to construct a parallel `GameProtocol` instance just to peek at
+   * version-specific values.
+   */
+  getProtocol(): GameProtocol {
+    return this.protocol;
   }
 
   /**
@@ -83,12 +124,33 @@ export class GameClient {
 
   /**
    * Step 2: Select a character and connect to the game server.
+   *
+   * The game phase routes through the same WebSocket proxy as the login
+   * phase, NOT `character.worldIp:worldPort`. Browsers cannot open raw
+   * TCP sockets, so a WS↔TCP bridge is always in the path; our proxy is
+   * single-target (one `OT_HOST` env var, routes by `/login` vs `/game`
+   * path), which means `character.worldIp` — the OT server's view of
+   * itself — isn't a usable target from the browser. It's logged for
+   * diagnostics and so the announced address remains visible.
+   *
+   * `worldIp` becomes a real target again only if (a) the OT server
+   * speaks WebSocket natively, removing the proxy from the path, or
+   * (b) the proxy learns to route on a client-supplied target (multi-
+   * world support). Both require paired client+proxy changes; out of
+   * scope here.
    */
   async selectCharacter(character: CharacterInfo): Promise<void> {
     this.setState('entering_game');
     this.loginConn.disconnect();
 
-    this.gameConn = new Connection(`ws://${character.worldIp}:8090`);
+    console.info(
+      `[net] game phase: announced ${character.worldIp}:${character.worldPort}, routing via proxy ${this.proxyUrl}`,
+    );
+    // Disconnect any prior gameConn before reassigning — otherwise a
+    // second selectCharacter call (rapid retry, future programmatic
+    // re-select) would orphan the previous WebSocket.
+    this.gameConn?.disconnect();
+    this.gameConn = new Connection(this.proxyUrl);
 
     this.gameConn.setPacketHandler((packet) => {
       this.dispatcher.dispatch(packet);
@@ -112,6 +174,10 @@ export class GameClient {
         this.password,
       );
       this.gameConn.send(gamePacket);
+      // The password has served its purpose (login request + game login
+      // packet); every later flow that needs it starts with a fresh
+      // login(). Don't retain credentials in memory for the whole session.
+      this.password = '';
       if (this.protocol.config.useXTEA) {
         // XTEA was introduced in Tibia 8.0+; the key is generated here so
         // the protocol implementation can negotiate it before encrypted
@@ -170,6 +236,10 @@ export class GameClient {
   }
 
   private setState(state: GameClientState): void {
+    // Every road back to `disconnected` requires a fresh login() (which
+    // re-supplies credentials), so this choke point can always drop the
+    // retained password — error paths and manual disconnects included.
+    if (state === 'disconnected') this.password = '';
     this.state = state;
     this.events.onStateChange?.(state);
   }

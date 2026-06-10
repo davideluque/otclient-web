@@ -1,6 +1,7 @@
 import { InputPacket } from './InputPacket';
 import { OutputPacket } from './OutputPacket';
 import { xteaEncrypt, xteaDecrypt } from './xtea';
+import { ParseError } from '../../parseError';
 import type { XteaKey } from './xtea';
 
 export type PacketHandler = (packet: InputPacket) => void;
@@ -40,33 +41,51 @@ export class Connection {
   }
 
   connect(path: string): Promise<void> {
+    // Reconnects must retire the previous socket first. Otherwise a late
+    // close/message from the stale socket can mutate this shared Connection.
+    this.disconnect();
+
     return new Promise((resolve, reject) => {
       const url = `${this.proxyUrl}${path}`;
-      this.ws = new WebSocket(url);
-      this.ws.binaryType = 'arraybuffer';
+      const ws = new WebSocket(url);
+      this.ws = ws;
+      ws.binaryType = 'arraybuffer';
 
-      this.ws.onopen = () => resolve();
+      ws.onopen = () => {
+        if (this.ws !== ws) return;
+        resolve();
+      };
 
-      this.ws.onerror = () => {
+      ws.onerror = () => {
+        if (this.ws !== ws) return;
         const msg = `WebSocket connection failed: ${url}`;
         this.onError?.(msg);
         reject(new Error(msg));
       };
 
-      this.ws.onclose = () => {
+      ws.onclose = () => {
+        if (this.ws !== ws) return;
         this.ws = null;
         this.receiveBuffer = new Uint8Array(0);
         this.onClose?.();
       };
 
-      this.ws.onmessage = (event: MessageEvent) => {
+      ws.onmessage = (event: MessageEvent) => {
+        if (this.ws !== ws) return;
         this.handleData(new Uint8Array(event.data as ArrayBuffer));
       };
     });
   }
 
   disconnect(): void {
-    this.ws?.close();
+    const ws = this.ws;
+    if (ws) {
+      ws.onopen = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.onmessage = null;
+      ws.close();
+    }
     this.ws = null;
     this.receiveBuffer = new Uint8Array(0);
   }
@@ -126,9 +145,17 @@ export class Connection {
         xteaDecrypt(packetData, this.xteaKey);
       }
 
-      // Dispatch to handler
+      // Dispatch to handler. A malformed packet (handler reading past
+      // the frame -> ParseError) must not abort this loop: packet
+      // boundaries come from the length prefix, so later frames in the
+      // buffer are still well-defined. Drop the bad frame, keep going.
       const packet = new InputPacket(packetData.buffer);
-      this.onPacket?.(packet);
+      try {
+        this.onPacket?.(packet);
+      } catch (e) {
+        if (!(e instanceof ParseError)) throw e;
+        console.warn('[net] dropped malformed packet:', e.message);
+      }
     }
 
     // Trim consumed bytes from buffer

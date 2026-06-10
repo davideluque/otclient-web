@@ -31,6 +31,9 @@ import {
 } from './lib/lighting';
 import { createFileLoader } from './lib/fileLoader';
 import { tryAutoload } from './lib/assetAutoload';
+import { putCached } from './lib/assetCache';
+import { resolveVersion } from './lib/clientVersion';
+import { showStorageNotice } from './lib/storageNotice';
 import { RenderTexture, Sprite } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
@@ -60,23 +63,75 @@ function addFileToList(name: string) {
   fileListEl.appendChild(li);
 }
 
+// "Low on storage" is only actionable with numbers — pair the bundle size
+// with navigator.storage.estimate() when the browser offers it.
+async function quotaNoticeText(files: CompleteLoadedFiles): Promise<string> {
+  const mb = (n: number) => Math.max(1, Math.round(n / 1024 / 1024));
+  const needMb = mb(files.dat.byteLength + files.spr.byteLength + files.otb.byteLength + files.otbm.byteLength);
+  let numbers = `~${needMb} MB needed`;
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.quota !== undefined && est.usage !== undefined) {
+      numbers += `, about ${mb(est.quota - est.usage)} MB available`;
+    }
+  } catch {
+    // estimate() is best-effort; the message works without it.
+  }
+  return `Your device is low on storage (${numbers}). The game still runs, ` +
+    'but it can\'t save assets for instant offline play. Free up space to enable it.';
+}
+
 // Shared boot guard: autoload and manual upload both feed startApp, and
 // nothing stops a user from dropping files while autoload's fetches are
-// still in flight. Wrap startApp so whichever path completes first wins;
-// the other becomes a no-op. Without this, both paths can init Pixi twice
+// still in flight. Wrap startApp so only one boot runs at a time and only
+// one ever succeeds. Without this, both paths can init Pixi twice
 // (duplicate canvas, listeners, workers).
 //
-// Reset on throw so a failed autoload (corrupt/incompatible assets) doesn't
-// permanently block the manual upload retry path.
-let bootStarted = false;
-async function startAppOnce(loaded: CompleteLoadedFiles): Promise<void> {
-  if (bootStarted) return;
-  bootStarted = true;
+// A caller that loses the race waits for the in-flight boot: if it
+// succeeds this call is a no-op, if it fails this caller's bundle gets
+// its own attempt — so a failed autoload can't eat a valid manual upload.
+let boot: Promise<void> | null = null;
+async function startAppOnce(loaded: CompleteLoadedFiles, fromCache = false): Promise<void> {
+  while (boot) {
+    try {
+      await boot;
+      return; // another path already booted the app
+    } catch {
+      // That boot failed (and reset `boot`) — try this bundle instead.
+    }
+  }
+  // startApp transfers loaded.otbm to the parser worker, which detaches it
+  // on this thread — so the bundle must be snapshotted *before* boot or the
+  // cache write would see a zero-byte buffer. Cache-origin boots skip the
+  // write entirely; the bundle was read out of the cache a moment ago.
+  const toCache = fromCache ? null : { ...loaded, otbm: loaded.otbm.slice(0) };
+  boot = startApp(loaded);
   try {
-    await startApp(loaded);
+    await boot;
   } catch (e) {
-    bootStarted = false;
+    boot = null;
     throw e;
+  }
+  if (toCache) {
+    // Boot succeeded — stash for next launch so the installed PWA opens
+    // instantly without re-fetching or asking for an upload. Fire-and-forget;
+    // a cache write failure must never break the running app, but quota
+    // failures get surfaced so "offline play doesn't work" isn't a mystery.
+    void putCached(resolveVersion(), toCache).then(async result => {
+      if (result.ok) {
+        if (result.firstWrite) {
+          // Ask the browser not to evict our ~100MB bundle under disk
+          // pressure. Installed PWAs typically get this granted silently;
+          // doing it on the first write keeps any permission prompt
+          // contextual (the user just loaded the game).
+          if (navigator.storage?.persist) {
+            await navigator.storage.persist().catch(() => {});
+          }
+        }
+      } else if (result.reason === 'quota') {
+        showStorageNotice(await quotaNoticeText(toCache));
+      }
+    }).catch(err => console.warn('asset cache write failed:', err));
   }
 }
 
@@ -90,7 +145,16 @@ const handleFiles = createFileLoader({
 // Attempt to auto-load assets from a per-version folder under public/.
 // Silently no-ops if the folder/files aren't there, leaving the manual
 // upload UI below as the fallback. See src/lib/assetAutoload.ts.
-tryAutoload({ onStatus: setStatus, addFileToList, startApp: startAppOnce }).catch(console.error);
+tryAutoload({
+  onStatus: setStatus,
+  addFileToList,
+  startApp: startAppOnce,
+  onCacheNotice: notice => {
+    showStorageNotice(notice === 'evicted'
+      ? 'Your saved game assets were cleared by the browser to free up space. They will be saved again after this load.'
+      : 'This browser can\'t store game assets, so offline play and instant boots are unavailable here.');
+  },
+}).catch(console.error);
 
 // Drag and drop
 dropZone.addEventListener('dragover', (e) => {
@@ -426,6 +490,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const exhaustedDirections = new Set<string>();
 
   function expansionKey(b: Bounds | null, region: OtbmRegion): string {
+    // Null bounds collapse to '' — two attempts at the same center then
+    // share a key. Practically unreachable (bounds exist before any
+    // expansion is attempted), and harmless if it ever happens: the
+    // second attempt is just skipped until bounds grow.
     const bk = b ? `${b.minX},${b.minY},${b.maxX},${b.maxY}` : '';
     return `${bk}@${region.centerX},${region.centerY}`;
   }

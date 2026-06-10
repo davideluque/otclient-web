@@ -13,6 +13,8 @@ export default defineConfig({
       input: {
         index: resolve(__dirname, 'index.html'),
         jamera: resolve(__dirname, 'jamera.html'),
+        map: resolve(__dirname, 'map.html'),
+        'ui-components': resolve(__dirname, 'ui-components.html'),
       },
     },
   },

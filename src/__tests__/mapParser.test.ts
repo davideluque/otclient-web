@@ -1,7 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { parseMapDescription, parsePosition } from '../lib/net/7.6/mapParser';
 import { InputPacket } from '../lib/net/common/InputPacket';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
+import { resetItemWireFlags, setItemWireFlags } from '../lib/net/common/itemFlags';
+import type { DatFile } from '../lib/dat';
+
+// Item parsing requires the .dat-derived wire flags (which IDs carry a
+// count byte). These fixtures use plain items only, so an empty dat is
+// the honest setup.
+beforeAll(() => setItemWireFlags({
+  signature: 0, itemCount: 0, creatureCount: 0, effectCount: 0, missileCount: 0,
+  items: [], creatures: [], effects: [], missiles: [],
+} as unknown as DatFile));
+afterAll(() => resetItemWireFlags());
 
 /**
  * Helper: write a canonical 7.6 tile-slot terminator — a single U16 with
@@ -102,14 +113,15 @@ describe('parseMapDescription', () => {
     const out = new OutputPacket();
     out.addU16(100); // ground item
 
-    // Unknown creature marker + creature data
-    out.addU16(0x0062);
+    // Unknown creature marker + creature data (7.6: 0x61 is the long
+    // unknown form, 0x62 the known short form — per the server source)
+    out.addU16(0x0061);
     out.addU32(0);       // removeKnown
     out.addU32(12345);   // creature ID
     out.addString('Player1');
     out.addU8(100);      // health
     out.addU8(2);        // direction
-    out.addU16(128);     // lookType
+    out.addU8(128);      // lookType — a single byte in 7.6
     out.addU8(10); out.addU8(20); out.addU8(30); out.addU8(40); // outfit colors
     out.addU8(0); out.addU8(0); // light level + color
     out.addU16(220);     // speed

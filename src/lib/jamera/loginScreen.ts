@@ -35,6 +35,23 @@ export interface MountOptions {
    * code can register packet handlers, send chat, etc.
    */
   onEnterGame?: (client: GameClient) => void;
+
+  /**
+   * Invoked when the session leaves the game world (in_game → anything
+   * else, e.g. a kick or disconnect). Pair with onEnterGame to tear down
+   * per-session UI — input, chat, HUD — instead of leaving it mounted
+   * over the re-shown login screen.
+   */
+  onLeaveGame?: () => void;
+
+  /**
+   * Awaited before entering the game world (character select). Use it to
+   * gate game entry on prerequisites like the asset bundle: the first
+   * map packet arrives instantly after game login and is unparseable
+   * until the .dat-derived wire flags exist. Rejection is shown as an
+   * error and the character list re-enables.
+   */
+  waitForReady?: () => Promise<void>;
 }
 
 export interface MountedScreen {
@@ -63,17 +80,25 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   const events: GameClientEvents = {};
   const client = new GameClient(proxyUrl, events, protocol);
 
+  let lastState: GameClientState = 'disconnected';
   events.onStateChange = (state) => {
     updateState(ui, state);
     if (state === 'in_game') opts.onEnterGame?.(client);
+    if (lastState === 'in_game' && state !== 'in_game') opts.onLeaveGame?.();
+    lastState = state;
   };
   events.onLoginError = (msg) => showError(ui, msg);
   events.onCharacterList = (characters, premiumDays, motd) => {
     renderCharacterList(ui, characters, premiumDays, motd, async (char) => {
       try {
+        if (opts.waitForReady) {
+          ui.statusEl.textContent = 'Loading game assets...';
+          await opts.waitForReady();
+        }
         await client.selectCharacter(char);
       } catch (err) {
         showError(ui, (err as Error).message);
+        enableCharacterButtons(ui);
       }
     });
   };
@@ -165,6 +190,13 @@ function updateState(ui: UiHandles, state: GameClientState): void {
   ui.statusEl.textContent = STATE_LABELS[state];
   ui.statusEl.classList.toggle('error', state === 'disconnected');
 
+  // Hide the login overlay once we're actually `in_game` so the PIXI
+  // canvas below becomes visible. Without this the overlay's solid
+  // background covers the canvas even while the renderer is painting.
+  // Any other state re-shows it (e.g., `disconnected` after a kick, or
+  // `character_list` on retry).
+  ui.container.hidden = state === 'in_game';
+
   // Disable the account/password form for every state past `disconnected`.
   // Leaving it enabled on `character_list` would let a second submit
   // open a fresh `loginConn` WebSocket on top of the existing one (the
@@ -189,6 +221,18 @@ function updateState(ui: UiHandles, state: GameClientState): void {
   // states — keeping it visible would suggest selection is still possible.
   if (state === 'disconnected' || state === 'logging_in') {
     ui.characterListEl.hidden = true;
+  }
+}
+
+/**
+ * Re-enable character selection after a failed attempt (waitForReady
+ * rejection or selectCharacter error) so the player can retry without a
+ * full re-login. State-driven disabling in updateState still applies on
+ * the next transition.
+ */
+function enableCharacterButtons(ui: UiHandles): void {
+  for (const btn of ui.characterListEl.querySelectorAll('button')) {
+    (btn as HTMLButtonElement).disabled = false;
   }
 }
 

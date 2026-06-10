@@ -3,8 +3,14 @@
 // fallback on any miss. Remove by deleting this file + its two lines in
 // main.ts. Version resolves from ?version=<v>, then VITE_CLIENT_VERSION,
 // then DEFAULT_VERSION.
+//
+// Also checks the IndexedDB cache (assetCache.ts) before hitting the
+// network — this is what makes the installed PWA boot instantly and work
+// offline once the assets have been seen at least once.
 
 import type { CompleteLoadedFiles } from './fileLoader';
+import { resolveVersion } from './clientVersion';
+import { cacheAvailable, clearCached, consumeEvictionNotice, getCached } from './assetCache';
 
 type FileKey = keyof CompleteLoadedFiles;
 
@@ -13,7 +19,6 @@ interface Manifest {
 }
 
 const FILE_KEYS: readonly FileKey[] = ['dat', 'spr', 'otb', 'otbm'] as const;
-const DEFAULT_VERSION = '760';
 
 function isValidManifest(value: unknown): value is Manifest {
   if (!value || typeof value !== 'object') return false;
@@ -22,22 +27,23 @@ function isValidManifest(value: unknown): value is Manifest {
   return FILE_KEYS.every(k => typeof (files as Record<string, unknown>)[k] === 'string');
 }
 
-function resolveVersion(): string {
-  const fromUrl = new URLSearchParams(window.location.search).get('version');
-  if (fromUrl) return fromUrl;
-  const fromEnv = import.meta.env.VITE_CLIENT_VERSION as string | undefined;
-  return fromEnv || DEFAULT_VERSION;
-}
-
 function baseFor(version: string): string {
   // Prefixed with import.meta.env.BASE_URL so subpath deploys still resolve.
   return `${import.meta.env.BASE_URL}assets/${version}`;
 }
 
+// 'evicted': we cached a bundle before but the browser dropped it (disk
+// pressure). 'unavailable': this browser/mode has no IndexedDB, so offline
+// play can never work. Both are informational — boot continues regardless.
+export type CacheNotice = 'evicted' | 'unavailable';
+
 export interface AutoloadOptions {
   onStatus: (msg: string, isError?: boolean) => void;
   addFileToList: (name: string) => void;
-  startApp: (files: CompleteLoadedFiles) => Promise<void>;
+  // fromCache lets the boot path skip re-writing a bundle that was just
+  // read out of the asset cache.
+  startApp: (files: CompleteLoadedFiles, fromCache?: boolean) => Promise<void>;
+  onCacheNotice?: (notice: CacheNotice) => void;
 }
 
 /**
@@ -47,6 +53,34 @@ export interface AutoloadOptions {
  */
 export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
   const version = resolveVersion();
+
+  // Cache first — if we've booted with these assets before, skip the
+  // network entirely. This is the PWA install-and-go path: first run pays
+  // the network/upload cost, every subsequent run reads from IndexedDB.
+  const cached = await getCached(version);
+  if (cached) {
+    options.onStatus('Loading cached assets...');
+    try {
+      await options.startApp(cached, true);
+      return true;
+    } catch (e) {
+      // Stale or corrupt bundle — drop it and fall through to the live
+      // manifest/upload paths so one bad cache write can't brick the app.
+      // Reset the status too: if the manifest path bails silently (e.g.
+      // offline), "Loading cached assets..." must not linger as a lie.
+      console.warn('Cached assets failed to boot; clearing cache:', e);
+      await clearCached(version);
+      options.onStatus('Could not start from saved assets. Drop files to load manually.', true);
+    }
+  } else if (!cacheAvailable()) {
+    options.onCacheNotice?.('unavailable');
+  } else if (consumeEvictionNotice(version)) {
+    // We cached this version before and now it's gone — the browser
+    // evicted it. Tell the user once why "instant offline boot" regressed
+    // to a network load; a later successful boot re-caches automatically.
+    options.onCacheNotice?.('evicted');
+  }
+
   const base = baseFor(version);
 
   // Probe manifest first. Missing / non-JSON / wrong shape = silent fallback.

@@ -38,6 +38,8 @@ function completeFiles(files: LoadedFiles): CompleteLoadedFiles | null {
   };
 }
 
+const MAX_FILE_BYTES = 256 * 1024 * 1024;
+
 export function createFileLoader(options: FileLoaderOptions): (files: FileList | File[]) => Promise<void> {
   const loaded: LoadedFiles = {};
   let started = false;
@@ -48,21 +50,38 @@ export function createFileLoader(options: FileLoaderOptions): (files: FileList |
       return;
     }
 
+    let rejection: string | null = null;
     for (const file of files) {
       const type = classifyFile(file.name);
       if (!type) continue;
+
+      // Reject before arrayBuffer() so a mislabeled multi-GB file can't
+      // OOM the tab. Real 7.6 assets top out well under this: Tibia.spr
+      // ~25 MB, large OTBM maps ~50 MB.
+      if (file.size > MAX_FILE_BYTES) {
+        rejection = `${file.name} is too large (${Math.round(file.size / 1024 / 1024)} MB) — not a Tibia 7.6 asset file.`;
+        continue;
+      }
 
       loaded[type] = await file.arrayBuffer();
       options.addFileToList(`${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
     }
 
     const complete = completeFiles(loaded);
+    if (!complete && rejection) {
+      // The rejection is the reason we're incomplete — keep the
+      // explanation visible instead of the generic "Still need" list.
+      options.setStatus(rejection, true);
+      return;
+    }
     if (complete) {
       started = true;
       options.setStatus('Loading assets...');
       try {
         await options.startApp(complete);
       } catch (e) {
+        // Let the user retry with different files instead of forcing a refresh.
+        started = false;
         options.setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`, true);
         options.onError?.(e);
       }

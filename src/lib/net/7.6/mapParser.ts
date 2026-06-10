@@ -1,5 +1,6 @@
 import { InputPacket } from '../common/InputPacket';
 import type { MapTile, MapTileItem, MapCreature } from '../common/types';
+import { itemHasCountByte } from '../common/itemFlags';
 
 /**
  * Skip marker: a single U16 written as `[count, 0xFF]` little-endian.
@@ -10,9 +11,15 @@ import type { MapTile, MapTileItem, MapCreature } from '../common/types';
 const SKIP_MARKER_HIGH = 0xff00;
 const SKIP_COUNT_MASK = 0x00ff;
 
-/** Known/unknown creature thing markers (Tibia 7.6). */
-const CREATURE_KNOWN = 0x0061;
-const CREATURE_UNKNOWN = 0x0062;
+/**
+ * Known/unknown creature thing markers (Tibia 7.6). Verified against the
+ * server's Protocol76::AddCreature: 0x62 is the KNOWN short form (id
+ * only), 0x61 is the UNKNOWN long form (removeKnown id + id + name) —
+ * the reverse of what later protocol docs suggest, so don't "fix" this
+ * from memory.
+ */
+const CREATURE_KNOWN = 0x0062;
+const CREATURE_UNKNOWN = 0x0061;
 
 /** OT 7.6 visible-floor range as a function of the player's z. */
 function getVisibleFloors(playerZ: number): number[] {
@@ -102,7 +109,7 @@ export function parseMapDescription(
  * stopping at and consuming the trailing skip marker. Returns the skip
  * count that the marker carries.
  */
-function parseTileSlot(packet: InputPacket, tile: MapTile): number {
+export function parseTileSlot(packet: InputPacket, tile: MapTile): number {
   while (packet.bytesLeft >= 2) {
     const peek = packet.peekU16();
     if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
@@ -115,22 +122,34 @@ function parseTileSlot(packet: InputPacket, tile: MapTile): number {
       continue;
     }
 
-    const itemId = packet.getU16();
-    const item: MapTileItem = { id: itemId };
-
-    // TODO: stackable / fluid / splash items carry a trailing count byte
-    // after the item ID. Detecting which IDs need that read requires a
-    // .dat cross-reference — deferred to a follow-up PR. Until then, the
-    // parser will misalign on tiles containing stackables (gold piles,
-    // arrows, etc).
-
-    tile.items.push(item);
+    tile.items.push(parseItem(packet));
   }
 
   return 0;
 }
 
-function parseCreature(packet: InputPacket, isNew: boolean): MapCreature {
+/**
+ * Parse one item off the wire: `U16 clientId` plus a count/subtype byte
+ * when the .dat flags this ID as stackable / splash / fluid container —
+ * mirroring the server's NetworkMessage::AddItem. Requires
+ * setItemWireFlags to have run (jamera does it when the asset bundle's
+ * .dat parses); without it, stackables misalign the stream and the
+ * resulting overread surfaces as a controlled ParseError.
+ */
+export function parseItem(packet: InputPacket): MapTileItem {
+  const id = packet.getU16();
+  if (itemHasCountByte(id)) {
+    return { id, count: packet.getU8() };
+  }
+  return { id };
+}
+
+/**
+ * Parse one creature block (the payload after a 0x61/0x62 thing marker).
+ * `isNew` corresponds to the 0x61 "unknown creature" form, which carries
+ * a removeKnown ID and the creature's name.
+ */
+export function parseCreature(packet: InputPacket, isNew: boolean): MapCreature {
   let id: number;
   let name = '';
 
@@ -146,14 +165,18 @@ function parseCreature(packet: InputPacket, isNew: boolean): MapCreature {
 
   const direction = packet.getU8();
 
-  // Outfit
-  const lookType = packet.getU16();
+  // Outfit. 7.6 sends lookType as a single byte (U16 came in later
+  // protocol versions); lookType 0 means "looks like an item" and is
+  // followed by the item's U16 client ID instead of the four colors.
+  const lookType = packet.getU8();
   let head = 0, body = 0, legs = 0, feet = 0;
   if (lookType !== 0) {
     head = packet.getU8();
     body = packet.getU8();
     legs = packet.getU8();
     feet = packet.getU8();
+  } else {
+    packet.getU16(); // lookTypeEx item id — not rendered yet
   }
 
   // Light
@@ -177,4 +200,53 @@ function parseCreature(packet: InputPacket, isNew: boolean): MapCreature {
     lightColor,
     speed,
   };
+}
+
+/**
+ * Parse a floor-change stream: one or more single-floor descriptions
+ * written back-to-back with a SHARED skip counter (the server threads
+ * one `skip` int through consecutive GetFloorDescription calls and
+ * flushes the final marker once). Each floor's window is shifted by its
+ * perspective `offset` — tiles land at (startX + offset + col,
+ * startY + offset + row, z).
+ *
+ * Unlike parseMapDescription this cannot rely on running out of bytes:
+ * floor-change frames continue with more opcodes (the 0x65/0x66/0x67/
+ * 0x68 resync slices), so exactly width×height cells are consumed per
+ * floor and not a byte more.
+ */
+export function parseFloorStream(
+  packet: InputPacket,
+  startX: number, startY: number,
+  floors: ReadonlyArray<{ z: number; offset: number }>,
+  width: number, height: number,
+): MapTile[] {
+  const tiles: MapTile[] = [];
+  let skipTiles = 0;
+
+  for (const { z, offset } of floors) {
+    for (let col = 0; col < width; col++) {
+      for (let row = 0; row < height; row++) {
+        if (skipTiles > 0) {
+          skipTiles--;
+          continue;
+        }
+        const peek = packet.peekU16();
+        if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
+          skipTiles = packet.getU16() & SKIP_COUNT_MASK;
+          continue;
+        }
+        const tile: MapTile = {
+          x: startX + offset + col,
+          y: startY + offset + row,
+          z,
+          items: [],
+          creatures: [],
+        };
+        skipTiles = parseTileSlot(packet, tile);
+        tiles.push(tile);
+      }
+    }
+  }
+  return tiles;
 }

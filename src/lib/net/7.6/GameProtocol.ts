@@ -7,6 +7,8 @@ import type {
   ServerOpcodes,
   ClientOpcodes,
   ProtocolConfig,
+  MovementProtocol,
+  PlayerProtocol,
 } from '../common/types';
 import {
   buildLoginPacket,
@@ -14,7 +16,9 @@ import {
   parseLoginResponse,
   isLoginError,
 } from './loginProtocol';
-import { parseMapDescription, parsePosition } from './mapParser';
+import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
+import { buildMovePacket } from './movementProtocol';
+import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -61,6 +65,8 @@ export class GameProtocol implements GameProtocolSpec {
   readonly map: MapProtocol;
   readonly creature: CreatureProtocol;
   readonly chat: ChatProtocol;
+  readonly movement: MovementProtocol;
+  readonly player: PlayerProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
 
@@ -93,6 +99,10 @@ export class GameProtocol implements GameProtocolSpec {
     this.map = {
       parsePosition,
       parseDescription: parseMapDescription,
+      parseItem,
+      parseTileSlot,
+      parseCreature,
+      parseFloorStream,
     };
 
     this.creature = {
@@ -102,6 +112,15 @@ export class GameProtocol implements GameProtocolSpec {
       parseLight: parseCreatureLight,
       parseSpeed: parseCreatureSpeed,
       parseOutfit: parseCreatureOutfit,
+    };
+
+    this.movement = {
+      buildMove: buildMovePacket,
+    };
+
+    this.player = {
+      parseStats: parsePlayerStats,
+      parseSkills: parsePlayerSkills,
     };
 
     this.chat = {

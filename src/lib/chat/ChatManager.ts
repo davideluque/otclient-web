@@ -116,7 +116,8 @@ export class ChatManager {
         return ChannelId.Default; // Private messages go to default
       case MessageType.Channel:
       case MessageType.ChannelRed:
-      case MessageType.ChannelHighlight:
+      case MessageType.ChannelOrange:
+      case MessageType.ChannelRedAnonymous:
         return msg.channelId ?? ChannelId.Default;
       default:
         return ChannelId.Default;

@@ -1,5 +1,16 @@
 import { Container, Sprite, Texture, BufferImageSource, Rectangle } from 'pixi.js';
-import type { TileMap, ResolvedTile } from './tileMap';
+import type { ResolvedTile } from './tileMap';
+
+/**
+ * Anything that can yield `ResolvedTile`s in a rectangular region.
+ * Both the offline OTBM `TileMap` and the live network `GameWorld`
+ * implement this — `renderTileRegion` doesn't care which is feeding it.
+ */
+export interface TileSource {
+  tilesInRegion(
+    x1: number, y1: number, x2: number, y2: number, z: number,
+  ): Iterable<ResolvedTile>;
+}
 import type { DatFile, ThingType, FrameGroup } from './dat';
 import { DatAttr } from './dat';
 import { SPRITE_SIZE } from './spr';
@@ -210,7 +221,7 @@ export interface RenderedRegion {
  * `datIndex` and `layout` should be pre-computed once and reused across frames.
  */
 export function renderTileRegion(
-  tileMap: TileMap,
+  source: TileSource,
   datIndex: Map<number, ThingType>,
   atlasTextures: AtlasTextures,
   layout: Map<number, SpriteLocation>,
@@ -230,7 +241,7 @@ export function renderTileRegion(
     return tex;
   }
 
-  for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
+  for (const tile of source.tilesInRegion(x1, y1, x2, y2, z)) {
     if (skipPositions?.has((tile.x << 16) | tile.y)) continue;
     renderTile(tile, container, animated, datIndex, getTexture);
   }

@@ -73,13 +73,19 @@ export function parseCreatureSpeed(packet: InputPacket): CreatureSpeedEvent {
  */
 export function parseCreatureOutfit(packet: InputPacket): CreatureOutfitEvent {
   const creatureId = packet.getU32();
-  const lookType = packet.getU16();
+  // 7.6 sends lookType as a single byte; lookType 0 ("looks like an
+  // item", or invisible as item 0) is followed by a U16 item client ID
+  // instead of the four color bytes. Misreading either form shifts every
+  // later read in the frame.
+  const lookType = packet.getU8();
   let head = 0, body = 0, legs = 0, feet = 0;
   if (lookType !== 0) {
     head = packet.getU8();
     body = packet.getU8();
     legs = packet.getU8();
     feet = packet.getU8();
+  } else {
+    packet.getU16(); // lookTypeEx item id — not rendered yet
   }
   return { type: 'outfit', creatureId, lookType, head, body, legs, feet };
 }

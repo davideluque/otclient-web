@@ -488,9 +488,21 @@ export class GameWorld {
     const event = this.protocol.creature.parseMove(packet);
     const fromTile = this.getTile(event.fromX, event.fromY, event.fromZ);
     this.creatureRevision++;
-    if (fromTile && fromTile.creatures.length > event.fromStack) {
-      // Remove creature from source tile
-      const [creature] = fromTile.creatures.splice(event.fromStack, 1);
+    if (fromTile && fromTile.creatures.length > 0) {
+      // fromStack is a TILE stack position (ground + items + creatures
+      // + down items, in server stack order) — NOT an index into our
+      // creatures array. Our tile model splits items from creatures, so
+      // the exact split point is unrecoverable; approximate the creature
+      // index as (stackpos − item count) clamped into range. The clamp
+      // matters: a creature standing on plain ground arrives as stackpos
+      // 1 with creatures.length 1, and the old `creatures.length >
+      // fromStack` guard silently dropped that — i.e. nearly every
+      // monster step on a real server.
+      const ci = Math.min(
+        Math.max(event.fromStack - fromTile.items.length, 0),
+        fromTile.creatures.length - 1,
+      );
+      const [creature] = fromTile.creatures.splice(ci, 1);
       creature.direction = directionFromDelta(
         event.toX - event.fromX, event.toY - event.fromY, creature.direction,
       );

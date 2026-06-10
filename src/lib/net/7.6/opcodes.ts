@@ -34,6 +34,8 @@ export const ClientOp = {
   // Actions
   UseItem: 0x82,
   SetFightModes: 0xa0,
+  AddVip: 0xdc,
+  RemoveVip: 0xdd,
   Attack: 0xa1,
   LookAt: 0x8c,
   Say: 0x96,
@@ -98,6 +100,9 @@ export const ServerOp = {
   PlayerStats: 0xa0,
   PlayerSkills: 0xa1,
   Icons: 0xa2,
+  VipState: 0xd2,
+  VipLogin: 0xd3,
+  VipLogout: 0xd4,
   CancelTarget: 0xa3,
   TextMessage: 0xb4,
   CancelWalk: 0xb5,

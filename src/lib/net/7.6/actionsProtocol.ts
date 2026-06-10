@@ -65,3 +65,19 @@ export function buildFightModesPacket(
   out.addU8(secure ? 1 : 0);
   return out;
 }
+
+/** 0xDC — add a player to the VIP list by name. */
+export function buildAddVipPacket(name: string): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.AddVip);
+  out.addString(name);
+  return out;
+}
+
+/** 0xDD — remove a VIP by guid. */
+export function buildRemoveVipPacket(guid: number): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.RemoveVip);
+  out.addU32(guid);
+  return out;
+}

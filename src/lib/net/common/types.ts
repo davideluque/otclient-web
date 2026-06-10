@@ -277,6 +277,10 @@ export interface ActionsProtocol {
   buildLogout(): OutputPacket;
   /** 0xA0 fight/chase/secure modes (fight: 1=off 2=bal 3=def). */
   buildFightModes(fightMode: 1 | 2 | 3, chase: boolean, secure: boolean): OutputPacket;
+  /** 0xDC add a player to the VIP list by name. */
+  buildAddVip(name: string): OutputPacket;
+  /** 0xDD remove a VIP by guid (from the 0xD2 state entry). */
+  buildRemoveVip(guid: number): OutputPacket;
   /** 0xA1 — set the attacked creature; id 0 stops attacking. */
   buildAttack(creatureId: number): OutputPacket;
 }
@@ -382,6 +386,9 @@ export interface ServerOpcodes {
   readonly PlayerStats: number;
   readonly PlayerSkills: number;
   readonly Icons: number;
+  readonly VipState: number;
+  readonly VipLogin: number;
+  readonly VipLogout: number;
   readonly CancelTarget: number;
   readonly TextMessage: number;
   readonly CancelWalk: number;
@@ -409,6 +416,8 @@ export interface ClientOpcodes {
   readonly Ping: number;
   readonly AutoWalk: number;
   readonly SetFightModes: number;
+  readonly AddVip: number;
+  readonly RemoveVip: number;
   readonly MoveNorth: number;
   readonly MoveEast: number;
   readonly MoveSouth: number;

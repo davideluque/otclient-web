@@ -59,6 +59,13 @@ export class GameWorld {
     dispatcher.on(op.MoveWest, (p) => this.handleMoveWest(p));
     dispatcher.on(op.CreatureMove, (p) => this.handleCreatureMove(p));
     dispatcher.on(op.SelfAppear, (p) => this.handleSelfAppear(p));
+    dispatcher.on(op.TileUpdate, (p) => this.handleTileUpdate(p));
+    dispatcher.on(op.TileAddThing, (p) => this.handleTileAddThing(p));
+    dispatcher.on(op.TileTransformThing, (p) => this.handleTileTransformThing(p));
+    dispatcher.on(op.TileRemoveThing, (p) => this.handleTileRemoveThing(p));
+    dispatcher.on(op.CreatureHealth, (p) => this.handleCreatureHealth(p));
+    dispatcher.on(op.CreatureOutfit, (p) => this.handleCreatureOutfit(p));
+    dispatcher.on(op.CreatureSpeed, (p) => this.handleCreatureSpeed(p));
   }
 
   getTile(x: number, y: number, z: number): MapTile | undefined {
@@ -125,6 +132,132 @@ export class GameWorld {
         outfit: c.outfit,
       });
     }
+  }
+
+
+  /**
+   * 0x69 — replace one tile's full contents. An empty-marker payload
+   * (high byte 0xFF) means the tile is now empty.
+   */
+  private handleTileUpdate(packet: InputPacket): void {
+    const pos = this.protocol.map.parsePosition(packet);
+    if ((packet.peekU16() & 0xff00) === 0xff00) {
+      packet.getU16();
+      this.tiles.delete(`${pos.x}:${pos.y}:${pos.z}`);
+      this.tileRevision++;
+      this.onChange?.();
+      return;
+    }
+    const tile: MapTile = { x: pos.x, y: pos.y, z: pos.z, items: [], creatures: [] };
+    this.protocol.map.parseTileSlot(packet, tile);
+    this.setTile(tile);
+    this.onChange?.();
+  }
+
+  /** 0x6A — a thing (item or creature) appeared on a tile. */
+  private handleTileAddThing(packet: InputPacket): void {
+    const pos = this.protocol.map.parsePosition(packet);
+    const tile = this.getTile(pos.x, pos.y, pos.z)
+      ?? { x: pos.x, y: pos.y, z: pos.z, items: [], creatures: [] };
+
+    const peek = packet.peekU16();
+    if (peek === 0x61 || peek === 0x62) {
+      packet.getU16(); // consume the known/unknown creature marker
+      const creature = this.protocol.map.parseCreature(packet, peek === 0x62);
+      tile.creatures.push(creature);
+      this.creatures.set(creature.id, {
+        id: creature.id,
+        name: creature.name,
+        x: pos.x, y: pos.y, z: pos.z,
+        direction: creature.direction,
+        health: creature.health,
+        speed: creature.speed,
+        outfit: creature.outfit,
+      });
+    } else {
+      // The server inserts by stack priority; pushing approximates the
+      // paint order well enough for the current renderer.
+      tile.items.push(this.protocol.map.parseItem(packet));
+    }
+    this.setTile(tile);
+    this.onChange?.();
+  }
+
+  /**
+   * 0x6B — transform the thing at a stack position: either an item
+   * changing type, or (marked by U16 0x63) a creature turning.
+   */
+  private handleTileTransformThing(packet: InputPacket): void {
+    const pos = this.protocol.map.parsePosition(packet);
+    const stackPos = packet.getU8();
+    if (packet.peekU16() === 0x63) {
+      packet.getU16();
+      const turn = this.protocol.creature.parseTurn(packet);
+      const wc = this.creatures.get(turn.creatureId);
+      if (wc) wc.direction = turn.direction;
+      const tile = this.getTile(pos.x, pos.y, pos.z);
+      const tc = tile?.creatures.find((c) => c.id === turn.creatureId);
+      if (tc) tc.direction = turn.direction;
+      this.onChange?.();
+      return;
+    }
+    const item = this.protocol.map.parseItem(packet);
+    const tile = this.getTile(pos.x, pos.y, pos.z);
+    if (tile) {
+      // Our tile model splits items and creatures, so the wire stack
+      // position (which interleaves them) maps approximately: positions
+      // inside the item list replace in place, anything else appends.
+      if (stackPos < tile.items.length) tile.items[stackPos] = item;
+      else tile.items.push(item);
+      this.tileRevision++;
+    }
+    this.onChange?.();
+  }
+
+  /** 0x6C — remove the thing at a stack position (item or creature). */
+  private handleTileRemoveThing(packet: InputPacket): void {
+    const pos = this.protocol.map.parsePosition(packet);
+    const stackPos = packet.getU8();
+    const tile = this.getTile(pos.x, pos.y, pos.z);
+    if (tile) {
+      if (stackPos < tile.items.length) {
+        tile.items.splice(stackPos, 1);
+      } else {
+        // Same approximation as transform: a stack position beyond the
+        // item list refers to one of the tile's creatures.
+        const ci = stackPos - tile.items.length;
+        const [removed] = tile.creatures.splice(ci, 1);
+        if (removed) this.creatures.delete(removed.id);
+      }
+      this.tileRevision++;
+    }
+    this.onChange?.();
+  }
+
+  /** 0x8C — creature health percent changed. */
+  private handleCreatureHealth(packet: InputPacket): void {
+    const ev = this.protocol.creature.parseHealth(packet);
+    const wc = this.creatures.get(ev.creatureId);
+    if (wc) wc.health = ev.healthPercent;
+    this.onChange?.();
+  }
+
+  /** 0x8E — creature outfit changed (or went invisible: lookType 0). */
+  private handleCreatureOutfit(packet: InputPacket): void {
+    const ev = this.protocol.creature.parseOutfit(packet);
+    const wc = this.creatures.get(ev.creatureId);
+    if (wc) {
+      wc.outfit = { lookType: ev.lookType, head: ev.head, body: ev.body, legs: ev.legs, feet: ev.feet };
+    }
+    this.onChange?.();
+  }
+
+  /** 0x8F — creature speed changed. */
+  private handleCreatureSpeed(packet: InputPacket): void {
+    const ev = this.protocol.creature.parseSpeed(packet);
+    const wc = this.creatures.get(ev.creatureId);
+    if (wc) wc.speed = ev.speed;
+    this.onChange?.();
   }
 
   private handleSelfAppear(packet: InputPacket): void {

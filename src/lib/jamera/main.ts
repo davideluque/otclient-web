@@ -7,7 +7,9 @@ import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
-import { applyJameraQuirks } from './protocolQuirks';
+import { registerWireSkips } from '../net/7.6/wireSkips';
+import { setItemWireFlags } from '../net/common/itemFlags';
+import { parseDat } from '../dat';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
 
@@ -36,7 +38,10 @@ mountLoginScreen(root, {
     } else {
       console.info('[jamera] in_game — client attached locally (suppressed from window in prod)');
     }
-    applyJameraQuirks(client);
+    // Baseline consumers for the full 7.6 wire vocabulary — without
+    // these, the first unhandled opcode in a frame silently drops the
+    // rest of it. GameWorld registers after and overrides per opcode.
+    registerWireSkips(client.getDispatcher(), client.getProtocol());
     startPingLoop(client);
     loadAssetsForRendering();
     const world = bindGameWorld(client);
@@ -210,6 +215,11 @@ function loadAssetsForRendering(): void {
     addFileToList: (name) => console.info('[jamera-assets] loaded', name),
     startApp: async (loaded: CompleteLoadedFiles) => {
       console.info('[jamera] assets ready (dat/spr/otb/otbm)');
+      // Wire-format item knowledge: which client IDs carry a count byte.
+      // Must be set before the first map packet parses — stackables
+      // misalign the stream otherwise. Cheap (one .dat parse) and safe
+      // to repeat on retries.
+      setItemWireFlags(parseDat(loaded.dat));
       try {
         jameraAtlas = buildSpriteAtlas(loaded.dat, loaded.spr);
         // Only flip `assetsLoaded` once the atlas exists — otherwise a
@@ -310,3 +320,9 @@ function parseClientVersion(raw: string | null): number | undefined {
   if (!Number.isInteger(n) || n <= 0 || n > 0xffff) return undefined;
   return n;
 }
+
+// Kick the asset load immediately (not on first in_game): the .dat drives
+// wire-format parsing (item count bytes), so it should be ready long
+// before a human finishes typing credentials. onEnterGame calls this
+// again, which retries if this first attempt failed and no-ops otherwise.
+loadAssetsForRendering();

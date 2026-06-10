@@ -73,7 +73,7 @@ describe('creatureParser', () => {
   it('parses creature outfit with lookType', () => {
     const out = new OutputPacket();
     out.addU32(111);
-    out.addU16(128); // lookType
+    out.addU8(128); // lookType — a single byte in 7.6
     out.addU8(10);   // head
     out.addU8(20);   // body
     out.addU8(30);   // legs
@@ -90,7 +90,8 @@ describe('creatureParser', () => {
   it('parses invisible creature outfit (lookType 0)', () => {
     const out = new OutputPacket();
     out.addU32(222);
-    out.addU16(0); // invisible
+    out.addU8(0);   // invisible: lookType 0...
+    out.addU16(0);  // ...followed by the lookTypeEx item id
 
     const event = parseCreatureOutfit(new InputPacket(out.toArrayBuffer()));
     expect(event.lookType).toBe(0);

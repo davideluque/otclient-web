@@ -109,7 +109,7 @@ describe('parseMapDescription', () => {
     out.addString('Player1');
     out.addU8(100);      // health
     out.addU8(2);        // direction
-    out.addU16(128);     // lookType
+    out.addU8(128);      // lookType — a single byte in 7.6
     out.addU8(10); out.addU8(20); out.addU8(30); out.addU8(40); // outfit colors
     out.addU8(0); out.addU8(0); // light level + color
     out.addU16(220);     // speed

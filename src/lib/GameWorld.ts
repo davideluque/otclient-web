@@ -3,6 +3,23 @@ import type { PacketDispatcher } from './net/common/PacketDispatcher';
 import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
 import type { ResolvedTile } from './tileMap';
 
+/**
+ * 7.6 sends no facing with movement — neither the 0x65–0x68 self-step
+ * confirmations nor 0x6D CreatureMove carry a direction byte. The
+ * original client derives it from the step delta; same here. The
+ * horizontal component wins on diagonal steps (Tibia faces east/west
+ * when moving diagonally), and anything farther than one tile is a
+ * teleport, which keeps the previous facing.
+ */
+export function directionFromDelta(dx: number, dy: number, fallback: number): number {
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) return fallback;
+  if (dx > 0) return 1; // east
+  if (dx < 0) return 3; // west
+  if (dy > 0) return 2; // south
+  if (dy < 0) return 0; // north
+  return fallback;
+}
+
 export interface WorldCreature {
   id: number;
   name: string;
@@ -323,12 +340,14 @@ export class GameWorld {
   private syncSelfCreature(oldX: number, oldY: number, oldZ: number): void {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
+    const facing = directionFromDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
     if (fromTile && toTile) {
       const i = fromTile.creatures.findIndex((c) => c.id === this.playerCreatureId);
       if (i >= 0) {
         const [mc] = fromTile.creatures.splice(i, 1);
+        mc.direction = facing;
         toTile.creatures.push(mc);
       }
     }
@@ -338,6 +357,7 @@ export class GameWorld {
     self.x = this.playerX;
     self.y = this.playerY;
     self.z = this.playerZ;
+    self.direction = facing;
     self.lastMoveAt = performance.now();
     this.creatureRevision++;
   }
@@ -464,11 +484,15 @@ export class GameWorld {
     if (fromTile && fromTile.creatures.length > event.fromStack) {
       // Remove creature from source tile
       const [creature] = fromTile.creatures.splice(event.fromStack, 1);
+      creature.direction = directionFromDelta(
+        event.toX - event.fromX, event.toY - event.fromY, creature.direction,
+      );
       const wc = this.creatures.get(creature.id);
       if (wc) {
         wc.x = event.toX;
         wc.y = event.toY;
         wc.z = event.toZ;
+        wc.direction = creature.direction;
         wc.lastMoveAt = performance.now();
       }
       // Add creature to destination tile

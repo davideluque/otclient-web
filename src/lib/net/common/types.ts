@@ -261,6 +261,22 @@ export interface CreatureProtocol {
  */
 export type WalkDirection = 0 | 1 | 2 | 3;
 
+/** A world coordinate as carried on the wire (U16 x, U16 y, U8 z). */
+export interface WirePosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface ActionsProtocol {
+  /** 0x8C — ask the server to describe the thing at a position. */
+  buildLookAt(pos: WirePosition, spriteId: number, stackPos: number): OutputPacket;
+  /** 0x82 — use the item at a position (ladders, doors, sewer grates...). */
+  buildUseItem(pos: WirePosition, spriteId: number, stackPos: number, index?: number): OutputPacket;
+  /** 0x14 — clean logout; the server saves the character and closes. */
+  buildLogout(): OutputPacket;
+}
+
 export interface PlayerStats {
   health: number;
   maxHealth: number;
@@ -413,6 +429,7 @@ export interface GameProtocol {
   readonly chat: ChatProtocol;
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
+  readonly actions: ActionsProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;
 }

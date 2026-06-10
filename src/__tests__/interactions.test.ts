@@ -62,15 +62,17 @@ describe('long-press pointer tracking', () => {
     document.body.appendChild(canvas);
     const liveApp = { canvas, screen: { width: 800, height: 600 } } as unknown as Application;
     const liveWorld = {
-      playerX: 100, playerY: 200, playerZ: 7,
-      getTile: () => ({ items: [{ id: 1987 }] }),
+      playerX: 100, playerY: 200, playerZ: 7, playerCreatureId: 1,
+      getTile: () => ({ items: [{ id: 1987 }], creatures: [] }),
     } as unknown as GameWorld;
     const sent: number[][] = [];
     const client = {
       getProtocol: () => new GameProtocol(),
       send: (p: { toUint8Array(): Uint8Array }) => sent.push([...p.toUint8Array()]),
     } as unknown as GameClient;
-    const handle = bindInteractions(client, liveWorld, liveApp);
+    // Every tile is plain walkable ground (id 1987, no blocking attrs).
+    const datIndex = new Map([[1987, { id: 1987, attrs: new Map() }]]) as never;
+    const handle = bindInteractions(client, liveWorld, liveApp, datIndex);
     const touch = (type: string, pointerId: number, clientX: number, clientY: number) =>
       canvas.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', pointerId, clientX, clientY, bubbles: true }));
     return { handle, canvas, sent, touch };
@@ -86,6 +88,25 @@ describe('long-press pointer tracking', () => {
     vi.advanceTimersByTime(600);
     expect(sent).toHaveLength(1);
     expect(sent[0][0]).toBe(0x8c); // LookAt fired from finger 1's press
+    handle.destroy();
+  });
+
+  it('a quick tap walks: one 0x64 autowalk with the A* route', () => {
+    const { handle, sent, touch } = mount();
+    // Two tiles east of center (player tile center is at 400,300).
+    touch('pointerdown', 1, 400 + 64, 300);
+    touch('pointerup', 1, 400 + 64, 300);
+    vi.advanceTimersByTime(600); // long-press must NOT also fire
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x64, 2, 1, 1]); // count 2, east east
+    handle.destroy();
+  });
+
+  it('a wandering release does not walk', () => {
+    const { handle, sent, touch } = mount();
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 460, 300); // moved beyond tolerance
+    expect(sent).toHaveLength(0);
     handle.destroy();
   });
 

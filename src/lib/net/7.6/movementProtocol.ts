@@ -20,3 +20,23 @@ export function buildMovePacket(direction: WalkDirection): OutputPacket {
   out.addU8(MOVE_OPCODES[direction]);
   return out;
 }
+
+/**
+ * 0x64 autowalk wire direction bytes, indexed by WalkDirection
+ * (0=N, 1=E, 2=S, 3=W). Verified against the server's parseAutoWalk:
+ * 1=E, 2=NE, 3=N, 4=NW, 5=W, 6=SW, 7=S, 8=SE — directions are read
+ * first-step-first (path.push_back).
+ */
+const AUTOWALK_DIR_BYTES: readonly number[] = [3, 1, 7, 5];
+
+/** Wire count byte caps the route at 255 steps. */
+const AUTOWALK_MAX_STEPS = 255;
+
+export function buildAutoWalkPacket(route: WalkDirection[]): OutputPacket {
+  const steps = route.slice(0, AUTOWALK_MAX_STEPS);
+  const out = new OutputPacket();
+  out.addU8(ClientOp.AutoWalk);
+  out.addU8(steps.length);
+  for (const dir of steps) out.addU8(AUTOWALK_DIR_BYTES[dir]);
+  return out;
+}

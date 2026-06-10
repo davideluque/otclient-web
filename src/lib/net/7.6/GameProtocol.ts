@@ -18,7 +18,7 @@ import {
   isLoginError,
 } from './loginProtocol';
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
-import { buildMovePacket } from './movementProtocol';
+import { buildMovePacket, buildAutoWalkPacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket } from './actionsProtocol';
 import {
@@ -119,6 +119,7 @@ export class GameProtocol implements GameProtocolSpec {
 
     this.movement = {
       buildMove: buildMovePacket,
+      buildAutoWalk: buildAutoWalkPacket,
     };
 
     this.player = {

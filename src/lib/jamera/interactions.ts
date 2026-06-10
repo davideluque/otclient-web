@@ -1,6 +1,8 @@
 import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
 import type { GameWorld } from '../GameWorld';
+import type { ThingType } from '../dat';
+import { findWalkRoute } from './autowalk';
 import { TILE_SIZE } from '../../constants';
 
 /**
@@ -71,6 +73,9 @@ export function bindInteractions(
   client: GameClient,
   world: GameWorld,
   app: Application,
+  // Tap-to-walk needs the .dat walkability flags; without them taps
+  // only look/use (tests and pre-asset mounts pass undefined).
+  datIndex?: Map<number, ThingType>,
 ): InteractionsHandle {
   const canvas = app.canvas as HTMLCanvasElement;
   const protocol = client.getProtocol();
@@ -106,7 +111,31 @@ export function bindInteractions(
     send(protocol.actions.buildUseItem(pos, item.spriteId, item.stackPos));
   }
 
-  // Desktop: right-click looks, double-click uses.
+  // Tap/click-to-walk: A* over the known window, sent as one 0x64
+  // autowalk — the server walks the route and confirms each step like
+  // manual moves. A tap that starts a double-tap still walks first
+  // (one step toward a ladder before using it is what the original
+  // client does too); a new tap simply replaces the route server-side.
+  function walkTo(clientX: number, clientY: number): void {
+    if (!datIndex) return;
+    const c = toCanvasSpace(canvas, app.screen, clientX, clientY);
+    const pos = screenToWorldTile(app, world, c.x, c.y);
+    const route = findWalkRoute(world, datIndex, pos.x, pos.y);
+    if (!route || route.length === 0) return;
+    send(protocol.movement.buildAutoWalk(route));
+  }
+
+  // Desktop: left-click walks, right-click looks, double-click uses.
+  // Touch taps walk via pointerup below; browsers also synthesize a
+  // click after a tap, so non-mouse clicks are ignored here (browsers
+  // old enough to omit pointerType on clicks just send a benign
+  // duplicate route).
+  const onClick = (e: MouseEvent): void => {
+    if (e.button !== 0) return;
+    const pointerType = (e as PointerEvent).pointerType;
+    if (pointerType && pointerType !== 'mouse') return;
+    walkTo(e.clientX, e.clientY);
+  };
   const onContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     look(e.clientX, e.clientY);
@@ -148,22 +177,37 @@ export function bindInteractions(
       cancelPress(e);
     }
   };
+  // A release while the long-press timer is still pending and the
+  // finger hasn't wandered is a TAP → walk there. (Touch only — mouse
+  // walks via the click handler, which ignores synthesized post-touch
+  // clicks by pointerType.)
+  const onPointerUp = (e: PointerEvent): void => {
+    const wasTap =
+      e.pointerId === activePointerId &&
+      pressTimer !== null &&
+      Math.abs(e.clientX - pressX) <= MOVE_TOLERANCE_PX &&
+      Math.abs(e.clientY - pressY) <= MOVE_TOLERANCE_PX;
+    cancelPress(e);
+    if (wasTap) walkTo(e.clientX, e.clientY);
+  };
 
+  canvas.addEventListener('click', onClick);
   canvas.addEventListener('contextmenu', onContextMenu);
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', cancelPress);
+  canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', cancelPress);
 
   return {
     destroy: () => {
       cancelPress();
+      canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('dblclick', onDblClick);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerup', cancelPress);
+      canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', cancelPress);
     },
   };

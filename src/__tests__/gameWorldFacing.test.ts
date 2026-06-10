@@ -28,8 +28,10 @@ describe('directionFromDelta', () => {
 
   it('keeps the previous facing on zero delta and teleports', () => {
     expect(directionFromDelta(0, 0, 2)).toBe(2);
+    // Fallbacks deliberately differ from the delta's direction: a broken
+    // teleport guard would fall through and return the delta facing.
     expect(directionFromDelta(5, 0, 2)).toBe(2);
-    expect(directionFromDelta(0, -12, 0)).toBe(0);
+    expect(directionFromDelta(0, -12, 2)).toBe(2);
   });
 });
 

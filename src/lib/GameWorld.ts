@@ -77,6 +77,15 @@ export class GameWorld {
    */
   creatureRevision = 0;
 
+  /**
+   * While true, syncSelfCreature records no glide origin. Set by
+   * handleFloorChange and cleared in a microtask: the 0x65–0x68 resync
+   * slices embedded in (and trailing) a floor-change message dispatch
+   * synchronously in the same task, so exactly the transition's syncs
+   * snap and the first real step afterwards glides again.
+   */
+  private snapSelfSync = false;
+
   private protocol: GameProtocol;
 
   constructor(protocol: GameProtocol) {
@@ -369,8 +378,10 @@ export class GameWorld {
     // registry below still tracks the true position, and dropping the
     // creature entirely would erase the player from the tile model.
     // Interpolation origin only for true single-tile steps on the same
-    // floor — floor changes and teleports must snap, not glide.
-    const isStep = oldZ === this.playerZ
+    // floor — floor changes (including their same-z resync slices, see
+    // snapSelfSync) and teleports must snap, not glide.
+    const isStep = !this.snapSelfSync
+      && oldZ === this.playerZ
       && Math.abs(this.playerX - oldX) <= 1 && Math.abs(this.playerY - oldY) <= 1;
     self.fromX = isStep ? oldX : undefined;
     self.fromY = isStep ? oldY : undefined;
@@ -493,6 +504,12 @@ export class GameWorld {
     this.playerX = oldX - dz; // up: +1, down: -1 (covered offset)
     this.playerY = oldY - dz;
     this.playerZ = newZ;
+    // The transition's trailing 0x65–0x68 resync slices arrive in this
+    // same synchronous dispatch — none of them are steps to glide.
+    this.snapSelfSync = true;
+    queueMicrotask(() => { this.snapSelfSync = false; });
+    const selfC = this.creatures.get(this.playerCreatureId);
+    if (selfC) { selfC.fromX = undefined; selfC.fromY = undefined; }
     this.tileRevision++;
     this.onChange?.();
   }

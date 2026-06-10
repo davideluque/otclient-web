@@ -35,6 +35,15 @@ export interface MountOptions {
    * code can register packet handlers, send chat, etc.
    */
   onEnterGame?: (client: GameClient) => void;
+
+  /**
+   * Awaited before entering the game world (character select). Use it to
+   * gate game entry on prerequisites like the asset bundle: the first
+   * map packet arrives instantly after game login and is unparseable
+   * until the .dat-derived wire flags exist. Rejection is shown as an
+   * error and the character list re-enables.
+   */
+  waitForReady?: () => Promise<void>;
 }
 
 export interface MountedScreen {
@@ -71,9 +80,14 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   events.onCharacterList = (characters, premiumDays, motd) => {
     renderCharacterList(ui, characters, premiumDays, motd, async (char) => {
       try {
+        if (opts.waitForReady) {
+          ui.statusEl.textContent = 'Loading game assets...';
+          await opts.waitForReady();
+        }
         await client.selectCharacter(char);
       } catch (err) {
         showError(ui, (err as Error).message);
+        enableCharacterButtons(ui);
       }
     });
   };
@@ -196,6 +210,18 @@ function updateState(ui: UiHandles, state: GameClientState): void {
   // states — keeping it visible would suggest selection is still possible.
   if (state === 'disconnected' || state === 'logging_in') {
     ui.characterListEl.hidden = true;
+  }
+}
+
+/**
+ * Re-enable character selection after a failed attempt (waitForReady
+ * rejection or selectCharacter error) so the player can retry without a
+ * full re-login. State-driven disabling in updateState still applies on
+ * the next transition.
+ */
+function enableCharacterButtons(ui: UiHandles): void {
+  for (const btn of ui.characterListEl.querySelectorAll('button')) {
+    (btn as HTMLButtonElement).disabled = false;
   }
 }
 

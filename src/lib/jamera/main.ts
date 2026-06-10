@@ -30,6 +30,14 @@ const clientVersion = parseClientVersion(params.get('clientVersion'));
 mountLoginScreen(root, {
   proxyUrl,
   clientVersion,
+  // Gate game entry on the asset bundle: the first map packet lands
+  // milliseconds after game login and needs the .dat-derived wire flags.
+  // Calling loadAssetsForRendering here also makes the gate self-retrying
+  // after a failed attempt.
+  waitForReady: () => {
+    loadAssetsForRendering();
+    return assetsReady;
+  },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
     // live-map renderer, chat UI, and movement input. Surface the live
@@ -208,6 +216,18 @@ async function mountRenderer(world: GameWorld): Promise<void> {
  */
 let assetsLoading = false;
 let assetsLoaded = false;
+// Resolved once the wire flags exist (the .dat parsed); replaced with a
+// fresh pending promise when a load attempt fails so a retry can gate on
+// the new attempt instead of inheriting the old rejection.
+let assetsReadyResolve: (() => void) | null = null;
+let assetsReadyReject: ((err: Error) => void) | null = null;
+let assetsReady = new Promise<void>((resolve, reject) => {
+  assetsReadyResolve = resolve;
+  assetsReadyReject = reject;
+});
+// Rejections are consumed on demand via waitForReady — don't let an
+// unobserved failure trip the global unhandled-rejection handler.
+assetsReady.catch(() => { /* observed lazily */ });
 // Page-lifetime cache: assets don't change between re-logins, so the
 // expensive sprite-decode + GPU upload only runs once per tab.
 let jameraAtlas: SpriteAtlas | null = null;
@@ -215,7 +235,11 @@ let jameraAtlas: SpriteAtlas | null = null;
 function loadAssetsForRendering(): void {
   if (assetsLoaded || assetsLoading) return;
   assetsLoading = true;
-  tryAutoload({
+  void tryAutoloadAssets();
+}
+
+async function tryAutoloadAssets(): Promise<void> {
+  await tryAutoload({
     onStatus: (msg, isError) => {
       if (isError) console.warn('[jamera-assets]', msg);
       else console.info('[jamera-assets]', msg);
@@ -228,6 +252,7 @@ function loadAssetsForRendering(): void {
       // misalign the stream otherwise. Cheap (one .dat parse) and safe
       // to repeat on retries.
       setItemWireFlags(parseDat(loaded.dat));
+      assetsReadyResolve?.();
       try {
         jameraAtlas = buildSpriteAtlas(loaded.dat, loaded.spr);
         // Only flip `assetsLoaded` once the atlas exists — otherwise a
@@ -267,6 +292,18 @@ function loadAssetsForRendering(): void {
     .finally(() => {
       assetsLoading = false;
     });
+
+  if (!assetsLoaded) {
+    // The attempt failed (missing manifest, fetch error, atlas build
+    // failure): reject the gate so character-select surfaces an error,
+    // then re-arm a fresh promise for the retry the next gate call kicks.
+    assetsReadyReject?.(new Error('Game assets failed to load — check public/assets/<version>/ and retry.'));
+    assetsReady = new Promise<void>((resolve, reject) => {
+      assetsReadyResolve = resolve;
+      assetsReadyReject = reject;
+    });
+    assetsReady.catch(() => { /* consumed via waitForReady when retried */ });
+  }
 }
 
 /**

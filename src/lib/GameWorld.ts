@@ -324,17 +324,21 @@ export class GameWorld {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
     const fromTile = this.getTile(oldX, oldY, oldZ);
-    if (fromTile) {
+    const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
+    if (fromTile && toTile) {
       const i = fromTile.creatures.findIndex((c) => c.id === this.playerCreatureId);
       if (i >= 0) {
         const [mc] = fromTile.creatures.splice(i, 1);
-        this.getTile(this.playerX, this.playerY, this.playerZ)?.creatures.push(mc);
+        toTile.creatures.push(mc);
       }
     }
+    // Missing destination tile: leave the MapCreature where it is — the
+    // registry below still tracks the true position, and dropping the
+    // creature entirely would erase the player from the tile model.
     self.x = this.playerX;
     self.y = this.playerY;
     self.z = this.playerZ;
-    self.lastMoveAt = Date.now();
+    self.lastMoveAt = performance.now();
     this.creatureRevision++;
   }
 
@@ -465,7 +469,7 @@ export class GameWorld {
         wc.x = event.toX;
         wc.y = event.toY;
         wc.z = event.toZ;
-        wc.lastMoveAt = Date.now();
+        wc.lastMoveAt = performance.now();
       }
       // Add creature to destination tile
       const toTile = this.getTile(event.toX, event.toY, event.toZ);

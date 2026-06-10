@@ -68,12 +68,16 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   toggle.addEventListener('click', () => { open = true; applyOpen(); });
   // Collapse from inside the panel: tapping the active tab again closes
   // it on touch devices — minimal affordance without restyling ChatUI.
-  ui.addEventListener('dblclick', () => { open = false; applyOpen(); });
+  // Collapse affordance on the tabs bar only — a panel-wide dblclick
+  // would fire while double-tapping the input or spamming Send.
+  ui.querySelector('#chat-tabs')?.addEventListener('dblclick', () => { open = false; applyOpen(); });
   applyOpen();
   parent.appendChild(toggle);
 
   return {
     destroy: () => {
+      dispatcher.off(op.CreatureSpeak);
+      dispatcher.off(op.TextMessage);
       ui.remove();
       toggle.remove();
     },

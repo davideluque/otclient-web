@@ -63,6 +63,8 @@ export function bindStats(client: GameClient, parent: HTMLElement = document.bod
 
   return {
     destroy: () => {
+      dispatcher.off(op.PlayerStats);
+      dispatcher.off(op.PlayerSkills);
       hud?.destroy();
       pane?.destroy();
       menu.destroy();

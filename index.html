@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/icon-512.png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <meta name="theme-color" content="#7c5cbf" />
     <title>OTClient Web</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -24,12 +29,12 @@
         font-size: 1.05rem; font-weight: bold;
       }
       a.play { background: #7c5cbf; color: #fff; }
-      a.play:active { background: #6a4caf; }
+      a.play:hover, a.play:active { background: #6a4caf; }
       a.browse {
         background: transparent; color: #e0e0e0;
         border: 2px dashed #555;
       }
-      a.browse:active { border-color: #7c5cbf; }
+      a.browse:hover, a.browse:active { border-color: #7c5cbf; }
       a .sub { display: block; font-weight: normal; font-size: 0.8rem; color: rgba(255,255,255,0.75); margin-top: 0.3rem; }
       a.browse .sub { color: #888; }
     </style>

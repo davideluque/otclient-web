@@ -10,6 +10,7 @@ import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
 import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
 import { createMetricsOverlay, type MetricsOverlayHandle } from './metricsOverlay';
+import { renderItemThumbnail } from '../itemThumbnail';
 import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
@@ -106,7 +107,14 @@ mountLoginScreen(root, {
     teardownChat?.destroy();
     teardownChat = bindChat(client);
     teardownInventory?.destroy();
-    teardownInventory = bindInventory(client);
+    teardownInventory = bindInventory(client, document.body, {
+      // Lazy atlas read: the bundle may still be loading when the pane
+      // binds; slots re-render on every 0x78, so thumbnails appear as
+      // soon as the atlas exists.
+      renderThumb: (id) => jameraAtlas
+        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+        : null,
+    });
     teardownStats?.destroy();
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the

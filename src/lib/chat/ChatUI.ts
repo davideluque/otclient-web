@@ -86,7 +86,10 @@ export function createChatUI(
     }
     #chat-input {
       flex: 1; background: #111; color: #eee; border: 1px solid #444;
-      border-radius: 4px; padding: 6px 8px; font-size: 0.85rem;
+      border-radius: 4px; padding: 6px 8px;
+      /* 16px minimum: iOS pinch-zooms the page on focusing any smaller
+         input and stays zoomed — same bug as the login form. */
+      font-size: 16px;
       outline: none;
     }
     #chat-input:focus { border-color: #7c5cbf; }

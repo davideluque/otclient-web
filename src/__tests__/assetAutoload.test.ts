@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tryAutoload, type AutoloadOptions } from '../lib/assetAutoload';
+import { getCached, putCached } from '../lib/assetCache';
 
 const VALID_MANIFEST = {
   files: { dat: 'Tibia.dat', spr: 'Tibia.spr', otb: 'items.otb', otbm: 'world.otbm' },
@@ -30,6 +33,13 @@ function makeOptions() {
 }
 
 const originalFetch = globalThis.fetch;
+
+beforeEach(() => {
+  // Fresh IDB per test so a cache hit in one case doesn't satisfy the next;
+  // the was-cached markers live in localStorage and need the same isolation.
+  globalThis.indexedDB = new IDBFactory();
+  localStorage.clear();
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -146,12 +156,12 @@ describe('tryAutoload', () => {
     const opts = makeOptions();
 
     const run = tryAutoload(opts);
-    // Yield until the manifest microtasks complete and onStatus fires,
-    // before the .dat fetch resolves.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(opts.onStatus).toHaveBeenCalled();
+    // Wait for the manifest-validated status to fire, before the .dat
+    // fetch ever resolves. vi.waitFor handles the IDB + fetch microtask
+    // chain without coupling the test to its exact length.
+    await vi.waitFor(() => {
+      expect(opts.onStatus).toHaveBeenCalled();
+    });
     expect(opts.onStatus.mock.calls[0][0]).toMatch(/loading/i);
 
     resolveDat(bufResponse(1));
@@ -201,5 +211,85 @@ describe('tryAutoload', () => {
     await tryAutoload(makeOptions());
 
     expect(seen[0].startsWith(import.meta.env.BASE_URL)).toBe(true);
+  });
+
+  it('skips the network when the cache has a bundle for this version', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as typeof fetch;
+    const opts = makeOptions();
+
+    const ok = await tryAutoload(opts);
+
+    expect(ok).toBe(true);
+    expect(opts.startApp).toHaveBeenCalledTimes(1);
+    // fromCache=true so the boot path doesn't re-write the bundle it just read.
+    expect(opts.startApp.mock.calls[0][1]).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(opts.onStatus.mock.calls[0][0]).toMatch(/cached/i);
+  });
+
+  it('clears a bad cached bundle and falls back to the network when boot throws', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('manifest.json')) return Promise.resolve(jsonResponse(VALID_MANIFEST));
+      return Promise.resolve(bufResponse(1));
+    }) as typeof fetch;
+    const opts = makeOptions();
+    opts.startApp
+      .mockRejectedValueOnce(new Error('corrupt cached assets'))
+      .mockResolvedValueOnce(undefined);
+
+    const ok = await tryAutoload(opts);
+
+    expect(ok).toBe(true);
+    expect(opts.startApp).toHaveBeenCalledTimes(2);
+    // First attempt was the cache, second the freshly fetched bundle.
+    expect(opts.startApp.mock.calls[0][1]).toBe(true);
+    expect(opts.startApp.mock.calls[1][1]).not.toBe(true);
+    // The bad bundle must be gone so the next launch doesn't loop on it.
+    expect(await getCached('760')).toBeNull();
+  });
+
+  it('fires the evicted notice once when a previously cached bundle is gone', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    // Simulate browser eviction: empty IDB, surviving localStorage marker.
+    globalThis.indexedDB = new IDBFactory();
+    globalThis.fetch = vi.fn().mockResolvedValue(notFound()) as typeof fetch;
+    const onCacheNotice = vi.fn();
+
+    await tryAutoload({ ...makeOptions(), onCacheNotice });
+    expect(onCacheNotice).toHaveBeenCalledExactlyOnceWith('evicted');
+
+    // Second launch: the notice was consumed, no repeat nagging.
+    await tryAutoload({ ...makeOptions(), onCacheNotice });
+    expect(onCacheNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires the unavailable notice when the browser has no IndexedDB', async () => {
+    // @ts-expect-error simulating a browser without IndexedDB
+    delete globalThis.indexedDB;
+    globalThis.fetch = vi.fn().mockResolvedValue(notFound()) as typeof fetch;
+    const onCacheNotice = vi.fn();
+
+    await tryAutoload({ ...makeOptions(), onCacheNotice });
+
+    expect(onCacheNotice).toHaveBeenCalledExactlyOnceWith('unavailable');
   });
 });

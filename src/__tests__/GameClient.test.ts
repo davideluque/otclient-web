@@ -1,8 +1,50 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { GameClient } from '../lib/net/common/GameClient';
+import { Connection } from '../lib/net/common/Connection';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
 import { InputPacket } from '../lib/net/common/InputPacket';
+
+class MockWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 3;
+  static instances: MockWebSocket[] = [];
+
+  readonly url: string;
+  binaryType: BinaryType = 'blob';
+  readyState = MockWebSocket.CONNECTING;
+  closeCount = 0;
+  sent: unknown[] = [];
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+  }
+
+  open(): void {
+    this.readyState = MockWebSocket.OPEN;
+    this.onopen?.();
+  }
+
+  close(): void {
+    this.closeCount++;
+    this.readyState = MockWebSocket.CLOSED;
+  }
+
+  emitClose(): void {
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.();
+  }
+
+  send(data: unknown): void {
+    this.sent.push(data);
+  }
+}
 
 describe('GameClient.send', () => {
   it('throws when called before login (state: disconnected)', () => {
@@ -15,6 +57,41 @@ describe('GameClient.send', () => {
     // @ts-expect-error driving private state machine for the test
     client.state = 'character_list';
     expect(() => client.send(new OutputPacket())).toThrow(/character_list/);
+  });
+});
+
+describe('Connection.connect', () => {
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('replaces an existing socket without letting stale close events clear the new socket', async () => {
+    const conn = new Connection('ws://proxy');
+
+    const firstConnect = conn.connect('/login');
+    const first = MockWebSocket.instances[0];
+    first.open();
+    await firstConnect;
+
+    const secondConnect = conn.connect('/login');
+    const second = MockWebSocket.instances[1];
+    expect(first.closeCount).toBe(1);
+    second.open();
+    await secondConnect;
+
+    first.emitClose();
+
+    const packet = new OutputPacket();
+    packet.addU8(0x1e);
+    conn.send(packet);
+
+    expect(first.sent).toHaveLength(0);
+    expect(second.sent).toHaveLength(1);
   });
 });
 

@@ -275,6 +275,8 @@ export interface ActionsProtocol {
   buildUseItem(pos: WirePosition, spriteId: number, stackPos: number, index?: number): OutputPacket;
   /** 0x14 — clean logout; the server saves the character and closes. */
   buildLogout(): OutputPacket;
+  /** 0xA0 fight/chase/secure modes (fight: 1=off 2=bal 3=def). */
+  buildFightModes(fightMode: 1 | 2 | 3, chase: boolean, secure: boolean): OutputPacket;
   /** 0xA1 — set the attacked creature; id 0 stops attacking. */
   buildAttack(creatureId: number): OutputPacket;
 }
@@ -406,6 +408,7 @@ export interface ClientOpcodes {
   readonly Logout: number;
   readonly Ping: number;
   readonly AutoWalk: number;
+  readonly SetFightModes: number;
   readonly MoveNorth: number;
   readonly MoveEast: number;
   readonly MoveSouth: number;

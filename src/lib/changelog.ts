@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Added combat modes (right edge): attack/balanced/defense stance, chase, and secure/PK toggle — remembered between sessions.' },
   { date: '2026-06-10', text: 'Added a full-screen chat (menu → Chat) — same channels and history as the bottom panel.' },
   { date: '2026-06-10', text: 'Added the minimap (top-right) — real automap colors, toggle it in Settings.' },
   { date: '2026-06-10', text: 'Fixed the game loading zoomed-in/off-center (you only saw the tiles north of you) — the screen now re-measures itself after iOS settles.' },

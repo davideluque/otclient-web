@@ -27,12 +27,15 @@ export function bindMinimap(
   const colorCache = new Map<number, number | null>();
 
   const itemColor = (id: number): number | null => {
-    let c = colorCache.get(id);
-    if (c === undefined) {
-      const attr = datIndex()?.get(id)?.attrs.get(DatAttr.MinimapColor);
-      c = typeof attr === 'number' ? minimapIndexToRgb(attr) : null;
-      colorCache.set(id, c);
-    }
+    const cached = colorCache.get(id);
+    if (cached !== undefined) return cached;
+    // Don't cache misses while the .dat hasn't loaded — ids first seen
+    // pre-atlas would otherwise stay black for the whole session.
+    const dat = datIndex();
+    if (!dat) return null;
+    const attr = dat.get(id)?.attrs.get(DatAttr.MinimapColor);
+    const c = typeof attr === 'number' ? minimapIndexToRgb(attr) : null;
+    colorCache.set(id, c);
     return c;
   };
 

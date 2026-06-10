@@ -9,6 +9,7 @@ import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
 import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
+import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
@@ -73,6 +74,9 @@ mountLoginScreen(root, {
     teardownCombat = null;
     settingsPane?.destroy();
     settingsPane = null;
+    // Page-lifetime pane, but it must not stay open over the re-shown
+    // login screen after a logout/kick.
+    changelogPane?.close();
   },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
@@ -117,6 +121,15 @@ mountLoginScreen(root, {
     teardownStats = bindStats(client, document.body, [
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
       { label: 'Settings', onSelect: () => settingsPane?.open() },
+      {
+        label: 'Changelog',
+        onSelect: () => {
+          // Page-lifetime, lazily created: it's informational, not
+          // session state — no teardown needed on logout.
+          changelogPane ??= createChangelogPane();
+          changelogPane.open();
+        },
+      },
       {
         label: 'Log out',
         onSelect: () => {
@@ -500,3 +513,4 @@ let teardownInteractions: InteractionsHandle | null = null;
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
+let changelogPane: ChangelogPaneHandle | null = null;

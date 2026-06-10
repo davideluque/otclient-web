@@ -30,14 +30,27 @@ function ensureStyles(): void {
   document.head.appendChild(style);
 }
 
+let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function showStorageNotice(msg: string): void {
   ensureStyles();
   // One notice at a time — a second one would render on top of the first.
+  // Clearing the previous timer too keeps an early-dismissed notice's
+  // detached element from being held by the closure for the full 15s.
+  if (hideTimer) clearTimeout(hideTimer);
   document.querySelector('.storage-notice')?.remove();
+
   const el = document.createElement('div');
   el.className = 'storage-notice';
   el.textContent = msg;
-  el.addEventListener('click', () => el.remove());
+  const dismiss = (): void => {
+    el.remove();
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  };
+  el.addEventListener('click', dismiss);
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 15000);
+  hideTimer = setTimeout(dismiss, 15000);
 }

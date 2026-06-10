@@ -405,6 +405,7 @@ export interface ClientOpcodes {
   readonly GameServerRequest: number;
   readonly Logout: number;
   readonly Ping: number;
+  readonly AutoWalk: number;
   readonly MoveNorth: number;
   readonly MoveEast: number;
   readonly MoveSouth: number;

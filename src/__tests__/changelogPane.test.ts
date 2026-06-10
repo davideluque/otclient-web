@@ -45,6 +45,10 @@ describe('createChangelogPane', () => {
     (document.querySelector('.changelog-card') as HTMLElement).click();
     expect(el.classList.contains('open')).toBe(true);
 
+    // Escape closes; the listener only exists while open.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(el.classList.contains('open')).toBe(false);
+
     pane.destroy();
   });
 

@@ -74,6 +74,9 @@ mountLoginScreen(root, {
     teardownCombat = null;
     settingsPane?.destroy();
     settingsPane = null;
+    // Page-lifetime pane, but it must not stay open over the re-shown
+    // login screen after a logout/kick.
+    changelogPane?.close();
   },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the

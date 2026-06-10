@@ -212,6 +212,11 @@ export const ENTRIES: GalleryEntry[] = [
         attacking = !attacking;
         log(`external flip → ${attacking}; reopen to see the switch sync`);
       });
+      return () => pane.destroy();
+    },
+  },
+
+  {
     name: 'Changelog',
     description:
       'In-game changelog (menu → Changelog): one line per user-visible '

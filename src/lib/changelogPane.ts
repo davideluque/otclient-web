@@ -102,8 +102,19 @@ export function createChangelogPane(
   el.appendChild(card);
   parent.appendChild(el);
 
-  const open = (): void => { el.classList.add('open'); };
-  const close = (): void => { el.classList.remove('open'); };
+  // Escape closes too; the listener only exists while the pane is open
+  // so a closed pane costs nothing and can't leak past destroy().
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+  const open = (): void => {
+    el.classList.add('open');
+    document.addEventListener('keydown', onKeyDown);
+  };
+  const close = (): void => {
+    el.classList.remove('open');
+    document.removeEventListener('keydown', onKeyDown);
+  };
 
   closeBtn.addEventListener('click', close);
   // Tap outside the card closes — but not taps inside it.
@@ -119,6 +130,9 @@ export function createChangelogPane(
       if (el.classList.contains('open')) close();
       else open();
     },
-    destroy: () => el.remove(),
+    destroy: () => {
+      document.removeEventListener('keydown', onKeyDown);
+      el.remove();
+    },
   };
 }

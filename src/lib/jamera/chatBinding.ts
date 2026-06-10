@@ -61,7 +61,7 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
     'position:fixed', 'right:8px',
     'bottom:calc(8px + env(safe-area-inset-bottom, 0px))',
     'width:44px', 'height:44px', 'border-radius:50%',
-    'background:rgba(26,26,46,0.9)', 'border:1px solid #7c5cbf',
+    'background:rgba(22,22,22,0.9)', 'border:1px solid #9a9a9a',
     'font-size:1.1rem', 'z-index:45', 'cursor:pointer',
   ].join(';');
   let open = !window.matchMedia('(pointer: coarse)').matches;

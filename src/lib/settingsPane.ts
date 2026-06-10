@@ -78,7 +78,7 @@ function ensureStyles(): void {
       background: #888; transition: transform 0.15s ease, background 0.15s ease;
     }
     .settings-switch:focus-visible { outline: 2px solid #888; outline-offset: 2px; }
-    .settings-switch[aria-checked="true"] { background: #3c3c5a; }
+    .settings-switch[aria-checked="true"] { background: #4a4a4a; }
     .settings-switch[aria-checked="true"]::after {
       transform: translateX(20px); background: #e0e0e0;
     }

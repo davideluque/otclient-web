@@ -9,7 +9,7 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="/icon-512.png" />
     <link rel="apple-touch-icon" href="/icon-180.png" />
-    <meta name="theme-color" content="#7c5cbf" />
+    <meta name="theme-color" content="#000000" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       /* Prevent browser-initiated touch gestures (double-tap-to-zoom,
@@ -51,7 +51,7 @@
       #loader {
         position: fixed; inset: 0;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: #1a1a2e; color: #e0e0e0; z-index: 10;
+        background: #161616; color: #e0e0e0; z-index: 10;
       }
       #loader h1 { font-size: 1.5rem; margin-bottom: 1rem; }
       #loader p { color: #888; margin-bottom: 2rem; font-size: 0.9rem; }
@@ -62,7 +62,7 @@
         text-align: center; cursor: pointer;
         transition: border-color 0.2s, background 0.2s;
       }
-      #drop-zone.dragover { border-color: #7c5cbf; background: rgba(124, 92, 191, 0.1); }
+      #drop-zone.dragover { border-color: #9a9a9a; background: rgba(255, 255, 255, 0.06); }
       #drop-zone p { margin: 0.5rem 0; }
       #drop-zone .hint { font-size: 0.75rem; color: #666; }
 

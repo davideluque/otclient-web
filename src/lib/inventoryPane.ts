@@ -48,8 +48,8 @@ function ensureStyles(): void {
       position: fixed; top: 50%; right: 12px; transform: translateY(-50%);
       display: grid; grid-template-columns: repeat(3, 46px);
       grid-template-rows: repeat(4, 46px); gap: 4px;
-      padding: 10px; background: rgba(26,26,46,0.95);
-      border: 1px solid #7c5cbf; border-radius: 10px;
+      padding: 10px; background: rgba(22,22,22,0.95);
+      border: 1px solid #9a9a9a; border-radius: 10px;
       font-family: system-ui, sans-serif; z-index: 30; user-select: none;
     }
     .inventory-pane .slot {
@@ -58,7 +58,7 @@ function ensureStyles(): void {
       display: flex; align-items: center; justify-content: center;
       color: #888; font-size: 0.6rem; text-align: center;
     }
-    .inventory-pane .slot.filled { border-color: #7c5cbf; color: #e0e0e0; }
+    .inventory-pane .slot.filled { border-color: #9a9a9a; color: #e0e0e0; }
     .inventory-pane .slot .count {
       position: absolute; right: 2px; bottom: 1px;
       font-size: 0.6rem; color: #fff; text-shadow: 0 1px 1px #000;

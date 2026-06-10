@@ -1,5 +1,6 @@
 import type { GameClient } from '../net/common/GameClient';
 import { reportMetric } from './metrics';
+import { telemetry } from './telemetry';
 import type { GameWorld } from '../GameWorld';
 import type { Direction } from '../player';
 
@@ -59,6 +60,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
         reportMetric('step', performance.now() - pending.sentAt);
         pending = null; // server confirmed the step
       } else if (performance.now() > pending.deadline) {
+        telemetry('walk-timeout', {});
         pending = null; // rejected or lost — allow another attempt
       } else {
         return; // still waiting on the server
@@ -70,6 +72,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
 
     try {
       client.send(client.getProtocol().movement.buildMove(dir));
+      telemetry('walk-send', { dir });
     } catch (e) {
       // A throw here means the state flipped mid-tick (defensive — the
       // state check above runs in the same synchronous tick). Don't let

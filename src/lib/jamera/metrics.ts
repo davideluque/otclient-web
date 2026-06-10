@@ -16,6 +16,8 @@ export interface MetricsSink {
   report(name: MetricName, ms: number): void;
 }
 
+import { telemetry } from './telemetry';
+
 let sink: MetricsSink | null = null;
 
 export function setMetricsSink(next: MetricsSink | null): void {
@@ -24,4 +26,7 @@ export function setMetricsSink(next: MetricsSink | null): void {
 
 export function reportMetric(name: MetricName, ms: number): void {
   sink?.report(name, ms);
+  // Every metric also lands in the telemetry stream (no-op when the
+  // stream is off) so on-device numbers are analyzable offline.
+  telemetry(name, { ms: Math.round(ms) });
 }

@@ -6,6 +6,8 @@
 // a visitor's browser.
 import { WebSocketServer, WebSocket } from 'ws';
 import * as net from 'node:net';
+import * as http from 'node:http';
+import * as fs from 'node:fs';
 
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '8090', 10);
 const OT_HOST = process.env['OT_HOST'] ?? '127.0.0.1';
@@ -32,9 +34,74 @@ const TARGET_PORTS: Record<string, number> = {
   '/game': OT_GAME_PORT,
 };
 
-const wss = new WebSocketServer({ port: WS_PORT, maxPayload: MAX_PAYLOAD_BYTES });
+// Telemetry sink: the client batches walk/render events and POSTs them
+// here; each event is appended as one JSONL line for offline analysis
+// (tail/jq/scripts). Dev tooling — same trust posture as the bridge
+// itself (localhost or access-controlled front).
+const TELEMETRY_FILE = process.env['TELEMETRY_FILE'] ?? 'telemetry.jsonl';
+const TELEMETRY_MAX_BODY = 256 * 1024;
+
+function handleTelemetry(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type',
+  };
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, cors);
+    res.end();
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.writeHead(405, cors);
+    res.end();
+    return;
+  }
+  let body = '';
+  let overflow = false;
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > TELEMETRY_MAX_BODY) {
+      overflow = true;
+      req.destroy();
+    }
+  });
+  req.on('end', () => {
+    if (overflow) return;
+    try {
+      const events = JSON.parse(body);
+      if (!Array.isArray(events)) throw new Error('expected an array');
+      const received = Date.now();
+      const lines = events
+        .slice(0, 500)
+        .map((e) => JSON.stringify({ received, ...e }))
+        .join('\n');
+      fs.appendFile(TELEMETRY_FILE, lines + '\n', (err) => {
+        if (err) console.warn('telemetry write failed:', err.message);
+      });
+      res.writeHead(204, cors);
+      res.end();
+    } catch {
+      res.writeHead(400, cors);
+      res.end();
+    }
+  });
+}
+
+const httpServer = http.createServer((req, res) => {
+  if ((req.url ?? '').split('?')[0] === '/telemetry') {
+    handleTelemetry(req, res);
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
+
+const wss = new WebSocketServer({ server: httpServer, maxPayload: MAX_PAYLOAD_BYTES });
+httpServer.listen(WS_PORT);
 
 console.log(`WebSocket proxy listening on ws://0.0.0.0:${WS_PORT}`);
+console.log(`Telemetry sink: POST /telemetry → ${TELEMETRY_FILE}`);
 console.log(`Forwarding to OT server at ${OT_HOST}:${OT_LOGIN_PORT} (login) / ${OT_GAME_PORT} (game)`);
 if (ALLOWED_ORIGINS.length) console.log(`Origin allowlist: ${ALLOWED_ORIGINS.join(', ')}`);
 

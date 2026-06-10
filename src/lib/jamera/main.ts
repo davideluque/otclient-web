@@ -12,6 +12,7 @@ import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
 import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
+import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -48,6 +49,8 @@ mountLoginScreen(root, {
     teardownChat = null;
     teardownStats?.destroy();
     teardownStats = null;
+    teardownInventory?.destroy();
+    teardownInventory = null;
     // The renderer too: its container and tinted-outfit textures belong
     // to the dead session (mountRenderer also bumps the epoch on the
     // next login, but freeing GPU resources shouldn't wait for one).
@@ -77,8 +80,12 @@ mountLoginScreen(root, {
     bindMovementInput(client, world);
     teardownChat?.destroy();
     teardownChat = bindChat(client);
+    teardownInventory?.destroy();
+    teardownInventory = bindInventory(client);
     teardownStats?.destroy();
-    teardownStats = bindStats(client);
+    teardownStats = bindStats(client, document.body, [
+      { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
+    ]);
     if (import.meta.env.DEV) {
       // Dev hook for E2E assertions on bubbles/messages.
       (window as unknown as { jameraChat: typeof teardownChat }).jameraChat = teardownChat;
@@ -435,3 +442,6 @@ let teardownChat: ChatBindingHandle | null = null;
 
 // Per-session HUD/skills binding, replaced on re-login like the rest.
 let teardownStats: StatsBindingHandle | null = null;
+
+// Per-session inventory binding, replaced on re-login like the rest.
+let teardownInventory: InventoryBindingHandle | null = null;

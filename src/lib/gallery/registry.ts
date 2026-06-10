@@ -233,8 +233,11 @@ export const ENTRIES: GalleryEntry[] = [
       const ui = createChatUI(manager, protocol, (packet) => {
         const bytes = packet.toUint8Array();
         log(`sent packet: 0x${bytes[0].toString(16).padStart(2, '0')} (${bytes.length} bytes)`);
+      }, {
+        onClose: () => { ui.style.display = 'none'; log('chat closed (✕)'); },
       });
       document.body.appendChild(ui);
+      knobs.button('Reopen chat', () => { ui.style.display = 'flex'; });
       let n = 0;
       knobs.button('Incoming say', () => manager.handleMessage({
         senderName: 'Trinity', messageType: MessageType.Say,

@@ -29,6 +29,8 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
     } catch (e) {
       console.warn('[jamera] chat send failed:', e instanceof Error ? e.message : e);
     }
+  }, {
+    onClose: () => { open = false; applyOpen(); },
   });
   parent.appendChild(ui);
 
@@ -68,11 +70,9 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
     toggle.style.display = open ? 'none' : 'block';
   };
   toggle.addEventListener('click', () => { open = true; applyOpen(); });
-  // Collapse from inside the panel: tapping the active tab again closes
-  // it on touch devices — minimal affordance without restyling ChatUI.
-  // Collapse affordance on the tabs bar only — a panel-wide dblclick
-  // would fire while double-tapping the input or spamming Send.
-  ui.querySelector('#chat-tabs')?.addEventListener('dblclick', () => { open = false; applyOpen(); });
+  // Closing lives on ChatUI's explicit ✕ (the onClose above). The old
+  // dblclick-on-tabs collapse was a touch footgun: two quick taps while
+  // switching channels read as a dblclick and made the panel vanish.
   applyOpen();
   parent.appendChild(toggle);
 

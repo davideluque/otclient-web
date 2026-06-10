@@ -78,6 +78,24 @@ describe('bindChat', () => {
     warn.mockRestore();
   });
 
+  it('the ✕ button collapses the panel behind the 💬 toggle', () => {
+    const { client } = makeClient();
+    bindChat(client);
+    const ui = document.querySelector('#chat-ui') as HTMLElement;
+    // Tests run with a fine pointer, so the panel starts open.
+    expect(ui.style.display).toBe('flex');
+
+    (document.querySelector('#chat-close') as HTMLButtonElement).click();
+    expect(ui.style.display).toBe('none');
+
+    // The floating 💬 toggle reopens it.
+    const toggle = [...document.querySelectorAll('body > button')]
+      .find((b) => b.textContent === '💬') as HTMLButtonElement;
+    expect(toggle.style.display).toBe('block');
+    toggle.click();
+    expect(ui.style.display).toBe('flex');
+  });
+
   it('destroy removes the UI and toggle', () => {
     const { client } = makeClient();
     const binding = bindChat(client);

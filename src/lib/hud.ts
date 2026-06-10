@@ -38,7 +38,7 @@ function ensureStyles(): void {
     }
     .hud .hud-level {
       width: 34px; height: 34px; border-radius: 50%;
-      background: #1a1a2e; border: 2px solid #7c5cbf;
+      background: #161616; border: 2px solid #9a9a9a;
       color: #e0e0e0; font-size: 0.8rem; font-weight: bold;
       display: flex; align-items: center; justify-content: center;
     }

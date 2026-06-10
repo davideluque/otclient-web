@@ -63,7 +63,7 @@ export function createChatUI(
       font-size: 0.75rem; white-space: nowrap;
     }
     .chat-tabs button.active { background: #333; color: #fff; border-bottom-color: #333; }
-    .chat-tabs button.unread { color: #7c5cbf; }
+    .chat-tabs button.unread { color: #9a9a9a; }
     .chat-close {
       background: none; border: none; color: #888;
       font-size: 0.95rem; padding: 4px 12px; cursor: pointer;
@@ -78,7 +78,7 @@ export function createChatUI(
       height: 6.5em; flex: none; overflow-y: auto; padding: 6px 8px;
     }
     .chat-messages .msg { margin: 2px 0; line-height: 1.4; }
-    .chat-messages .msg .sender { color: #7c5cbf; font-weight: bold; }
+    .chat-messages .msg .sender { color: #9a9a9a; font-weight: bold; }
     .chat-messages .msg .text { color: #ddd; }
     .chat-messages .msg .timestamp { color: #555; font-size: 0.7rem; margin-right: 4px; }
     .chat-input-row {
@@ -92,9 +92,9 @@ export function createChatUI(
       font-size: 16px;
       outline: none;
     }
-    #chat-input:focus { border-color: #7c5cbf; }
+    #chat-input:focus { border-color: #9a9a9a; }
     #chat-send {
-      background: #7c5cbf; color: #fff; border: none;
+      background: #2e2e2e; color: #fff; border: 1px solid #777;
       border-radius: 4px; padding: 6px 12px; cursor: pointer;
       font-size: 0.85rem;
     }

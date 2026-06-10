@@ -43,8 +43,8 @@ function ensureStyles(): void {
     }
     .spell-bar button {
       width: 56px; height: 56px; border-radius: 50%;
-      background: rgba(26,26,46,0.9); color: #e0e0e0;
-      border: 2px solid #7c5cbf; font-size: 0.7rem;
+      background: rgba(22,22,22,0.9); color: #e0e0e0;
+      border: 2px solid #9a9a9a; font-size: 0.7rem;
       font-family: system-ui, sans-serif;
       position: relative; overflow: hidden;
       cursor: pointer; touch-action: manipulation;

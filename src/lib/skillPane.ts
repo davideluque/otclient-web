@@ -29,13 +29,13 @@ function ensureStyles(): void {
     .skill-pane {
       position: fixed; top: 50%; right: 12px; transform: translateY(-50%);
       width: 190px; padding: 10px 12px;
-      background: rgba(26,26,46,0.95); color: #e0e0e0;
-      border: 1px solid #7c5cbf; border-radius: 10px;
+      background: rgba(22,22,22,0.95); color: #e0e0e0;
+      border: 1px solid #9a9a9a; border-radius: 10px;
       font-family: system-ui, sans-serif; font-size: 0.78rem;
       z-index: 30; user-select: none;
     }
     .skill-pane h3 {
-      margin: 0 0 8px; font-size: 0.85rem; color: #7c5cbf;
+      margin: 0 0 8px; font-size: 0.85rem; color: #9a9a9a;
     }
     .skill-pane .skill { margin: 6px 0; }
     .skill-pane .skill .row {
@@ -47,7 +47,7 @@ function ensureStyles(): void {
       overflow: hidden;
     }
     .skill-pane .skill .bar .fill {
-      height: 100%; background: #7c5cbf; transition: width 0.25s ease;
+      height: 100%; background: #9a9a9a; transition: width 0.25s ease;
     }
   `;
   document.head.appendChild(style);

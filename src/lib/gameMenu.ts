@@ -29,14 +29,14 @@ function ensureStyles(): void {
     .game-menu-btn {
       position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); right: 8px;
       width: 40px; height: 40px; border-radius: 10px;
-      background: rgba(26,26,46,0.9); color: #e0e0e0;
-      border: 1px solid #7c5cbf; font-size: 1.1rem;
+      background: rgba(22,22,22,0.9); color: #e0e0e0;
+      border: 1px solid #9a9a9a; font-size: 1.1rem;
       z-index: 41; cursor: pointer; touch-action: manipulation;
     }
     .game-menu-pane {
       position: fixed; top: 0; right: 0; bottom: 0; width: min(75vw, 260px);
-      background: rgba(20,20,36,0.98); color: #e0e0e0;
-      border-left: 1px solid #7c5cbf;
+      background: rgba(20,20,20,0.98); color: #e0e0e0;
+      border-left: 1px solid #9a9a9a;
       font-family: system-ui, sans-serif; font-size: 0.9rem;
       z-index: 40; padding: 56px 0 12px;
       transform: translateX(100%); transition: transform 0.2s ease;
@@ -48,7 +48,7 @@ function ensureStyles(): void {
       padding: 12px 18px; font-size: 0.9rem; cursor: pointer;
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .game-menu-pane button:active { background: rgba(124,92,191,0.25); }
+    .game-menu-pane button:active { background: rgba(255,255,255,0.12); }
     .game-menu-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4);
       z-index: 39; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;

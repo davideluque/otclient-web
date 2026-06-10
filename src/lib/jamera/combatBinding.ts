@@ -59,7 +59,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   attackBtn.textContent = '⚔';
   attackBtn.style.cssText = [
     'width:56px', 'height:56px', 'border-radius:50%',
-    'background:rgba(26,26,46,0.9)', 'color:#e0e0e0',
+    'background:rgba(22,22,22,0.9)', 'color:#e0e0e0',
     'border:2px solid #555', 'font-size:1.3rem',
     'cursor:pointer', 'touch-action:manipulation',
   ].join(';');

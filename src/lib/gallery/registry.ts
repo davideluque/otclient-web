@@ -19,6 +19,7 @@ import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
+import { createBattleList } from '../battleList';
 import { createCombatModes } from '../combatModes';
 import { createStatusBar, StatusIcon } from '../statusBar';
 import { createMetricsOverlay } from '../jamera/metricsOverlay';
@@ -258,6 +259,37 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Everything at once', () => { mask = 255; apply(); });
       knobs.button('Clear', () => { mask = 0; apply(); });
       return () => bar.destroy();
+    },
+  },
+
+  {
+    name: 'Battle list',
+    description:
+      'Visible creatures with name + health bar (left edge), tap to '
+      + 'target — routes through the combat binding so the ⚔ circle and '
+      + 'sticky targeting stay in sync. Toggled from the menu (Battle).',
+    mount({ knobs, log }) {
+      let targeted = 0;
+      const entries = [
+        { id: 1, name: 'Rat', healthPercent: 100 },
+        { id: 2, name: 'Cave Rat', healthPercent: 62 },
+        { id: 3, name: 'Rotworm', healthPercent: 18 },
+      ];
+      const render = () => list.setEntries(entries.map((e) => ({ ...e, targeted: e.id === targeted })));
+      const list = createBattleList({
+        onSelect: (id) => {
+          targeted = targeted === id ? 0 : id;
+          render();
+          log(`target → ${targeted || 'none'}`);
+        },
+      });
+      render();
+      knobs.button('Damage the rat', () => {
+        entries[0].healthPercent = Math.max(0, entries[0].healthPercent - 25);
+        render();
+      });
+      knobs.toggle('Visible', true, (on) => list.setVisible(on));
+      return () => list.destroy();
     },
   },
 

@@ -52,6 +52,15 @@ export interface MountOptions {
    * error and the character list re-enables.
    */
   waitForReady?: () => Promise<void>;
+
+  /**
+   * Dev convenience: submit these credentials immediately on mount and
+   * auto-pick the first character from the list — reload lands straight
+   * in the game. One-shot: a logout or kick returns to the normal form
+   * (otherwise logout would be untestable). Callers gate this on dev
+   * builds; never wire it up in production.
+   */
+  autoLogin?: { account: number; password: string };
 }
 
 export interface MountedScreen {
@@ -80,14 +89,24 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   const events: GameClientEvents = {};
   const client = new GameClient(proxyUrl, events, protocol);
 
+  // One-shot auto-pilot flag; cleared when the pick fires — and on any
+  // failure: a login error (bad dev password must not loop) or a drop
+  // back to disconnected (proxy offline kills the connection without an
+  // onLoginError), so a later manual login is never hijacked by a stale
+  // auto-pick.
+  let autoPickCharacter = opts.autoLogin !== undefined;
   let lastState: GameClientState = 'disconnected';
   events.onStateChange = (state) => {
     updateState(ui, state);
+    if (state === 'disconnected') autoPickCharacter = false;
     if (state === 'in_game') opts.onEnterGame?.(client);
     if (lastState === 'in_game' && state !== 'in_game') opts.onLeaveGame?.();
     lastState = state;
   };
-  events.onLoginError = (msg) => showError(ui, msg);
+  events.onLoginError = (msg) => {
+    autoPickCharacter = false;
+    showError(ui, msg);
+  };
   events.onCharacterList = (characters, premiumDays, motd) => {
     renderCharacterList(ui, characters, premiumDays, motd, async (char) => {
       try {
@@ -101,6 +120,12 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
         enableCharacterButtons(ui);
       }
     });
+    // Disarm on the FIRST list response either way — an empty list must
+    // not leave the auto-pilot lurking for a later manual login.
+    if (autoPickCharacter) {
+      autoPickCharacter = false;
+      if (characters.length > 0) ui.characterListEl.querySelector('button')?.click();
+    }
   };
   // Disconnect is already surfaced by `onStateChange` → `updateState`
   // (GameClient calls setState('disconnected') immediately before
@@ -129,15 +154,27 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
     // boundary so the wire only ever sees in-range values.
     const ACCOUNT_MAX = 0xffffffff; // 2^32 - 1
     if (!Number.isInteger(account) || account <= 0 || account > ACCOUNT_MAX) {
+      // A malformed auto-login config dies here without any state change
+      // or error event — disarm so it can't hijack a later manual login.
+      autoPickCharacter = false;
       showError(ui, `Account must be a positive integer between 1 and ${ACCOUNT_MAX}.`);
       return;
     }
     try {
       await client.login(account, password);
     } catch (err) {
+      autoPickCharacter = false;
       showError(ui, (err as Error).message);
     }
   });
+
+  if (opts.autoLogin) {
+    ui.accountInput.value = String(opts.autoLogin.account);
+    ui.passwordInput.value = opts.autoLogin.password;
+    // Through the real submit path so validation, error display, and the
+    // in-flight guard all behave exactly as a manual login would.
+    ui.form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
 
   return {
     client,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ChatManager } from '../lib/chat/ChatManager';
-import { MessageType, ChannelId, type ChatMessage } from '../lib/net/7.6/chatProtocol';
+import { MessageType, ChannelId, type ChatMessage } from '../lib/net/common/types';
 
 function makeMsg(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

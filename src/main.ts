@@ -25,6 +25,7 @@ import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
   createLightMaskTexture,
+  LightSpritePool,
   NIGHT_AMBIENT,
   DAY_AMBIENT,
   type LightingOptions,
@@ -33,7 +34,7 @@ import { createFileLoader } from './lib/fileLoader';
 import { tryAutoload } from './lib/assetAutoload';
 import { putCached } from './lib/assetCache';
 import { resolveVersion } from './lib/clientVersion';
-import type { RenderTexture } from 'pixi.js';
+import { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
@@ -71,17 +72,24 @@ function addFileToList(name: string) {
 // Reset on throw so a failed autoload (corrupt/incompatible assets) doesn't
 // permanently block the manual upload retry path.
 let bootStarted = false;
-async function startAppOnce(loaded: CompleteLoadedFiles): Promise<void> {
+async function startAppOnce(loaded: CompleteLoadedFiles, fromCache = false): Promise<void> {
   if (bootStarted) return;
   bootStarted = true;
+  // startApp transfers loaded.otbm to the parser worker, which detaches it
+  // on this thread — so the bundle must be snapshotted *before* boot or the
+  // cache write would see a zero-byte buffer. Cache-origin boots skip the
+  // write entirely; the bundle was read out of the cache a moment ago.
+  const toCache = fromCache ? null : { ...loaded, otbm: loaded.otbm.slice(0) };
   try {
     await startApp(loaded);
-    // Boot succeeded — stash for next launch so the installed PWA opens
-    // instantly without re-fetching or asking for an upload. Fire-and-forget;
-    // a cache write failure must never break the running app.
-    putCached(resolveVersion(), loaded).catch(err =>
-      console.warn('asset cache write failed:', err),
-    );
+    if (toCache) {
+      // Boot succeeded — stash for next launch so the installed PWA opens
+      // instantly without re-fetching or asking for an upload. Fire-and-forget;
+      // a cache write failure must never break the running app.
+      putCached(resolveVersion(), toCache).catch(err =>
+        console.warn('asset cache write failed:', err),
+      );
+    }
   } catch (e) {
     bootStarted = false;
     throw e;
@@ -210,7 +218,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
     antialias: false,
     resolution: window.devicePixelRatio,
     autoDensity: true,
+    // Prefer WebGPU where available (Chrome/Edge desktop, Chrome Android 121+,
+    // Safari TP). PixiJS falls back to WebGL automatically when WebGPU init
+    // fails or isn't supported. Log which one actually got selected.
+    preference: 'webgpu',
   });
+  console.log(`[render] PixiJS renderer: ${app.renderer.name}`);
 
   // Hide loader, show canvas
   loaderEl.style.display = 'none';
@@ -258,7 +271,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // when the player actually moves tiles.
   let lastPlayerDirection = Number.NaN;
   let ambient: LightingOptions = NIGHT_AMBIENT;
-  let illuminationTexture: RenderTexture | null = null;
+  // Long-lived render target + sprite pool for the lighting overlay.
+  // Both are reused across every rebuild — buildIlluminationOverlay resizes
+  // the texture as the visible region changes (cheap) and recycles light
+  // bubbles from the pool, so a tile-rebuild no longer allocates a fresh
+  // RenderTexture and a Sprite per light source.
+  const illuminationTexture = RenderTexture.create({ width: 1, height: 1 });
+  const lightSpritePool = new LightSpritePool();
   let animatedSprites: AnimatedSprite[] = [];
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
@@ -289,10 +308,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (tileContainer) {
       app.stage.removeChild(tileContainer);
       tileContainer.destroy({ children: true });
-    }
-    if (illuminationTexture) {
-      illuminationTexture.destroy(true);
-      illuminationTexture = null;
     }
 
     const visible = viewport.getVisibleTiles();
@@ -389,13 +404,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
     tileContainer.addChild(below.container);
 
     if (ambient.enabled) {
-      const { sprite, texture } = buildIlluminationOverlay(
+      const sprite = buildIlluminationOverlay(
         app, tileMap, datIndex, lightMask,
+        illuminationTexture, lightSpritePool,
         visible.x1, visible.y1, visible.x2, visible.y2, 7,
         ambient,
       );
       tileContainer.addChild(sprite);
-      illuminationTexture = texture;
     }
 
     app.stage.addChild(tileContainer);
@@ -876,8 +891,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
         // mobile this excludes the URL bar / soft keyboard; on desktop
         // it tracks pinch-zoom. innerWidth/innerHeight as a fallback for
         // older browsers (notably anything pre-iOS 13).
+        // Keep the raw float — visualViewport reports fractional pixels on
+        // non-integer-DPR devices (common on Android), and Pixi handles
+        // sub-pixel sizing internally. Flooring to an int would leave a
+        // ~0.5px black gap and would also disagree with `initialW/H` above.
+        // Skip when either axis collapsed below a renderable pixel (hidden
+        // tab, mid-orientation), which also prevents a divide-by-near-zero
+        // in computePlayZoom.
         const w = window.visualViewport?.width ?? window.innerWidth;
         const h = window.visualViewport?.height ?? window.innerHeight;
+        if (w < 1 || h < 1) return;
         // visualViewport.resize fires liberally on mobile (URL-bar
         // reveal, pinch); skip if nothing actually changed.
         if (w === viewport.screenWidth && h === viewport.screenHeight) return;

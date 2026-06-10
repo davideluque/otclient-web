@@ -6,8 +6,8 @@ import {
   buildPrivateMessagePacket,
   buildWhisperPacket,
   buildYellPacket,
-  MessageType,
 } from '../lib/net/7.6/chatProtocol';
+import { MessageType } from '../lib/net/common/types';
 import { InputPacket } from '../lib/net/common/InputPacket';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
 

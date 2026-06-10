@@ -1,47 +1,7 @@
 import { InputPacket } from '../common/InputPacket';
 import { OutputPacket } from '../common/OutputPacket';
-
-// --- Message types (SpeakType in OT 7.6) ---
-
-export const MessageType = {
-  Say: 0x01,
-  Whisper: 0x02,
-  Yell: 0x03,
-  PrivateFrom: 0x04,
-  PrivateTo: 0x05,
-  ChannelManagement: 0x06,
-  Channel: 0x07,
-  ChannelHighlight: 0x08,
-  Broadcast: 0x09,
-  ChannelRed: 0x0a,
-  PrivateRed: 0x0b,
-  MonsterSay: 0x0d,
-  MonsterYell: 0x0e,
-} as const;
-
-export type MessageType = (typeof MessageType)[keyof typeof MessageType];
-
-// --- Standard channel IDs ---
-
-export const ChannelId = {
-  Default: 0,
-  GameChat: 7,
-  Trade: 5,
-  RLChat: 6,
-  Help: 8,
-  Private: 0xffff,
-} as const;
-
-// --- Data types ---
-
-export interface ChatMessage {
-  senderName: string;
-  messageType: number;
-  text: string;
-  position?: { x: number; y: number; z: number };
-  channelId?: number;
-  timestamp: number;
-}
+import { MessageType } from '../common/types';
+import type { ChatMessage } from '../common/types';
 
 // --- Incoming packet parsers ---
 

@@ -1,0 +1,209 @@
+import { Connection } from './Connection';
+import { PacketDispatcher } from './PacketDispatcher';
+import { generateXteaKey, type XteaKey } from './xtea';
+import type { InputPacket } from './InputPacket';
+import type { OutputPacket } from './OutputPacket';
+import type {
+  GameProtocol,
+  CharacterInfo,
+  LoginResponse,
+} from './types';
+
+export type GameClientState =
+  | 'disconnected'
+  | 'logging_in'
+  | 'character_list'
+  | 'entering_game'
+  | 'in_game';
+
+export interface GameClientEvents {
+  onStateChange?: (state: GameClientState) => void;
+  onCharacterList?: (characters: CharacterInfo[], premiumDays: number, motd?: string) => void;
+  onLoginError?: (message: string) => void;
+  onGamePacket?: (packet: InputPacket) => void;
+  onDisconnect?: () => void;
+}
+
+/**
+ * High-level game client that manages the login flow and game connection.
+ * Protocol-agnostic: receives a GameProtocol implementation via constructor
+ * injection rather than importing version-specific builders/parsers directly.
+ */
+export class GameClient {
+  private proxyUrl: string;
+  private loginConn: Connection;
+  private gameConn: Connection | null = null;
+  private xteaKey: XteaKey | null = null;
+  private state: GameClientState = 'disconnected';
+  private events: GameClientEvents;
+  private dispatcher: PacketDispatcher;
+  private protocol: GameProtocol;
+  private accountNumber = 0;
+  private password = '';
+
+  constructor(proxyUrl: string, events: GameClientEvents, protocol: GameProtocol) {
+    this.proxyUrl = proxyUrl;
+    this.loginConn = new Connection(proxyUrl);
+    this.events = events;
+    this.dispatcher = new PacketDispatcher();
+    this.protocol = protocol;
+  }
+
+  getState(): GameClientState {
+    return this.state;
+  }
+
+  getDispatcher(): PacketDispatcher {
+    return this.dispatcher;
+  }
+
+  /**
+   * Expose the injected protocol so consumers (GameWorld, ChatUI, etc.)
+   * can read its opcode constants and call its builders without having
+   * to construct a parallel `GameProtocol` instance just to peek at
+   * version-specific values.
+   */
+  getProtocol(): GameProtocol {
+    return this.protocol;
+  }
+
+  /**
+   * Step 1: Connect to login server and request character list.
+   */
+  async login(accountNumber: number, password: string): Promise<void> {
+    this.accountNumber = accountNumber;
+    this.password = password;
+    this.setState('logging_in');
+
+    this.loginConn.setPacketHandler((packet) => {
+      this.handleLoginResponse(packet);
+    });
+
+    this.loginConn.setErrorHandler((err) => {
+      this.events.onLoginError?.(err);
+      this.setState('disconnected');
+    });
+
+    try {
+      await this.loginConn.connect('/login');
+      const loginPacket = this.protocol.login.buildLoginRequest(accountNumber, password);
+      this.loginConn.send(loginPacket);
+    } catch {
+      this.setState('disconnected');
+    }
+  }
+
+  /**
+   * Step 2: Select a character and connect to the game server.
+   *
+   * The game phase routes through the same WebSocket proxy as the login
+   * phase, NOT `character.worldIp:worldPort`. Browsers cannot open raw
+   * TCP sockets, so a WS↔TCP bridge is always in the path; our proxy is
+   * single-target (one `OT_HOST` env var, routes by `/login` vs `/game`
+   * path), which means `character.worldIp` — the OT server's view of
+   * itself — isn't a usable target from the browser. It's logged for
+   * diagnostics and so the announced address remains visible.
+   *
+   * `worldIp` becomes a real target again only if (a) the OT server
+   * speaks WebSocket natively, removing the proxy from the path, or
+   * (b) the proxy learns to route on a client-supplied target (multi-
+   * world support). Both require paired client+proxy changes; out of
+   * scope here.
+   */
+  async selectCharacter(character: CharacterInfo): Promise<void> {
+    this.setState('entering_game');
+    this.loginConn.disconnect();
+
+    console.info(
+      `[net] game phase: announced ${character.worldIp}:${character.worldPort}, routing via proxy ${this.proxyUrl}`,
+    );
+    // Disconnect any prior gameConn before reassigning — otherwise a
+    // second selectCharacter call (rapid retry, future programmatic
+    // re-select) would orphan the previous WebSocket.
+    this.gameConn?.disconnect();
+    this.gameConn = new Connection(this.proxyUrl);
+
+    this.gameConn.setPacketHandler((packet) => {
+      this.dispatcher.dispatch(packet);
+    });
+
+    this.gameConn.setCloseHandler(() => {
+      this.setState('disconnected');
+      this.events.onDisconnect?.();
+    });
+
+    this.gameConn.setErrorHandler((err) => {
+      this.events.onLoginError?.(err);
+      this.setState('disconnected');
+    });
+
+    try {
+      await this.gameConn.connect('/game');
+      const gamePacket = this.protocol.login.buildGameLogin(
+        this.accountNumber,
+        character.name,
+        this.password,
+      );
+      this.gameConn.send(gamePacket);
+      if (this.protocol.config.useXTEA) {
+        // XTEA was introduced in Tibia 8.0+; the key is generated here so
+        // the protocol implementation can negotiate it before encrypted
+        // game packets start flowing.
+        this.xteaKey = generateXteaKey();
+        this.gameConn.setXteaKey(this.xteaKey);
+      }
+      this.setState('in_game');
+    } catch {
+      this.setState('disconnected');
+    }
+  }
+
+  disconnect(): void {
+    this.loginConn.disconnect();
+    this.gameConn?.disconnect();
+    this.setState('disconnected');
+  }
+
+  /**
+   * Send a packet to the game server. Throws if not currently `in_game`
+   * — silent no-ops would hide the most common caller bug (firing
+   * packets before the login handshake completes). Honours
+   * `protocol.config.useXTEA` so 8.x implementations get encrypted
+   * payloads automatically.
+   */
+  send(packet: OutputPacket): void {
+    if (this.state !== 'in_game') {
+      throw new Error(`Cannot send packet: client state is ${this.state}`);
+    }
+    if (!this.gameConn) {
+      // Defense in depth: the state machine guarantees gameConn is set
+      // whenever state is in_game, but spelling out a distinct error
+      // makes any future state/connection desync easier to spot.
+      throw new Error('Cannot send packet: game connection is not initialized');
+    }
+    this.gameConn.send(packet, this.protocol.config.useXTEA);
+  }
+
+  private handleLoginResponse(packet: InputPacket): void {
+    const response = this.protocol.login.parseLoginResponse(packet);
+
+    if (this.protocol.login.isLoginError(response)) {
+      this.events.onLoginError?.(response.message);
+      this.setState('disconnected');
+      return;
+    }
+
+    const loginResp = response as LoginResponse;
+    this.setState('character_list');
+    this.events.onCharacterList?.(
+      loginResp.characters,
+      loginResp.premiumDays,
+      loginResp.motd,
+    );
+  }
+
+  private setState(state: GameClientState): void {
+    this.state = state;
+    this.events.onStateChange?.(state);
+  }
+}

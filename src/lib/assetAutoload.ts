@@ -10,7 +10,7 @@
 
 import type { CompleteLoadedFiles } from './fileLoader';
 import { resolveVersion } from './clientVersion';
-import { getCached } from './assetCache';
+import { clearCached, getCached } from './assetCache';
 
 type FileKey = keyof CompleteLoadedFiles;
 
@@ -35,7 +35,9 @@ function baseFor(version: string): string {
 export interface AutoloadOptions {
   onStatus: (msg: string, isError?: boolean) => void;
   addFileToList: (name: string) => void;
-  startApp: (files: CompleteLoadedFiles) => Promise<void>;
+  // fromCache lets the boot path skip re-writing a bundle that was just
+  // read out of the asset cache.
+  startApp: (files: CompleteLoadedFiles, fromCache?: boolean) => Promise<void>;
 }
 
 /**
@@ -52,8 +54,15 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
   const cached = await getCached(version);
   if (cached) {
     options.onStatus('Loading cached assets...');
-    await options.startApp(cached);
-    return true;
+    try {
+      await options.startApp(cached, true);
+      return true;
+    } catch (e) {
+      // Stale or corrupt bundle — drop it and fall through to the live
+      // manifest/upload paths so one bad cache write can't brick the app.
+      console.warn('Cached assets failed to boot; clearing cache:', e);
+      await clearCached(version);
+    }
   }
 
   const base = baseFor(version);

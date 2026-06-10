@@ -4,7 +4,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tryAutoload, type AutoloadOptions } from '../lib/assetAutoload';
-import { putCached } from '../lib/assetCache';
+import { getCached, putCached } from '../lib/assetCache';
 
 const VALID_MANIFEST = {
   files: { dat: 'Tibia.dat', spr: 'Tibia.spr', otb: 'items.otb', otbm: 'world.otbm' },
@@ -226,7 +226,37 @@ describe('tryAutoload', () => {
 
     expect(ok).toBe(true);
     expect(opts.startApp).toHaveBeenCalledTimes(1);
+    // fromCache=true so the boot path doesn't re-write the bundle it just read.
+    expect(opts.startApp.mock.calls[0][1]).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(opts.onStatus.mock.calls[0][0]).toMatch(/cached/i);
+  });
+
+  it('clears a bad cached bundle and falls back to the network when boot throws', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('manifest.json')) return Promise.resolve(jsonResponse(VALID_MANIFEST));
+      return Promise.resolve(bufResponse(1));
+    }) as typeof fetch;
+    const opts = makeOptions();
+    opts.startApp
+      .mockRejectedValueOnce(new Error('corrupt cached assets'))
+      .mockResolvedValueOnce(undefined);
+
+    const ok = await tryAutoload(opts);
+
+    expect(ok).toBe(true);
+    expect(opts.startApp).toHaveBeenCalledTimes(2);
+    // First attempt was the cache, second the freshly fetched bundle.
+    expect(opts.startApp.mock.calls[0][1]).toBe(true);
+    expect(opts.startApp.mock.calls[1][1]).not.toBe(true);
+    // The bad bundle must be gone so the next launch doesn't loop on it.
+    expect(await getCached('760')).toBeNull();
   });
 });

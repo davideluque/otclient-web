@@ -1,59 +1,12 @@
 import { InputPacket } from '../common/InputPacket';
-
-export interface CreatureMoveEvent {
-  type: 'move';
-  creatureId: number;
-  fromX: number;
-  fromY: number;
-  fromZ: number;
-  fromStack: number;
-  toX: number;
-  toY: number;
-  toZ: number;
-}
-
-export interface CreatureTurnEvent {
-  type: 'turn';
-  creatureId: number;
-  direction: number;
-}
-
-export interface CreatureHealthEvent {
-  type: 'health';
-  creatureId: number;
-  healthPercent: number;
-}
-
-export interface CreatureLightEvent {
-  type: 'light';
-  creatureId: number;
-  lightLevel: number;
-  lightColor: number;
-}
-
-export interface CreatureSpeedEvent {
-  type: 'speed';
-  creatureId: number;
-  speed: number;
-}
-
-export interface CreatureOutfitEvent {
-  type: 'outfit';
-  creatureId: number;
-  lookType: number;
-  head: number;
-  body: number;
-  legs: number;
-  feet: number;
-}
-
-export type CreatureEvent =
-  | CreatureMoveEvent
-  | CreatureTurnEvent
-  | CreatureHealthEvent
-  | CreatureLightEvent
-  | CreatureSpeedEvent
-  | CreatureOutfitEvent;
+import type {
+  CreatureMoveEvent,
+  CreatureTurnEvent,
+  CreatureHealthEvent,
+  CreatureLightEvent,
+  CreatureSpeedEvent,
+  CreatureOutfitEvent,
+} from '../common/types';
 
 /**
  * Parse a creature move packet (opcode 0x6d).

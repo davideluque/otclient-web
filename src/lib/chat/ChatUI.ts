@@ -1,11 +1,6 @@
 import type { ChatManager } from './ChatManager';
-import {
-  buildSayPacket,
-  buildChannelMessagePacket,
-  buildPrivateMessagePacket,
-  buildWhisperPacket,
-  buildYellPacket,
-} from '../net/7.6/chatProtocol';
+import type { GameProtocol } from '../net/common/types';
+import { ChannelId } from '../net/common/types';
 import type { OutputPacket } from '../net/common/OutputPacket';
 
 export type SendPacketFn = (packet: OutputPacket) => void;
@@ -16,6 +11,7 @@ export type SendPacketFn = (packet: OutputPacket) => void;
  */
 export function createChatUI(
   chatManager: ChatManager,
+  protocol: GameProtocol,
   sendPacket: SendPacketFn,
 ): HTMLElement {
   const root = document.createElement('div');
@@ -114,7 +110,7 @@ export function createChatUI(
     if (!text) return;
     inputEl.value = '';
 
-    const packet = parseCommand(text, chatManager.activeChannelId);
+    const packet = parseCommand(text, chatManager.activeChannelId, protocol);
     if (packet) sendPacket(packet);
   }
 
@@ -137,30 +133,66 @@ export function createChatUI(
 }
 
 /**
- * Parse chat commands: /w name msg, /whisper name msg, /yell msg
+ * Parse chat commands:
+ * - /w Name msg → private message to Name
+ * - /whisper Name msg → private message to Name (alias for /w)
+ * - /whisper msg (single word) → local whisper speech
+ * - /yell msg → yell speech
+ *
+ * Ambiguity note: `/whisper Name msg` is treated as private — preserving the
+ * "/whisper Name msg" command contract — so a multi-word local whisper must
+ * be sent without the `/whisper` prefix.
+ *
+ * Unknown commands: any input starting with `/` that doesn't match a known
+ * command above returns null (silent no-op). This prevents typo-driven
+ * privacy leaks — e.g. `/wAlice secret` (missing space) or `/pm Bob secret`
+ * would otherwise fall through to the public Say/channel branch.
+ *
+ * Leading whitespace is stripped before any prefix matching so callers can't
+ * accidentally bypass the slash-command guards by passing `"  /w Alice hi"`
+ * — `String.prototype.trimStart` covers Unicode whitespace per the spec.
  */
-function parseCommand(text: string, activeChannelId: number): OutputPacket | null {
-  if (text.startsWith('/w ') || text.startsWith('/whisper ')) {
-    const parts = text.replace(/^\/(w|whisper)\s+/, '').split(' ');
-    const name = parts[0];
-    const msg = parts.slice(1).join(' ');
-    if (name && msg) return buildPrivateMessagePacket(name, msg);
-    return null;
-  }
+export function parseCommand(
+  text: string,
+  activeChannelId: number,
+  protocol: GameProtocol,
+): OutputPacket | null {
+  text = text.trimStart();
 
-  if (text.startsWith('/yell ')) {
-    return buildYellPacket(text.slice(6));
+  if (text.startsWith('/w ')) {
+    return parsePrivateOrNull(text.slice(3), protocol);
   }
 
   if (text.startsWith('/whisper ')) {
-    return buildWhisperPacket(text.slice(9));
+    const rest = text.slice(9).replace(/^\s+/, '');
+    const match = rest.match(/^(\S+)\s+(.+)$/);
+    if (match) {
+      return protocol.chat.buildPrivateMessage(match[1], match[2]);
+    }
+    return protocol.chat.buildWhisper(rest);
+  }
+
+  if (text.startsWith('/yell ')) {
+    return protocol.chat.buildYell(text.slice(6));
+  }
+
+  // Any other slash input is an unrecognised command — drop it rather than
+  // leak intended-private text to the public channel.
+  if (text.startsWith('/')) {
+    return null;
   }
 
   // Default: send to active channel or as Say
-  if (activeChannelId === 0) {
-    return buildSayPacket(text);
+  if (activeChannelId === ChannelId.Default) {
+    return protocol.chat.buildSay(text);
   }
-  return buildChannelMessagePacket(activeChannelId, text);
+  return protocol.chat.buildChannelMessage(activeChannelId, text);
+}
+
+function parsePrivateOrNull(rest: string, protocol: GameProtocol): OutputPacket | null {
+  const match = rest.replace(/^\s+/, '').match(/^(\S+)\s+(.+)$/);
+  if (!match) return null;
+  return protocol.chat.buildPrivateMessage(match[1], match[2]);
 }
 
 function escapeHtml(text: string): string {

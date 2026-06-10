@@ -1,4 +1,5 @@
 import { createSpellBar, type SpellBarHandle } from '../spellBar';
+import { loadSpellSlots, spellByWords } from '../spells';
 import type { GameClient } from '../net/common/GameClient';
 import type { GameWorld } from '../GameWorld';
 
@@ -17,6 +18,8 @@ import type { GameWorld } from '../GameWorld';
  *   target dancing. Toggling off sends Attack(0) (stop).
  */
 export interface CombatBindingHandle {
+  /** Re-read the configured spell slots (the customizer's apply hook). */
+  reloadSpells(): void;
   /** Whether auto-attack is engaged (tests + the Settings toggle read this). */
   readonly attacking: boolean;
   /** The currently attacked creature id (0 = none) — battle list highlight. */
@@ -34,11 +37,17 @@ export interface CombatBindingHandle {
 
 const RETARGET_MS = 500;
 
-const SPELLS = [
-  { id: 'exura', label: 'exura', cooldownMs: 1000 },
-  { id: 'exura vita', label: 'vita', cooldownMs: 2000 },
-  { id: 'utevo lux', label: 'lux', cooldownMs: 2000 },
-] as const;
+/** The configured right-side slots, resolved through the registry. */
+function slotSpells(): Array<{ id: string; label: string; cooldownMs: number }> {
+  return loadSpellSlots().map((words) => {
+    const def = spellByWords(words);
+    return {
+      id: words,
+      label: def ? `${def.icon} ${def.name.split(' ')[0]}` : words,
+      cooldownMs: def?.cooldownMs ?? 2000,
+    };
+  });
+}
 
 export function bindCombat(client: GameClient, world: GameWorld): CombatBindingHandle {
   const protocol = client.getProtocol();
@@ -53,8 +62,8 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     }
   };
 
-  const bar: SpellBarHandle = createSpellBar({
-    spells: [...SPELLS],
+  let bar: SpellBarHandle = createSpellBar({
+    spells: slotSpells(),
     onCast: (id) => send(protocol.chat.buildSay(id)),
   });
 
@@ -132,7 +141,19 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     send(protocol.actions.buildAttack(id));
   };
 
+  const reloadSpells = (): void => {
+    // Rebuild the bar with the new slots; the ⚔ circle rides the bar,
+    // so re-prepend it (it keeps its current visual state).
+    bar.destroy();
+    bar = createSpellBar({
+      spells: slotSpells(),
+      onCast: (id) => send(protocol.chat.buildSay(id)),
+    });
+    bar.el.prepend(attackBtn);
+  };
+
   return {
+    reloadSpells,
     get attacking() { return attacking; },
     get targetId() { return attacking ? currentTarget : 0; },
     setAttacking,

@@ -12,6 +12,7 @@ import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
+import { bindInteractions, type InteractionsHandle } from './interactions';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -55,6 +56,8 @@ mountLoginScreen(root, {
     // next login, but freeing GPU resources shouldn't wait for one).
     teardownRenderer?.();
     teardownRenderer = null;
+    teardownInteractions?.destroy();
+    teardownInteractions = null;
   },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
@@ -84,11 +87,23 @@ mountLoginScreen(root, {
     teardownStats?.destroy();
     teardownStats = bindStats(client, document.body, [
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
+      {
+        label: 'Log out',
+        onSelect: () => {
+          try {
+            client.send(client.getProtocol().actions.buildLogout());
+          } catch (e) {
+            console.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
+          }
+          // The server saves and closes; the disconnect flows through
+          // onLeaveGame, which tears every per-session surface down.
+        },
+      },
     ]);
     ensurePixiApp().catch((err) => {
       console.warn('[jamera] PIXI bootstrap failed:', err);
     });
-    void mountRenderer(world);
+    void mountRenderer(world, client);
   },
 });
 
@@ -193,7 +208,7 @@ let onAtlasReady: ((atlas: SpriteAtlas) => void) | null = null;
 // mounts — can bind a dead session's world and leak its container.
 let mountEpoch = 0;
 
-async function mountRenderer(world: GameWorld): Promise<void> {
+async function mountRenderer(world: GameWorld, client?: GameClient): Promise<void> {
   const epoch = ++mountEpoch;
   teardownRenderer?.();
   teardownRenderer = null;
@@ -212,6 +227,8 @@ async function mountRenderer(world: GameWorld): Promise<void> {
   const mount = (atlas: SpriteAtlas): void => {
     if (epoch !== mountEpoch) return; // stale atlas callback
     teardownRenderer?.(); // never stack two bindings
+    teardownInteractions?.destroy();
+    teardownInteractions = client ? bindInteractions(client, world, app) : null;
     teardownRenderer = bindRenderer(world, atlas, app);
     console.info('[jamera] renderer bound to GameWorld');
   };
@@ -440,3 +457,6 @@ let teardownStats: StatsBindingHandle | null = null;
 
 // Per-session inventory binding, replaced on re-login like the rest.
 let teardownInventory: InventoryBindingHandle | null = null;
+
+// Per-session canvas interactions (look/use), replaced with the renderer.
+let teardownInteractions: InteractionsHandle | null = null;

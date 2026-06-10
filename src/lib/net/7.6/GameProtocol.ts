@@ -9,6 +9,7 @@ import type {
   ProtocolConfig,
   MovementProtocol,
   PlayerProtocol,
+  ActionsProtocol,
 } from '../common/types';
 import {
   buildLoginPacket,
@@ -19,6 +20,7 @@ import {
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
 import { buildMovePacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
+import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from './actionsProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -67,6 +69,7 @@ export class GameProtocol implements GameProtocolSpec {
   readonly chat: ChatProtocol;
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
+  readonly actions: ActionsProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
 
@@ -121,6 +124,12 @@ export class GameProtocol implements GameProtocolSpec {
     this.player = {
       parseStats: parsePlayerStats,
       parseSkills: parsePlayerSkills,
+    };
+
+    this.actions = {
+      buildLookAt: buildLookAtPacket,
+      buildUseItem: buildUseItemPacket,
+      buildLogout: buildLogoutPacket,
     };
 
     this.chat = {

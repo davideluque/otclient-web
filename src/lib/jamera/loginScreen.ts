@@ -120,9 +120,11 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
         enableCharacterButtons(ui);
       }
     });
-    if (autoPickCharacter && characters.length > 0) {
+    // Disarm on the FIRST list response either way — an empty list must
+    // not leave the auto-pilot lurking for a later manual login.
+    if (autoPickCharacter) {
       autoPickCharacter = false;
-      ui.characterListEl.querySelector('button')?.click();
+      if (characters.length > 0) ui.characterListEl.querySelector('button')?.click();
     }
   };
   // Disconnect is already surfaced by `onStateChange` → `updateState`
@@ -152,12 +154,16 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
     // boundary so the wire only ever sees in-range values.
     const ACCOUNT_MAX = 0xffffffff; // 2^32 - 1
     if (!Number.isInteger(account) || account <= 0 || account > ACCOUNT_MAX) {
+      // A malformed auto-login config dies here without any state change
+      // or error event — disarm so it can't hijack a later manual login.
+      autoPickCharacter = false;
       showError(ui, `Account must be a positive integer between 1 and ${ACCOUNT_MAX}.`);
       return;
     }
     try {
       await client.login(account, password);
     } catch (err) {
+      autoPickCharacter = false;
       showError(ui, (err as Error).message);
     }
   });

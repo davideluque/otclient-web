@@ -214,6 +214,32 @@ describe('mountLoginScreen autoLogin', () => {
     mounted.unmount();
   });
 
+  it('an empty character list disarms the auto-pick', async () => {
+    const mounted = mountLoginScreen(root, { autoLogin: { account: 1, password: '1' } });
+    await Promise.resolve();
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.([], 0, 'Welcome.');
+    // A later, populated list (manual re-login) must not be auto-picked.
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).not.toHaveBeenCalled();
+    mounted.unmount();
+  });
+
+  it('auto-login credentials failing form validation disarm the auto-pick', async () => {
+    // Account 0 dies in the synchronous U32 validation: no state change,
+    // no error event — only the in-handler disarm covers this path.
+    const mounted = mountLoginScreen(root, { autoLogin: { account: 0, password: '1' } });
+    await Promise.resolve();
+    expect(loginSpy).not.toHaveBeenCalled();
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).not.toHaveBeenCalled();
+    mounted.unmount();
+  });
+
   it('does not auto-anything without the option', async () => {
     const mounted = mountLoginScreen(root);
     await Promise.resolve();

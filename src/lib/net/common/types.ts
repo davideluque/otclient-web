@@ -261,6 +261,43 @@ export interface CreatureProtocol {
  */
 export type WalkDirection = 0 | 1 | 2 | 3;
 
+export interface PlayerStats {
+  health: number;
+  maxHealth: number;
+  capacity: number;
+  experience: number;
+  level: number;
+  levelPercent: number;
+  mana: number;
+  maxMana: number;
+  magicLevel: number;
+  magicLevelPercent: number;
+  soul: number;
+}
+
+export interface SkillValue {
+  level: number;
+  percent: number;
+}
+
+/** The seven 7.6 skills, in 0xA1 wire order. */
+export interface PlayerSkills {
+  fist: SkillValue;
+  club: SkillValue;
+  sword: SkillValue;
+  axe: SkillValue;
+  distance: SkillValue;
+  shielding: SkillValue;
+  fishing: SkillValue;
+}
+
+export interface PlayerProtocol {
+  /** Parse a 0xA0 player-stats payload. */
+  parseStats(packet: InputPacket): PlayerStats;
+  /** Parse a 0xA1 player-skills payload. */
+  parseSkills(packet: InputPacket): PlayerSkills;
+}
+
 export interface MovementProtocol {
   /** Build the client→server packet for one step in `direction`. */
   buildMove(direction: WalkDirection): OutputPacket;
@@ -375,6 +412,7 @@ export interface GameProtocol {
   readonly creature: CreatureProtocol;
   readonly chat: ChatProtocol;
   readonly movement: MovementProtocol;
+  readonly player: PlayerProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;
 }

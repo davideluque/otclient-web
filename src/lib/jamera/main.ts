@@ -10,6 +10,7 @@ import { bindRenderer } from './renderer';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
+import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -61,6 +62,8 @@ mountLoginScreen(root, {
     bindMovementInput(client, world);
     teardownChat?.destroy();
     teardownChat = bindChat(client);
+    teardownStats?.destroy();
+    teardownStats = bindStats(client);
     ensurePixiApp().catch((err) => {
       console.warn('[jamera] PIXI bootstrap failed:', err);
     });
@@ -410,3 +413,6 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
 // Per-session chat binding — replaced on re-login like the renderer and
 // movement input, so a dead session's handlers never feed the UI.
 let teardownChat: ChatBindingHandle | null = null;
+
+// Per-session HUD/skills binding, replaced on re-login like the rest.
+let teardownStats: StatsBindingHandle | null = null;

@@ -13,6 +13,8 @@ export interface WorldCreature {
   health: number;
   speed: number;
   outfit: MapCreature['outfit'];
+  /** performance.now()-style stamp of the last confirmed step (for walk animation). */
+  lastMoveAt?: number;
 }
 
 /**
@@ -332,6 +334,7 @@ export class GameWorld {
     self.x = this.playerX;
     self.y = this.playerY;
     self.z = this.playerZ;
+    self.lastMoveAt = Date.now();
     this.creatureRevision++;
   }
 
@@ -462,6 +465,7 @@ export class GameWorld {
         wc.x = event.toX;
         wc.y = event.toY;
         wc.z = event.toZ;
+        wc.lastMoveAt = Date.now();
       }
       // Add creature to destination tile
       const toTile = this.getTile(event.toX, event.toY, event.toZ);

@@ -16,6 +16,19 @@ const HALF_W_RIGHT = 9;
 const HALF_H_TOP = 6;
 const HALF_H_BOTTOM = 7;
 
+/** How long after a confirmed step a creature keeps its walk pose. */
+const WALK_ANIM_MS = 400;
+/** Walk frame duration — two alternating walk poses at ~8 fps. */
+const WALK_FRAME_MS = 125;
+
+function walkPhase(c: WorldCreature, now: number): number {
+  const last = c.lastMoveAt ?? 0;
+  if (now - last >= WALK_ANIM_MS) return 0; // idle
+  // Phases 1..n-1 are the walk cycle (renderPlayer clamps to the
+  // outfit's actual phase count).
+  return 1 + (Math.floor(now / WALK_FRAME_MS) % 2);
+}
+
 /**
  * Bridges `GameWorld` → PIXI: subscribes to `world.onChange` and repaints
  * the visible region around the player using the `SpriteAtlas` the cache
@@ -56,8 +69,24 @@ export function bindRenderer(
     container.y = app.screen.height / 2 - (world.playerY + 0.5) * TILE_SIZE;
   };
 
+  let rafId = 0;
+
   const update = (): void => {
-    const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}:${world.creatureRevision}`;
+    const now = Date.now();
+    // While anything is mid-walk-animation the key changes every walk
+    // frame, and a rAF loop keeps ticking until everyone is idle again.
+    const anyWalking = world.getAllCreatures().some(
+      (c) => c.z === world.playerZ && now - (c.lastMoveAt ?? 0) < WALK_ANIM_MS,
+    );
+    const walkTick = anyWalking ? Math.floor(now / WALK_FRAME_MS) : -1;
+    if (anyWalking && rafId === 0) {
+      const tick = (): void => {
+        rafId = 0;
+        update();
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+    const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}:${world.creatureRevision}:${walkTick}`;
     if (key === paintedKey && currentContainer) return;
 
     const { container } = renderTileRegion(
@@ -95,6 +124,7 @@ export function bindRenderer(
   update();
 
   return () => {
+    if (rafId !== 0) cancelAnimationFrame(rafId);
     window.removeEventListener('resize', onResize);
     if (world.onChange === update) world.onChange = null;
     if (currentContainer) {
@@ -126,8 +156,9 @@ function drawCreatures(
   );
   visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
+  const now = Date.now();
   for (const c of visible) {
-    const sprite = renderCreature(c, atlas, tintedCache);
+    const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
     if (sprite) container.addChild(sprite);
   }
 }
@@ -136,6 +167,7 @@ function renderCreature(
   c: WorldCreature,
   atlas: SpriteAtlas,
   tintedCache: TintedTextureCache,
+  animationPhase: number,
 ): Container | null {
   if (!c.outfit || c.outfit.lookType === 0) return null; // invisible / item-look: not drawn yet
   return renderPlayer(
@@ -147,7 +179,7 @@ function renderCreature(
       // (0 north, 1 east, 2 south, 3 west); renderPlayer additionally
       // clamps to the outfit's pattern count.
       direction: (c.direction & 3) as Direction,
-      animationPhase: 0, // idle pose; walk animation is a follow-up
+      animationPhase,
       outfit: {
         lookType: c.outfit.lookType,
         headColor: c.outfit.head,

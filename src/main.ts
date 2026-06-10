@@ -63,6 +63,36 @@ function addFileToList(name: string) {
   fileListEl.appendChild(li);
 }
 
+// Storage notices (quota, eviction, no-IDB) need their own surface: the
+// status line lives inside #loader, which is gone once the game is running,
+// and several of these fire *after* a successful boot. Click to dismiss.
+function showStorageNotice(msg: string): void {
+  const el = document.createElement('div');
+  el.className = 'storage-notice';
+  el.textContent = msg;
+  el.addEventListener('click', () => el.remove());
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 15000);
+}
+
+// "Low on storage" is only actionable with numbers — pair the bundle size
+// with navigator.storage.estimate() when the browser offers it.
+async function quotaNoticeText(files: CompleteLoadedFiles): Promise<string> {
+  const mb = (n: number) => Math.max(1, Math.round(n / 1024 / 1024));
+  const needMb = mb(files.dat.byteLength + files.spr.byteLength + files.otb.byteLength + files.otbm.byteLength);
+  let numbers = `~${needMb} MB needed`;
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.quota !== undefined && est.usage !== undefined) {
+      numbers += `, about ${mb(est.quota - est.usage)} MB available`;
+    }
+  } catch {
+    // estimate() is best-effort; the message works without it.
+  }
+  return `Your device is low on storage (${numbers}). The game still runs, ` +
+    'but it can\'t save assets for instant offline play. Free up space to enable it.';
+}
+
 // Shared boot guard: autoload and manual upload both feed startApp, and
 // nothing stops a user from dropping files while autoload's fetches are
 // still in flight. Wrap startApp so only one boot runs at a time and only
@@ -97,10 +127,21 @@ async function startAppOnce(loaded: CompleteLoadedFiles, fromCache = false): Pro
   if (toCache) {
     // Boot succeeded — stash for next launch so the installed PWA opens
     // instantly without re-fetching or asking for an upload. Fire-and-forget;
-    // a cache write failure must never break the running app.
-    putCached(resolveVersion(), toCache).catch(err =>
-      console.warn('asset cache write failed:', err),
-    );
+    // a cache write failure must never break the running app, but quota
+    // failures get surfaced so "offline play doesn't work" isn't a mystery.
+    void putCached(resolveVersion(), toCache).then(async result => {
+      if (result.ok) {
+        if (result.firstWrite) {
+          // Ask the browser not to evict our ~100MB bundle under disk
+          // pressure. Installed PWAs typically get this granted silently;
+          // doing it on the first write keeps any permission prompt
+          // contextual (the user just loaded the game).
+          await navigator.storage?.persist?.().catch(() => {});
+        }
+      } else if (result.reason === 'quota') {
+        showStorageNotice(await quotaNoticeText(toCache));
+      }
+    }).catch(err => console.warn('asset cache write failed:', err));
   }
 }
 
@@ -114,7 +155,16 @@ const handleFiles = createFileLoader({
 // Attempt to auto-load assets from a per-version folder under public/.
 // Silently no-ops if the folder/files aren't there, leaving the manual
 // upload UI below as the fallback. See src/lib/assetAutoload.ts.
-tryAutoload({ onStatus: setStatus, addFileToList, startApp: startAppOnce }).catch(console.error);
+tryAutoload({
+  onStatus: setStatus,
+  addFileToList,
+  startApp: startAppOnce,
+  onCacheNotice: notice => {
+    showStorageNotice(notice === 'evicted'
+      ? 'Your saved game assets were cleared by the browser to free up space. They will be saved again after this load.'
+      : 'This browser can\'t store game assets, so offline play and instant boots are unavailable here.');
+  },
+}).catch(console.error);
 
 // Drag and drop
 dropZone.addEventListener('dragover', (e) => {

@@ -37,8 +37,11 @@ export function screenToWorldTile(
   clientX: number,
   clientY: number,
 ): { x: number; y: number; z: number } {
-  const dxTiles = (clientX - app.screen.width / 2) / TILE_SIZE;
-  const dyTiles = (clientY - app.screen.height / 2) / TILE_SIZE;
+  // The stage carries the viewport cover-zoom; one on-screen tile is
+  // TILE_SIZE × zoom canvas pixels. (Tests stub `app` without a stage.)
+  const zoom = app.stage?.scale?.x || 1;
+  const dxTiles = (clientX - app.screen.width / 2) / (TILE_SIZE * zoom);
+  const dyTiles = (clientY - app.screen.height / 2) / (TILE_SIZE * zoom);
   return {
     x: Math.floor(world.playerX + 0.5 + dxTiles),
     y: Math.floor(world.playerY + 0.5 + dyTiles),

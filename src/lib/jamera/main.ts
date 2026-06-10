@@ -7,6 +7,7 @@ import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
+import { bindViewportCover } from './viewport';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
@@ -144,8 +145,10 @@ function ensurePixiApp(): Promise<Application> {
       const app = new Application();
       await app.init({
         background: '#000000',
-        width: window.innerWidth,
-        height: window.innerHeight,
+        // visualViewport is the actually-visible area on mobile (post
+        // URL-bar / status-bar layout); innerWidth/Height as fallback.
+        width: window.visualViewport?.width ?? window.innerWidth,
+        height: window.visualViewport?.height ?? window.innerHeight,
         antialias: false,
         resolution: window.devicePixelRatio,
         autoDensity: true,
@@ -155,9 +158,9 @@ function ensurePixiApp(): Promise<Application> {
       });
       app.canvas.style.cssText = 'position:fixed;inset:0;z-index:0;';
       document.body.appendChild(app.canvas);
-      window.addEventListener('resize', () => {
-        app.renderer.resize(window.innerWidth, window.innerHeight);
-      });
+      // Cover-zoom + debounced resize/orientation tracking; the app is a
+      // page-lifetime singleton so the binding never needs tearing down.
+      bindViewportCover(app);
       console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
       if (import.meta.env.DEV) {
         (window as unknown as { jameraPixi: Application }).jameraPixi = app;

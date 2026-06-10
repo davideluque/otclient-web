@@ -1,6 +1,7 @@
 import { InputPacket } from './InputPacket';
 import { OutputPacket } from './OutputPacket';
 import { xteaEncrypt, xteaDecrypt } from './xtea';
+import { ParseError } from '../../parseError';
 import type { XteaKey } from './xtea';
 
 export type PacketHandler = (packet: InputPacket) => void;
@@ -144,9 +145,17 @@ export class Connection {
         xteaDecrypt(packetData, this.xteaKey);
       }
 
-      // Dispatch to handler
+      // Dispatch to handler. A malformed packet (handler reading past
+      // the frame -> ParseError) must not abort this loop: packet
+      // boundaries come from the length prefix, so later frames in the
+      // buffer are still well-defined. Drop the bad frame, keep going.
       const packet = new InputPacket(packetData.buffer);
-      this.onPacket?.(packet);
+      try {
+        this.onPacket?.(packet);
+      } catch (e) {
+        if (!(e instanceof ParseError)) throw e;
+        console.warn('[net] dropped malformed packet:', e.message);
+      }
     }
 
     // Trim consumed bytes from buffer

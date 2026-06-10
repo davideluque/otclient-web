@@ -175,3 +175,41 @@ describe('GameClient.selectCharacter', () => {
     expect(conn.proxyUrl).not.toContain(character.worldIp);
   });
 });
+
+describe('Connection malformed-packet resilience', () => {
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function frame(...payload: number[]): Uint8Array {
+    return new Uint8Array([payload.length & 0xff, payload.length >> 8, ...payload]);
+  }
+
+  it('drops a frame whose handler overreads (ParseError) and still delivers the next frame', async () => {
+    const conn = new Connection('ws://proxy');
+    const seen: number[] = [];
+    conn.setPacketHandler((p) => {
+      const opcode = p.getU8();
+      seen.push(opcode);
+      if (opcode === 0x01) p.getU32(); // overread: frame only has 1 byte
+    });
+
+    const connecting = conn.connect('/login');
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+    await connecting;
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Two frames in one WS message: the malformed 0x01, then a valid 0x02.
+    const data = new Uint8Array([...frame(0x01), ...frame(0x02)]);
+    ws.onmessage?.({ data: data.buffer } as MessageEvent);
+    warn.mockRestore();
+
+    expect(seen).toEqual([0x01, 0x02]);
+  });
+});

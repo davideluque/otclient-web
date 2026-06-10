@@ -12,9 +12,10 @@ const OT_HOST = process.env['OT_HOST'] ?? '127.0.0.1';
 const OT_LOGIN_PORT = parseInt(process.env['OT_LOGIN_PORT'] ?? '7171', 10);
 const OT_GAME_PORT = parseInt(process.env['OT_GAME_PORT'] ?? '7172', 10);
 
-// OT 7.6 frames are small (a map description is a few KB); 64 KiB leaves
-// generous headroom while stopping memory-amplification abuse.
-const MAX_PAYLOAD_BYTES = 64 * 1024;
+// One OT frame is a U16 length prefix + up to 0xffff payload bytes, so the
+// largest legitimate WS message is exactly 2 + 0xffff. Anything bigger is
+// not OT traffic; cap it instead of buffering it.
+const MAX_PAYLOAD_BYTES = 2 + 0xffff;
 
 // In-game clients ping every few seconds, so a quiet socket this long is
 // dead weight — likely an abandoned tab or a probe holding a TCP slot open.

@@ -178,18 +178,22 @@ describe('parseMapDescription', () => {
     expect(tiles).toHaveLength(8);
     expect(tiles.map(t => t.z)).toEqual([7, 6, 5, 4, 3, 2, 1, 0]);
     expect(tiles.map(t => t.items[0].id)).toEqual([1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007]);
-    // Floor perspective offset: each above-ground floor shifts NW by
-    // `playerZ - z` tiles to compensate for the 2D camera angle, so a
-    // tile at screen (100, 100) on floor z is at world (100 + (z - 7), 100 + (z - 7)).
+    // Floor perspective offset, per the server's GetMapDescription:
+    // floor z is read at world (x + n + offset) with offset = playerZ - z,
+    // so the same screen cell maps to world (100 + (7 - z), 100 + (7 - z))
+    // — floors above the camera sit further SE in world space. (The old
+    // expectation had the sign flipped, which displaced every off-camera
+    // floor by 2×(playerZ−z) tiles — the 'stairs put me in the wrong
+    // place' bug.)
     expect(tiles.map(t => ({ x: t.x, y: t.y, z: t.z }))).toEqual([
       { x: 100, y: 100, z: 7 },
-      { x: 99,  y: 99,  z: 6 },
-      { x: 98,  y: 98,  z: 5 },
-      { x: 97,  y: 97,  z: 4 },
-      { x: 96,  y: 96,  z: 3 },
-      { x: 95,  y: 95,  z: 2 },
-      { x: 94,  y: 94,  z: 1 },
-      { x: 93,  y: 93,  z: 0 },
+      { x: 101, y: 101, z: 6 },
+      { x: 102, y: 102, z: 5 },
+      { x: 103, y: 103, z: 4 },
+      { x: 104, y: 104, z: 3 },
+      { x: 105, y: 105, z: 2 },
+      { x: 106, y: 106, z: 1 },
+      { x: 107, y: 107, z: 0 },
     ]);
   });
 
@@ -205,14 +209,16 @@ describe('parseMapDescription', () => {
 
     expect(tiles).toHaveLength(5);
     expect(tiles.map(t => t.z)).toEqual([8, 9, 10, 11, 12]);
-    // Underground perspective offset: shift SE by `z - playerZ` tiles
-    // (negative for floors above the player, positive for floors below).
+    // Underground perspective offset: offset = playerZ - z, so floors
+    // ABOVE the player (z < 10) sit SE (+) and floors below sit NW (−)
+    // in world space for the same screen cell — matching the server's
+    // GetFloorDescription read coordinates.
     expect(tiles.map(t => ({ x: t.x, y: t.y, z: t.z }))).toEqual([
-      { x: 98,  y: 98,  z: 8 },
-      { x: 99,  y: 99,  z: 9 },
+      { x: 102, y: 102, z: 8 },
+      { x: 101, y: 101, z: 9 },
       { x: 100, y: 100, z: 10 },
-      { x: 101, y: 101, z: 11 },
-      { x: 102, y: 102, z: 12 },
+      { x: 99,  y: 99,  z: 11 },
+      { x: 98,  y: 98,  z: 12 },
     ]);
   });
 });

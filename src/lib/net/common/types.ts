@@ -241,6 +241,18 @@ export interface CreatureProtocol {
   parseOutfit(packet: InputPacket): CreatureOutfitEvent;
 }
 
+/**
+ * Walk direction on the wire: 0 north, 1 east, 2 south, 3 west —
+ * deliberately value-compatible with lib/player's Direction so app code
+ * can pass it straight through.
+ */
+export type WalkDirection = 0 | 1 | 2 | 3;
+
+export interface MovementProtocol {
+  /** Build the client→server packet for one step in `direction`. */
+  buildMove(direction: WalkDirection): OutputPacket;
+}
+
 export interface ChatProtocol {
   parseSpeak(packet: InputPacket): ChatMessage;
   buildSay(text: string): OutputPacket;
@@ -349,6 +361,7 @@ export interface GameProtocol {
   readonly map: MapProtocol;
   readonly creature: CreatureProtocol;
   readonly chat: ChatProtocol;
+  readonly movement: MovementProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;
 }

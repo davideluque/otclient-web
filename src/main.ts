@@ -67,6 +67,8 @@ function addFileToList(name: string) {
 // status line lives inside #loader, which is gone once the game is running,
 // and several of these fire *after* a successful boot. Click to dismiss.
 function showStorageNotice(msg: string): void {
+  // One notice at a time — a second one would render on top of the first.
+  document.querySelector('.storage-notice')?.remove();
   const el = document.createElement('div');
   el.className = 'storage-notice';
   el.textContent = msg;
@@ -136,7 +138,9 @@ async function startAppOnce(loaded: CompleteLoadedFiles, fromCache = false): Pro
           // pressure. Installed PWAs typically get this granted silently;
           // doing it on the first write keeps any permission prompt
           // contextual (the user just loaded the game).
-          await navigator.storage?.persist?.().catch(() => {});
+          if (navigator.storage?.persist) {
+            await navigator.storage.persist().catch(() => {});
+          }
         }
       } else if (result.reason === 'quota') {
         showStorageNotice(await quotaNoticeText(toCache));

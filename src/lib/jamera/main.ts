@@ -19,6 +19,7 @@ import { bindChat, type ChatBindingHandle } from './chatBinding';
 import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
+import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { createJoystick } from '../joystick';
@@ -83,6 +84,8 @@ mountLoginScreen(root, {
     teardownCombat = null;
     settingsPane?.destroy();
     settingsPane = null;
+    teardownMinimap?.destroy();
+    teardownMinimap = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
@@ -123,6 +126,8 @@ mountLoginScreen(root, {
         : null,
     });
     teardownStats?.destroy();
+    teardownMinimap?.destroy();
+    teardownMinimap = bindMinimap(world, () => jameraAtlas?.datIndex ?? null);
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
     // current session even across re-logins.
@@ -133,6 +138,11 @@ mountLoginScreen(root, {
         hint: 'Same switch as the ⚔ circle on the combat bar.',
         get: () => teardownCombat?.attacking ?? false,
         set: (on) => teardownCombat?.setAttacking(on),
+      },
+      {
+        label: 'Show minimap',
+        get: () => teardownMinimap?.visible ?? false,
+        set: (on) => teardownMinimap?.setVisible(on),
       },
       {
         label: 'Show metrics',
@@ -563,6 +573,7 @@ let teardownInteractions: InteractionsHandle | null = null;
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
+let teardownMinimap: MinimapBindingHandle | null = null;
 let metricsOverlay: MetricsOverlayHandle | null = null;
 
 function setMetricsVisible(on: boolean): void {

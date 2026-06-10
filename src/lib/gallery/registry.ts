@@ -18,6 +18,7 @@ import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
+import { createMinimap, minimapIndexToRgb } from '../minimap';
 import { createMetricsOverlay } from '../jamera/metricsOverlay';
 import { reportMetric } from '../jamera/metrics';
 import { createChangelogPane } from '../changelogPane';
@@ -183,6 +184,31 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.toggle('Visible', true, (on) => pane.setVisible(on));
       log(`slots: ${INVENTORY_SLOTS.join(', ')}`);
       return () => pane.destroy();
+    },
+  },
+
+  {
+    name: 'Minimap',
+    description:
+      'Automap (top-right): known tiles painted from their .dat '
+      + 'MinimapColor in the original 216-color palette, player dot '
+      + 'centered, unknown tiles black.',
+    mount({ knobs, log }) {
+      let cx = 100, cy = 100;
+      const minimap = createMinimap({
+        getCenter: () => ({ x: cx, y: cy, z: 7 }),
+        tileColor: (x, y) => {
+          // Synthetic terrain: grass with a river and a road.
+          if (Math.abs(x - 100) > 24 || Math.abs(y - 100) > 24) return null;
+          if (Math.abs(x - y) < 2) return minimapIndexToRgb(51);  // water-ish
+          if (y === 96) return minimapIndexToRgb(129);            // road-ish
+          return minimapIndexToRgb(24);                           // grass-ish
+        },
+      });
+      knobs.button('Walk east', () => { cx += 1; minimap.refresh(); log(`center ${cx},${cy}`); });
+      knobs.button('Walk south', () => { cy += 1; minimap.refresh(); log(`center ${cx},${cy}`); });
+      knobs.toggle('Visible', true, (on) => minimap.setVisible(on));
+      return () => minimap.destroy();
     },
   },
 

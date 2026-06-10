@@ -35,8 +35,10 @@ function makeOptions() {
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
-  // Fresh IDB per test so a cache hit in one case doesn't satisfy the next.
+  // Fresh IDB per test so a cache hit in one case doesn't satisfy the next;
+  // the was-cached markers live in localStorage and need the same isolation.
   globalThis.indexedDB = new IDBFactory();
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -258,5 +260,36 @@ describe('tryAutoload', () => {
     expect(opts.startApp.mock.calls[1][1]).not.toBe(true);
     // The bad bundle must be gone so the next launch doesn't loop on it.
     expect(await getCached('760')).toBeNull();
+  });
+
+  it('fires the evicted notice once when a previously cached bundle is gone', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    // Simulate browser eviction: empty IDB, surviving localStorage marker.
+    globalThis.indexedDB = new IDBFactory();
+    globalThis.fetch = vi.fn().mockResolvedValue(notFound()) as typeof fetch;
+    const onCacheNotice = vi.fn();
+
+    await tryAutoload({ ...makeOptions(), onCacheNotice });
+    expect(onCacheNotice).toHaveBeenCalledExactlyOnceWith('evicted');
+
+    // Second launch: the notice was consumed, no repeat nagging.
+    await tryAutoload({ ...makeOptions(), onCacheNotice });
+    expect(onCacheNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires the unavailable notice when the browser has no IndexedDB', async () => {
+    // @ts-expect-error simulating a browser without IndexedDB
+    delete globalThis.indexedDB;
+    globalThis.fetch = vi.fn().mockResolvedValue(notFound()) as typeof fetch;
+    const onCacheNotice = vi.fn();
+
+    await tryAutoload({ ...makeOptions(), onCacheNotice });
+
+    expect(onCacheNotice).toHaveBeenCalledExactlyOnceWith('unavailable');
   });
 });

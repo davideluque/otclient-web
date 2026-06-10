@@ -10,7 +10,7 @@
 
 import type { CompleteLoadedFiles } from './fileLoader';
 import { resolveVersion } from './clientVersion';
-import { clearCached, getCached } from './assetCache';
+import { cacheAvailable, clearCached, consumeEvictionNotice, getCached } from './assetCache';
 
 type FileKey = keyof CompleteLoadedFiles;
 
@@ -32,12 +32,18 @@ function baseFor(version: string): string {
   return `${import.meta.env.BASE_URL}assets/${version}`;
 }
 
+// 'evicted': we cached a bundle before but the browser dropped it (disk
+// pressure). 'unavailable': this browser/mode has no IndexedDB, so offline
+// play can never work. Both are informational — boot continues regardless.
+export type CacheNotice = 'evicted' | 'unavailable';
+
 export interface AutoloadOptions {
   onStatus: (msg: string, isError?: boolean) => void;
   addFileToList: (name: string) => void;
   // fromCache lets the boot path skip re-writing a bundle that was just
   // read out of the asset cache.
   startApp: (files: CompleteLoadedFiles, fromCache?: boolean) => Promise<void>;
+  onCacheNotice?: (notice: CacheNotice) => void;
 }
 
 /**
@@ -66,6 +72,13 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
       await clearCached(version);
       options.onStatus('Could not start from saved assets. Drop files to load manually.', true);
     }
+  } else if (!cacheAvailable()) {
+    options.onCacheNotice?.('unavailable');
+  } else if (consumeEvictionNotice(version)) {
+    // We cached this version before and now it's gone — the browser
+    // evicted it. Tell the user once why "instant offline boot" regressed
+    // to a network load; a later successful boot re-caches automatically.
+    options.onCacheNotice?.('evicted');
   }
 
   const base = baseFor(version);

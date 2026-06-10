@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'The Skills pane now shows everything: level with a red progress bar, experience, magic level, capacity, and soul.' },
   { date: '2026-06-10', text: 'Added combat modes (right edge): attack/balanced/defense stance, chase, and secure/PK toggle — remembered between sessions.' },
   { date: '2026-06-10', text: 'Added a full-screen chat (menu → Chat) — same channels and history as the bottom panel.' },
   { date: '2026-06-10', text: 'Added the minimap (top-right) — real automap colors, toggle it in Settings.' },

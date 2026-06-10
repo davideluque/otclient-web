@@ -56,8 +56,10 @@ describe('bindStats', () => {
     const pane = document.querySelector('.skill-pane') as HTMLElement;
     expect(pane).not.toBeNull();
     expect(pane.style.display).toBe('none'); // hidden until toggled
-    // Sword is the third wire pair.
-    const swordRow = [...pane.querySelectorAll('.skill')][2];
+    // Find by label — the character block (level/magic) now precedes
+    // the seven skills, so positional indexing is brittle.
+    const swordRow = [...pane.querySelectorAll('.skill')]
+      .find((r) => r.querySelector('.row span:first-child')?.textContent === 'Sword')!;
     expect(swordRow.querySelector('.lvl')?.textContent).toBe('60');
 
     // Open via the game menu entry.

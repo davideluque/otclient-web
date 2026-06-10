@@ -63,6 +63,8 @@ export function createFileLoader(options: FileLoaderOptions): (files: FileList |
       try {
         await options.startApp(complete);
       } catch (e) {
+        // Let the user retry with different files instead of forcing a refresh.
+        started = false;
         options.setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`, true);
         options.onError?.(e);
       }

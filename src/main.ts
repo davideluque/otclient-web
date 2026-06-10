@@ -24,8 +24,7 @@ import { createDevControls } from './lib/devControls';
 import { Direction } from './lib/player';
 import {
   buildIlluminationOverlay,
-  createLightMaskTexture,
-  LightSpritePool,
+  LightMeshPool,
   NIGHT_AMBIENT,
   DAY_AMBIENT,
   type LightingOptions,
@@ -35,7 +34,7 @@ import { tryAutoload } from './lib/assetAutoload';
 import { putCached } from './lib/assetCache';
 import { resolveVersion } from './lib/clientVersion';
 import { showStorageNotice } from './lib/storageNotice';
-import { RenderTexture } from 'pixi.js';
+import { RenderTexture, Sprite } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
@@ -320,13 +319,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // when the player actually moves tiles.
   let lastPlayerDirection = Number.NaN;
   let ambient: LightingOptions = NIGHT_AMBIENT;
-  // Long-lived render target + sprite pool for the lighting overlay.
-  // Both are reused across every rebuild — buildIlluminationOverlay resizes
-  // the texture as the visible region changes (cheap) and recycles light
-  // bubbles from the pool, so a tile-rebuild no longer allocates a fresh
-  // RenderTexture and a Sprite per light source.
+  // Long-lived render target + mesh pool + overlay sprite for the lighting
+  // overlay. All three persist across every rebuild — the render texture
+  // resizes in place when the visible region changes (cheap), light bubbles
+  // are recycled meshes (Mesh + custom shader; gradient is computed per
+  // fragment on the GPU), and the overlay sprite is mutated, never realloc'd.
+  // Overlay must be detached from tileContainer before tileContainer.destroy
+  // so the {children: true} destroy doesn't take it down with the tiles.
   const illuminationTexture = RenderTexture.create({ width: 1, height: 1 });
-  const lightSpritePool = new LightSpritePool();
+  const lightMeshPool = new LightMeshPool();
+  const illuminationOverlay = new Sprite();
   let animatedSprites: AnimatedSprite[] = [];
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
@@ -338,7 +340,6 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // drift apart later.
   let lastWalkOffsetX = 0;
   let lastWalkOffsetY = 0;
-  const lightMask = createLightMaskTexture();
   // Tinted-outfit cache lives across rebuilds — same outfit + direction
   // re-uses the texture. Cleared on app teardown, never during runtime.
   const tintedOutfitCache: TintedTextureCache = new Map();
@@ -355,6 +356,11 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   function rebuildTiles() {
     if (tileContainer) {
+      // Detach the long-lived overlay sprite first; otherwise the
+      // {children: true} destroy below would tear it down with the tiles.
+      if (illuminationOverlay.parent === tileContainer) {
+        tileContainer.removeChild(illuminationOverlay);
+      }
       app.stage.removeChild(tileContainer);
       tileContainer.destroy({ children: true });
     }
@@ -453,13 +459,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
     tileContainer.addChild(below.container);
 
     if (ambient.enabled) {
-      const sprite = buildIlluminationOverlay(
-        app, tileMap, datIndex, lightMask,
-        illuminationTexture, lightSpritePool,
+      buildIlluminationOverlay(
+        app, tileMap, datIndex,
+        illuminationTexture, lightMeshPool, illuminationOverlay,
         visible.x1, visible.y1, visible.x2, visible.y2, 7,
-        ambient,
+        ambient, performance.now() / 1000,
       );
-      tileContainer.addChild(sprite);
+      tileContainer.addChild(illuminationOverlay);
     }
 
     app.stage.addChild(tileContainer);

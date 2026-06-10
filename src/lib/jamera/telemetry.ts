@@ -69,7 +69,10 @@ export function initTelemetry(proxyUrl: string): void {
   } catch {
     return; // unparseable proxy url — telemetry just stays off
   }
-  sessionId = Math.random().toString(36).slice(2, 10);
+  // crypto over Math.random: the id is only a log-grouping key, but
+  // CodeQL flags Math.random for anything named "session" — and the
+  // crypto API is free here anyway.
+  sessionId = crypto.randomUUID().slice(0, 8);
 
   timer = setInterval(flush, FLUSH_INTERVAL_MS);
   window.addEventListener('pagehide', flush);

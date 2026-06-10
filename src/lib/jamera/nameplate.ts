@@ -56,21 +56,28 @@ export function createNameplate(name: string, healthPercent: number): NameplateH
 
   function update(nextName: string, percent: number): void {
     const clamped = Math.max(0, Math.min(100, percent));
-    if (nextName === lastName && clamped === lastPercent) return;
-    const color = colorForPercent(clamped);
 
-    if (nextName !== lastName) nameText.text = nextName;
-    nameText.style.fill = color;
-
-    bar.clear();
-    bar.rect(-BAR_WIDTH / 2, 0, BAR_WIDTH, BAR_HEIGHT).fill(0x000000);
-    const fillWidth = Math.round((BAR_WIDTH - BAR_BORDER * 2) * (clamped / 100));
-    if (fillWidth > 0) {
-      bar.rect(-BAR_WIDTH / 2 + BAR_BORDER, BAR_BORDER, fillWidth, BAR_HEIGHT - BAR_BORDER * 2).fill(color);
+    if (nextName !== lastName) {
+      nameText.text = nextName;
+      lastName = nextName;
     }
 
-    lastName = nextName;
-    lastPercent = clamped;
+    if (clamped !== lastPercent) {
+      const color = colorForPercent(clamped);
+      nameText.style.fill = color;
+
+      bar.clear();
+      bar.rect(-BAR_WIDTH / 2, 0, BAR_WIDTH, BAR_HEIGHT).fill(0x000000);
+      // Floor at 1px while alive: 1-2% health must not render an empty
+      // bar — an empty bar reads as dead.
+      const fillWidth = clamped > 0
+        ? Math.max(1, Math.round((BAR_WIDTH - BAR_BORDER * 2) * (clamped / 100)))
+        : 0;
+      if (fillWidth > 0) {
+        bar.rect(-BAR_WIDTH / 2 + BAR_BORDER, BAR_BORDER, fillWidth, BAR_HEIGHT - BAR_BORDER * 2).fill(color);
+      }
+      lastPercent = clamped;
+    }
   }
 
   update(name, healthPercent);

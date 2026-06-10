@@ -20,7 +20,7 @@ import {
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
 import { buildMovePacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
-import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from './actionsProtocol';
+import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket } from './actionsProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -130,6 +130,7 @@ export class GameProtocol implements GameProtocolSpec {
       buildLookAt: buildLookAtPacket,
       buildUseItem: buildUseItemPacket,
       buildLogout: buildLogoutPacket,
+      buildAttack: buildAttackPacket,
     };
 
     this.chat = {

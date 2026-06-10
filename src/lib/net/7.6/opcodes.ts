@@ -32,6 +32,7 @@ export const ClientOp = {
 
   // Actions
   UseItem: 0x82,
+  Attack: 0xa1,
   LookAt: 0x8c,
   Say: 0x96,
 } as const;

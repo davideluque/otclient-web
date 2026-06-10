@@ -14,6 +14,7 @@ import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
+import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -59,6 +60,8 @@ mountLoginScreen(root, {
     teardownRenderer = null;
     teardownInteractions?.destroy();
     teardownInteractions = null;
+    teardownCombat?.destroy();
+    teardownCombat = null;
   },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
@@ -81,6 +84,8 @@ mountLoginScreen(root, {
     loadAssetsForRendering();
     const world = bindGameWorld(client);
     bindMovementInput(client, world);
+    teardownCombat?.destroy();
+    teardownCombat = bindCombat(client, world);
     teardownChat?.destroy();
     teardownChat = bindChat(client);
     teardownInventory?.destroy();
@@ -465,3 +470,6 @@ let teardownInventory: InventoryBindingHandle | null = null;
 
 // Per-session canvas interactions (look/use), replaced with the renderer.
 let teardownInteractions: InteractionsHandle | null = null;
+
+// Per-session combat controls (spell circles + auto-attack).
+let teardownCombat: CombatBindingHandle | null = null;

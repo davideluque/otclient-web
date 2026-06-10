@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Walking flows through network hiccups (no more stutter every few tiles) and the black edge behind you while moving is gone.' },
   { date: '2026-06-10', text: 'Continuous walking: steps now glide at your real walking rhythm — no more micro-pause between tiles.' },
   { date: '2026-06-10', text: 'Walking is smooth now: the camera and creatures glide between tiles instead of snapping.' },
   { date: '2026-06-10', text: 'The screen no longer dims/sleeps while playing (wake lock, like the offline map).' },

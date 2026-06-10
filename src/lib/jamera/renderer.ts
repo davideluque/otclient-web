@@ -31,13 +31,21 @@ export const STEP_GLIDE_MAX_MS = 650;
 const STEP_SAMPLE_MAX_MS = 800;
 
 /**
+ * Extra painted tiles beyond the server window on every side: the
+ * pursuing camera trails the confirmed position by up to a tile, and
+ * the trailing edge must show the (already-known, lingering) tiles
+ * there instead of black.
+ */
+const GLIDE_PAD = 2;
+
+/**
  * Exponential moving average of a creature's step cadence. Exported for
  * tests. Samples outside the plausible-cadence band are ignored — a
  * pause between walks must not stretch the next glide.
  */
 export function nextStepEma(prevEma: number, sampleMs: number): number {
   if (sampleMs < STEP_GLIDE_MIN_MS || sampleMs > STEP_SAMPLE_MAX_MS) return prevEma;
-  return prevEma * 0.6 + sampleMs * 0.4;
+  return prevEma * 0.75 + sampleMs * 0.25;
 }
 
 /**
@@ -45,22 +53,47 @@ export function nextStepEma(prevEma: number, sampleMs: number): number {
  * fromY) toward (x, y) over `durationMs`. Teleports and floor changes
  * have no from-tile and snap.
  */
-export function interpPos(
-  c: WorldCreature,
-  now: number,
-  durationMs: number = STEP_GLIDE_DEFAULT_MS,
-): { x: number; y: number } {
-  if (
-    c.fromX === undefined || c.fromY === undefined ||
-    c.lastMoveAt === undefined || now - c.lastMoveAt >= durationMs
-  ) {
-    return { x: c.x, y: c.y };
+export interface RenderPos { x: number; y: number }
+
+/**
+ * Pursuit step: advance a continuous render position toward the
+ * confirmed tile at the creature's measured walking speed (1 tile per
+ * `cadenceMs`). Unlike a per-step timed glide, the position never
+ * restarts or jumps when confirmations jitter — late ones briefly slow
+ * the chase, early ones are caught up at CATCHUP_BOOST. Distances
+ * beyond SNAP_DISTANCE tiles are teleports/floor changes: snap.
+ * Exported for tests.
+ */
+export const SNAP_DISTANCE = 1.75;
+const CATCHUP_BOOST = 1.6;
+
+export function advanceRenderPos(
+  pos: RenderPos,
+  targetX: number,
+  targetY: number,
+  dtMs: number,
+  cadenceMs: number,
+): void {
+  const dx = targetX - pos.x;
+  const dy = targetY - pos.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist === 0) return;
+  if (dist > SNAP_DISTANCE) {
+    pos.x = targetX;
+    pos.y = targetY;
+    return;
   }
-  const t = (now - c.lastMoveAt) / durationMs;
-  return {
-    x: c.fromX + (c.x - c.fromX) * t,
-    y: c.fromY + (c.y - c.fromY) * t,
-  };
+  // Falling behind a full tile means confirmations are outpacing the
+  // chase (burst after a jitter spike) — hurry without snapping.
+  const boost = dist > 1 ? CATCHUP_BOOST : 1;
+  const step = (dtMs / cadenceMs) * boost;
+  if (step >= dist) {
+    pos.x = targetX;
+    pos.y = targetY;
+    return;
+  }
+  pos.x += (dx / dist) * step;
+  pos.y += (dy / dist) * step;
 }
 
 function walkPhase(c: WorldCreature, now: number): number {
@@ -139,31 +172,48 @@ export function bindRenderer(
   // camera) by the interpolated fraction without rebuilding anything.
   let movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
 
-  // Per-creature measured step cadence (EMA over confirmation
-  // intervals) — the glide spans the creature's real step rhythm.
-  const cadence = new Map<number, { lastAt: number; ema: number }>();
-  const glideDuration = (c: WorldCreature): number => {
-    if (c.lastMoveAt === undefined) return STEP_GLIDE_DEFAULT_MS;
-    let entry = cadence.get(c.id);
+  // Per-creature pursuit state: a continuous render position chasing
+  // the confirmed tile at the measured cadence, plus the cadence EMA.
+  // Never restarted per step, so confirmation jitter bends the speed
+  // instead of pausing or jumping the sprite.
+  const pursuit = new Map<number, { pos: RenderPos; lastAt: number; ema: number }>();
+  let lastGlideAt = 0;
+
+  const renderPosFor = (c: WorldCreature, dtMs: number): RenderPos => {
+    let entry = pursuit.get(c.id);
     if (!entry) {
-      entry = { lastAt: c.lastMoveAt, ema: STEP_GLIDE_DEFAULT_MS };
-      cadence.set(c.id, entry);
-    } else if (c.lastMoveAt !== entry.lastAt) {
-      entry.ema = nextStepEma(entry.ema, c.lastMoveAt - entry.lastAt);
+      // First sighting: start from the step's departure tile when one
+      // is in flight so even the first step glides.
+      entry = {
+        pos: { x: c.fromX ?? c.x, y: c.fromY ?? c.y },
+        lastAt: c.lastMoveAt ?? 0,
+        ema: STEP_GLIDE_DEFAULT_MS,
+      };
+      pursuit.set(c.id, entry);
+    } else if (c.lastMoveAt !== undefined && c.lastMoveAt !== entry.lastAt) {
+      if (entry.lastAt !== 0) entry.ema = nextStepEma(entry.ema, c.lastMoveAt - entry.lastAt);
       entry.lastAt = c.lastMoveAt;
     }
-    // A hair over the measured cadence so the glide never quite
-    // finishes before the next confirmation, clamped to sane bounds.
-    return Math.min(STEP_GLIDE_MAX_MS, Math.max(STEP_GLIDE_MIN_MS, entry.ema * 1.05));
+    advanceRenderPos(entry.pos, c.x, c.y, dtMs, entry.ema);
+    return entry.pos;
   };
 
   const glide = (now: number): void => {
     if (!currentContainer) return;
+    const dtMs = lastGlideAt === 0 ? 0 : Math.min(100, now - lastGlideAt);
+    lastGlideAt = now;
     const self = world.getCreature(world.playerCreatureId);
-    const cam = self ? interpPos(self, now, glideDuration(self)) : { x: world.playerX, y: world.playerY };
+    const cam = self ? renderPosFor(self, dtMs) : { x: world.playerX, y: world.playerY };
     recenter(currentContainer, cam.x, cam.y);
     for (const m of movables) {
-      const p = interpPos(m.c, now, glideDuration(m.c));
+      if (m.c.id === world.playerCreatureId) {
+        // Already advanced above as the camera — reuse, don't advance twice.
+        const p = pursuit.get(m.c.id)?.pos ?? m.c;
+        m.node.x = m.baseX + (p.x - m.c.x) * TILE_SIZE;
+        m.node.y = m.baseY + (p.y - m.c.y) * TILE_SIZE;
+        continue;
+      }
+      const p = renderPosFor(m.c, dtMs);
       m.node.x = m.baseX + (p.x - m.c.x) * TILE_SIZE;
       m.node.y = m.baseY + (p.y - m.c.y) * TILE_SIZE;
     }
@@ -204,13 +254,19 @@ export function bindRenderer(
     }
 
     const repaintStart = performance.now();
+    // GLIDE_PAD: while the camera pursues the player it trails up to a
+    // tile behind the confirmed position — paint beyond the server
+    // window so the trailing edge shows the lingering already-known
+    // tiles instead of black. Tiles the server never described stay
+    // black, but they're always on the leading edge, behind the player
+    // center, never visible.
     const { container } = renderTileRegion(
       world,
       atlas.datIndex,
       atlas.atlasTextures,
       atlas.layout,
-      world.playerX - HALF_W_LEFT, world.playerY - HALF_H_TOP,
-      world.playerX + HALF_W_RIGHT, world.playerY + HALF_H_BOTTOM,
+      world.playerX - HALF_W_LEFT - GLIDE_PAD, world.playerY - HALF_H_TOP - GLIDE_PAD,
+      world.playerX + HALF_W_RIGHT + GLIDE_PAD, world.playerY + HALF_H_BOTTOM + GLIDE_PAD,
       world.playerZ,
     );
     movables = drawCreatures(world, atlas, container, tintedCache, nameplates);
@@ -257,7 +313,7 @@ export function bindRenderer(
     tintedCache.clear();
     for (const plate of nameplates.values()) plate.destroy();
     nameplates.clear();
-    cadence.clear();
+    pursuit.clear();
     bubbles?.destroy();
     window.removeEventListener('resize', onResize);
     window.removeEventListener(VIEWPORT_EVENT, onResize);
@@ -283,10 +339,10 @@ function drawCreatures(
   nameplates: Map<number, NameplateHandle>,
 ): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
   const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
-  const x1 = world.playerX - HALF_W_LEFT;
-  const x2 = world.playerX + HALF_W_RIGHT;
-  const y1 = world.playerY - HALF_H_TOP;
-  const y2 = world.playerY + HALF_H_BOTTOM;
+  const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
+  const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
+  const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
+  const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
 
   const visible = world.getAllCreatures().filter((c) =>
     c.z === world.playerZ && c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2,

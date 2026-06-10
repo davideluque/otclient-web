@@ -173,7 +173,7 @@ describe('GameWorld tile operations', () => {
     const out = new OutputPacket();
     out.addU8(0x6a);
     out.addU16(100); out.addU16(200); out.addU8(7);
-    out.addU16(0x62); // unknown creature
+    out.addU16(0x61); // unknown creature (7.6 long form)
     out.addU32(0);    // removeKnown
     out.addU32(777);  // creature id
     out.addString('Rat');

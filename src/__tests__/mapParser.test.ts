@@ -113,8 +113,9 @@ describe('parseMapDescription', () => {
     const out = new OutputPacket();
     out.addU16(100); // ground item
 
-    // Unknown creature marker + creature data
-    out.addU16(0x0062);
+    // Unknown creature marker + creature data (7.6: 0x61 is the long
+    // unknown form, 0x62 the known short form — per the server source)
+    out.addU16(0x0061);
     out.addU32(0);       // removeKnown
     out.addU32(12345);   // creature ID
     out.addString('Player1');

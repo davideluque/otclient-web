@@ -170,7 +170,9 @@ export class GameWorld {
     const peek = packet.peekU16();
     if (peek === 0x61 || peek === 0x62) {
       packet.getU16(); // consume the known/unknown creature marker
-      const creature = this.protocol.map.parseCreature(packet, peek === 0x62);
+      // 0x61 is the UNKNOWN long form in 7.6 (verified against the
+      // server's AddCreature), 0x62 the known short form.
+      const creature = this.protocol.map.parseCreature(packet, peek === 0x61);
       tile.creatures.push(creature);
       this.creatures.set(creature.id, {
         id: creature.id,

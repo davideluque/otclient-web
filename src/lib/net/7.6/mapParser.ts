@@ -11,9 +11,15 @@ import { itemHasCountByte } from '../common/itemFlags';
 const SKIP_MARKER_HIGH = 0xff00;
 const SKIP_COUNT_MASK = 0x00ff;
 
-/** Known/unknown creature thing markers (Tibia 7.6). */
-const CREATURE_KNOWN = 0x0061;
-const CREATURE_UNKNOWN = 0x0062;
+/**
+ * Known/unknown creature thing markers (Tibia 7.6). Verified against the
+ * server's Protocol76::AddCreature: 0x62 is the KNOWN short form (id
+ * only), 0x61 is the UNKNOWN long form (removeKnown id + id + name) —
+ * the reverse of what later protocol docs suggest, so don't "fix" this
+ * from memory.
+ */
+const CREATURE_KNOWN = 0x0062;
+const CREATURE_UNKNOWN = 0x0061;
 
 /** OT 7.6 visible-floor range as a function of the player's z. */
 function getVisibleFloors(playerZ: number): number[] {
@@ -140,7 +146,7 @@ export function parseItem(packet: InputPacket): MapTileItem {
 
 /**
  * Parse one creature block (the payload after a 0x61/0x62 thing marker).
- * `isNew` corresponds to the 0x62 "unknown creature" form, which carries
+ * `isNew` corresponds to the 0x61 "unknown creature" form, which carries
  * a removeKnown ID and the creature's name.
  */
 export function parseCreature(packet: InputPacket, isNew: boolean): MapCreature {

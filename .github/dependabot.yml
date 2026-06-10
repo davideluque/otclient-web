@@ -32,6 +32,7 @@ updates:
           - "eslint"
           - "@eslint/*"
           - "typescript-eslint"
+          - "@typescript-eslint/*"
         update-types:
           - patch
           - minor

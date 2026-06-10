@@ -319,6 +319,12 @@ export interface PlayerProtocol {
 export interface MovementProtocol {
   /** Build the client→server packet for one step in `direction`. */
   buildMove(direction: WalkDirection): OutputPacket;
+  /**
+   * Build the autowalk packet for a whole route (tap-to-walk). The
+   * server walks the steps on its own, confirming each one exactly
+   * like manual moves. Directions are first-step-first.
+   */
+  buildAutoWalk(route: WalkDirection[]): OutputPacket;
 }
 
 export interface ChatProtocol {

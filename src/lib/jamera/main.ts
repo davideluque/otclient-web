@@ -296,7 +296,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
     if (epoch !== mountEpoch) return; // stale atlas callback
     teardownRenderer?.(); // never stack two bindings
     teardownInteractions?.destroy();
-    teardownInteractions = client ? bindInteractions(client, world, app) : null;
+    teardownInteractions = client ? bindInteractions(client, world, app, atlas.datIndex) : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager);
     console.info('[jamera] renderer bound to GameWorld');
   };

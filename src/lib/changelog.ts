@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Tap-to-walk is back: tap a tile and the player paths to it (long-press still looks, double-tap still uses).' },
   { date: '2026-06-10', text: 'The inventory now shows real item graphics instead of numbers.' },
   { date: '2026-06-10', text: 'New look: the purple is gone — the UI is now blacks, grays, and whites.' },
   { date: '2026-06-10', text: 'Settings → Show metrics: on-screen FPS, walk latency, and repaint cost for the lag hunt (?metrics=1 works too).' },

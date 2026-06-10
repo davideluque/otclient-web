@@ -14,6 +14,7 @@ export const ClientOp = {
   Ping: 0x1e,
 
   // Movement
+  AutoWalk: 0x64,
   MoveNorth: 0x65,
   MoveEast: 0x66,
   MoveSouth: 0x67,

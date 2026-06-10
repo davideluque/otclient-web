@@ -160,16 +160,10 @@ export function bindRenderer(
   // expiry must not depend on tiles changing.
   const bubbles = chatManager ? new SpeechBubbleRenderer() : null;
   // A creature speaking while everything stands still fires no
-  // world.onChange — chain the manager's handleMessage (ChatUI uses the
-  // same pattern) so a fresh bubble repaints immediately and arms the
-  // rAF loop; restored on teardown.
-  const originalHandleMessage = chatManager ? chatManager.handleMessage.bind(chatManager) : null;
-  if (chatManager && originalHandleMessage) {
-    chatManager.handleMessage = (msg) => {
-      originalHandleMessage(msg);
-      update();
-    };
-  }
+  // world.onChange — subscribe to the manager so a fresh bubble
+  // repaints immediately and arms the rAF loop; unsubscribed on
+  // teardown.
+  const unsubscribeChat = chatManager ? chatManager.subscribe(() => update()) : null;
 
   // Center the player tile on the canvas. The 0.5 offset puts the
   // *center* of the player's tile at the canvas center instead of
@@ -348,7 +342,7 @@ export function bindRenderer(
   update();
 
   return () => {
-    if (chatManager && originalHandleMessage) chatManager.handleMessage = originalHandleMessage;
+    unsubscribeChat?.();
     if (rafId !== 0) cancelAnimationFrame(rafId);
     // Tinted outfit textures are dynamically created GPU resources; the
     // shared atlas textures live for the page, but these are per-binding.

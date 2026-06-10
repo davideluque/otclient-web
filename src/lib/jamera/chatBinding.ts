@@ -1,5 +1,6 @@
 import { ChatManager } from '../chat/ChatManager';
 import { createChatUI } from '../chat/ChatUI';
+import { createFullChatView, type FullChatViewHandle } from '../chat/FullChatView';
 import type { GameClient } from '../net/common/GameClient';
 import { MessageType } from '../net/common/types';
 
@@ -16,6 +17,8 @@ import { MessageType } from '../net/common/types';
 export interface ChatBindingHandle {
   /** The live ChatManager — the renderer reads speech bubbles from it. */
   manager: ChatManager;
+  /** Full-screen chat interface (menu → Chat) sharing the same manager. */
+  fullView: FullChatViewHandle;
   destroy(): void;
 }
 
@@ -23,7 +26,7 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   const protocol = client.getProtocol();
   const manager = new ChatManager();
 
-  const ui = createChatUI(manager, protocol, (packet) => {
+  const chatUi = createChatUI(manager, protocol, (packet) => {
     try {
       client.send(packet);
     } catch (e) {
@@ -32,10 +35,23 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   }, {
     onClose: () => { open = false; applyOpen(); },
   });
+  const ui = chatUi.el;
   parent.appendChild(ui);
 
-  // Register AFTER createChatUI: the UI wraps manager.handleMessage to
-  // re-render, and these handlers must hit the wrapped version.
+  // Second interface over the same manager — shared history/channels;
+  // both stay in sync through ChatManager.subscribe.
+  const send = (packet: Parameters<GameClient['send']>[0]): void => {
+    try {
+      client.send(packet);
+    } catch (e) {
+      console.warn('[jamera] chat send failed:', e instanceof Error ? e.message : e);
+    }
+  };
+  const fullView = createFullChatView(manager, protocol, send, parent);
+
+  // Interfaces subscribe to the manager (ChatManager.subscribe), so
+  // handler registration order no longer matters — kept after UI
+  // creation for readability.
   const dispatcher = client.getDispatcher();
   const op = protocol.serverOpcodes;
   dispatcher.on(op.CreatureSpeak, (p) => {
@@ -78,10 +94,12 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
 
   return {
     manager,
+    fullView,
     destroy: () => {
       dispatcher.off(op.CreatureSpeak);
       dispatcher.off(op.TextMessage);
-      ui.remove();
+      fullView.destroy();
+      chatUi.destroy();
       toggle.remove();
     },
   };

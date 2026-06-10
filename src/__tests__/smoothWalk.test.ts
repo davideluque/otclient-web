@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STEP_GLIDE_MS, interpPos } from '../lib/jamera/renderer';
+import { STEP_GLIDE_DEFAULT_MS, STEP_GLIDE_MIN_MS, nextStepEma, interpPos } from '../lib/jamera/renderer';
 import { GameWorld, type WorldCreature } from '../lib/GameWorld';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 
@@ -16,10 +16,10 @@ describe('interpPos', () => {
   it('glides linearly from the departed tile to the confirmed one', () => {
     const c = creature({ fromX: 100, fromY: 200, lastMoveAt: 1000 });
     expect(interpPos(c, 1000)).toEqual({ x: 100, y: 200 });
-    const half = interpPos(c, 1000 + STEP_GLIDE_MS / 2);
+    const half = interpPos(c, 1000 + STEP_GLIDE_DEFAULT_MS / 2);
     expect(half.x).toBeCloseTo(100.5, 5);
     expect(half.y).toBe(200);
-    expect(interpPos(c, 1000 + STEP_GLIDE_MS)).toEqual({ x: 101, y: 200 });
+    expect(interpPos(c, 1000 + STEP_GLIDE_DEFAULT_MS)).toEqual({ x: 101, y: 200 });
   });
 
   it('snaps when there is no from-tile (teleport / floor change / fresh spawn)', () => {
@@ -29,7 +29,7 @@ describe('interpPos', () => {
 
   it('snaps once the glide window has elapsed', () => {
     const c = creature({ fromX: 100, fromY: 200, lastMoveAt: 1000 });
-    expect(interpPos(c, 1000 + STEP_GLIDE_MS + 1)).toEqual({ x: 101, y: 200 });
+    expect(interpPos(c, 1000 + STEP_GLIDE_DEFAULT_MS + 1)).toEqual({ x: 101, y: 200 });
   });
 });
 
@@ -71,5 +71,19 @@ describe('floor-change resync slices do not glide', () => {
     world.syncSelfCreature(49, 60, 7);
     expect(world.getCreature(7)?.fromX).toBe(49);
     expect(world.getCreature(7)?.fromY).toBe(60);
+  });
+});
+
+describe('nextStepEma', () => {
+  it('converges toward the sampled cadence', () => {
+    let ema = STEP_GLIDE_DEFAULT_MS;
+    for (let i = 0; i < 10; i++) ema = nextStepEma(ema, 500);
+    expect(ema).toBeGreaterThan(480);
+    expect(ema).toBeLessThanOrEqual(500);
+  });
+
+  it('ignores standing pauses and absurdly fast samples', () => {
+    expect(nextStepEma(400, 5000)).toBe(400);
+    expect(nextStepEma(400, STEP_GLIDE_MIN_MS - 1)).toBe(400);
   });
 });

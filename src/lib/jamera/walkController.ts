@@ -34,7 +34,10 @@ export interface WalkControllerHandle {
 
 export function createWalkController(opts: WalkControllerOptions): WalkControllerHandle {
   const stepTimeoutMs = opts.stepTimeoutMs ?? 800;
-  const tickMs = opts.tickMs ?? 60;
+  // 25ms: the next move must go out within a frame of the previous
+  // confirmation — at 60ms the added dead time between steps was
+  // visible now that steps glide continuously.
+  const tickMs = opts.tickMs ?? 25;
 
   let pending: { x: number; y: number; z: number; deadline: number; sentAt: number } | null = null;
 

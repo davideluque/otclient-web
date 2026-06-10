@@ -17,27 +17,46 @@ const WALK_ANIM_MS = 400;
 const WALK_FRAME_MS = 125;
 
 /**
- * How long a confirmed step glides from the departed tile to the new
- * one. Slightly under the ~400ms base step pacing the server enforces,
- * so the glide completes just before the next confirmation lands —
- * measured on-device: step avg ~380ms, repaint ~8ms, so a per-frame
- * position pass is far cheaper than the rebuilds we already do.
+ * Glide duration bounds. The right duration is the creature's ACTUAL
+ * step cadence (Tibia paces ~400ms/tile at base speed, faster with
+ * hastes/levels, plus network jitter) — a fixed value either finishes
+ * early (visible stop-start between steps) or rubber-bands. Each
+ * creature's cadence is measured from its confirmation intervals
+ * (EMA), so continuous walking renders as one unbroken scroll.
  */
-export const STEP_GLIDE_MS = 350;
+export const STEP_GLIDE_DEFAULT_MS = 380;
+export const STEP_GLIDE_MIN_MS = 150;
+export const STEP_GLIDE_MAX_MS = 650;
+/** Confirmation gaps beyond this are standing pauses, not cadence. */
+const STEP_SAMPLE_MAX_MS = 800;
+
+/**
+ * Exponential moving average of a creature's step cadence. Exported for
+ * tests. Samples outside the plausible-cadence band are ignored — a
+ * pause between walks must not stretch the next glide.
+ */
+export function nextStepEma(prevEma: number, sampleMs: number): number {
+  if (sampleMs < STEP_GLIDE_MIN_MS || sampleMs > STEP_SAMPLE_MAX_MS) return prevEma;
+  return prevEma * 0.6 + sampleMs * 0.4;
+}
 
 /**
  * Screen-position interpolation for a confirmed step: from (fromX,
- * fromY) toward (x, y) over STEP_GLIDE_MS. Teleports and floor changes
+ * fromY) toward (x, y) over `durationMs`. Teleports and floor changes
  * have no from-tile and snap.
  */
-export function interpPos(c: WorldCreature, now: number): { x: number; y: number } {
+export function interpPos(
+  c: WorldCreature,
+  now: number,
+  durationMs: number = STEP_GLIDE_DEFAULT_MS,
+): { x: number; y: number } {
   if (
     c.fromX === undefined || c.fromY === undefined ||
-    c.lastMoveAt === undefined || now - c.lastMoveAt >= STEP_GLIDE_MS
+    c.lastMoveAt === undefined || now - c.lastMoveAt >= durationMs
   ) {
     return { x: c.x, y: c.y };
   }
-  const t = (now - c.lastMoveAt) / STEP_GLIDE_MS;
+  const t = (now - c.lastMoveAt) / durationMs;
   return {
     x: c.fromX + (c.x - c.fromX) * t,
     y: c.fromY + (c.y - c.fromY) * t,
@@ -120,13 +139,31 @@ export function bindRenderer(
   // camera) by the interpolated fraction without rebuilding anything.
   let movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
 
+  // Per-creature measured step cadence (EMA over confirmation
+  // intervals) — the glide spans the creature's real step rhythm.
+  const cadence = new Map<number, { lastAt: number; ema: number }>();
+  const glideDuration = (c: WorldCreature): number => {
+    if (c.lastMoveAt === undefined) return STEP_GLIDE_DEFAULT_MS;
+    let entry = cadence.get(c.id);
+    if (!entry) {
+      entry = { lastAt: c.lastMoveAt, ema: STEP_GLIDE_DEFAULT_MS };
+      cadence.set(c.id, entry);
+    } else if (c.lastMoveAt !== entry.lastAt) {
+      entry.ema = nextStepEma(entry.ema, c.lastMoveAt - entry.lastAt);
+      entry.lastAt = c.lastMoveAt;
+    }
+    // A hair over the measured cadence so the glide never quite
+    // finishes before the next confirmation, clamped to sane bounds.
+    return Math.min(STEP_GLIDE_MAX_MS, Math.max(STEP_GLIDE_MIN_MS, entry.ema * 1.05));
+  };
+
   const glide = (now: number): void => {
     if (!currentContainer) return;
     const self = world.getCreature(world.playerCreatureId);
-    const cam = self ? interpPos(self, now) : { x: world.playerX, y: world.playerY };
+    const cam = self ? interpPos(self, now, glideDuration(self)) : { x: world.playerX, y: world.playerY };
     recenter(currentContainer, cam.x, cam.y);
     for (const m of movables) {
-      const p = interpPos(m.c, now);
+      const p = interpPos(m.c, now, glideDuration(m.c));
       m.node.x = m.baseX + (p.x - m.c.x) * TILE_SIZE;
       m.node.y = m.baseY + (p.y - m.c.y) * TILE_SIZE;
     }
@@ -139,7 +176,8 @@ export function bindRenderer(
     // While anything is mid-walk-animation the key changes every walk
     // frame, and a rAF loop keeps ticking until everyone is idle again.
     const anyWalking = world.getAllCreatures().some(
-      (c) => c.z === world.playerZ && c.lastMoveAt !== undefined && now - c.lastMoveAt < WALK_ANIM_MS,
+      (c) => c.z === world.playerZ && c.lastMoveAt !== undefined
+        && now - c.lastMoveAt < Math.max(WALK_ANIM_MS, STEP_GLIDE_MAX_MS),
     );
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
     // (expiresAt comes from Date.now()), and the layer updates every
@@ -219,6 +257,7 @@ export function bindRenderer(
     tintedCache.clear();
     for (const plate of nameplates.values()) plate.destroy();
     nameplates.clear();
+    cadence.clear();
     bubbles?.destroy();
     window.removeEventListener('resize', onResize);
     window.removeEventListener(VIEWPORT_EVENT, onResize);

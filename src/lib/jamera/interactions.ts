@@ -26,7 +26,11 @@ export interface InteractionsHandle {
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
 
-/** Canvas pixel → world tile, inverting the renderer's centering math. */
+/**
+ * Canvas-space pixel → world tile, inverting the renderer's centering
+ * math. Callers must convert viewport (client) coordinates to canvas
+ * space first — see toCanvasSpace.
+ */
 export function screenToWorldTile(
   app: Application,
   world: GameWorld,
@@ -39,6 +43,24 @@ export function screenToWorldTile(
     x: Math.floor(world.playerX + 0.5 + dxTiles),
     y: Math.floor(world.playerY + 0.5 + dyTiles),
     z: world.playerZ,
+  };
+}
+
+/**
+ * Viewport (clientX/Y) → canvas-space coordinates, robust to the canvas
+ * being offset, letterboxed, or CSS-scaled relative to its logical
+ * app.screen size.
+ */
+export function toCanvasSpace(
+  canvas: HTMLCanvasElement,
+  screen: { width: number; height: number },
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (screen.width / rect.width),
+    y: (clientY - rect.top) * (screen.height / rect.height),
   };
 }
 
@@ -66,14 +88,16 @@ export function bindInteractions(
   }
 
   function look(clientX: number, clientY: number): void {
-    const pos = screenToWorldTile(app, world, clientX, clientY);
+    const c = toCanvasSpace(canvas, app.screen, clientX, clientY);
+    const pos = screenToWorldTile(app, world, c.x, c.y);
     const item = topItem(pos);
     if (!item) return;
     send(protocol.actions.buildLookAt(pos, item.spriteId, item.stackPos));
   }
 
   function use(clientX: number, clientY: number): void {
-    const pos = screenToWorldTile(app, world, clientX, clientY);
+    const c = toCanvasSpace(canvas, app.screen, clientX, clientY);
+    const pos = screenToWorldTile(app, world, c.x, c.y);
     const item = topItem(pos);
     if (!item) return;
     send(protocol.actions.buildUseItem(pos, item.spriteId, item.stackPos));

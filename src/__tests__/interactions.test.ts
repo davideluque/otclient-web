@@ -41,3 +41,15 @@ describe('actions packets', () => {
     expect([...buildLogoutPacket().toUint8Array()]).toEqual([0x14]);
   });
 });
+
+describe('toCanvasSpace', () => {
+  it('compensates canvas offset and CSS scaling', async () => {
+    const { toCanvasSpace } = await import('../lib/jamera/interactions');
+    const canvas = {
+      getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 300 }),
+    } as unknown as HTMLCanvasElement;
+    // Logical screen 800×600 rendered into a 400×300 box at (100,50):
+    // a click at the box center maps to the logical center.
+    expect(toCanvasSpace(canvas, { width: 800, height: 600 }, 300, 200)).toEqual({ x: 400, y: 300 });
+  });
+});

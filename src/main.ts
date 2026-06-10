@@ -237,11 +237,15 @@ async function startApp(loaded: CompleteLoadedFiles) {
     spawn.x,
     spawn.y,
     spawn.z,
-    // Default outfit: lookType 128 (citizen). Brown + blue look —
-    // tuning the exact palette indices is tracked in issue #57.
-    //   58 → (191, 106, 64)   medium brown
-    //   87 → (0, 85, 255)     Tibia shirt blue
-    { lookType: 128, headColor: 58, bodyColor: 87, legsColor: 58, feetColor: 58 },
+    // Default outfit: lookType 128 (citizen), palette indices taken from
+    // the jamera server database schema defaults (what every new character
+    // actually wears — closes the guesswork in issue #57):
+    //   players.lookhead DEFAULT 78, lookbody 69, looklegs 58, lookfeet 95
+    // Note the on-screen color is tint × template shading: the citizen's
+    // base layer averages ~73% luminance with zero pure-white pixels, so
+    // rendered colors are darker than the raw palette swatch — identical
+    // behavior to OTClient's multiply tinting.
+    { lookType: 128, headColor: 78, bodyColor: 69, legsColor: 58, feetColor: 95 },
   );
 
   // Initialize PixiJS.

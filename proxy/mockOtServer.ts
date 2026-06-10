@@ -79,7 +79,7 @@ function writeMapArea(w: FrameWriter, width: number, height: number, playerZ: nu
           w.u8(100); // health %
           w.u8(2);   // direction: south
           w.u8(128); // lookType (citizen)
-          w.u8(58).u8(87).u8(58).u8(58); // colors
+          w.u8(78).u8(69).u8(58).u8(95); // colors — the server schema's new-character defaults
           w.u8(0).u8(0); // light
           w.u16(220); // speed
           w.u8(0).u8(0); // skull, shield

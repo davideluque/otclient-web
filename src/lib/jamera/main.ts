@@ -8,6 +8,10 @@ import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
 import { registerWireSkips } from '../net/7.6/wireSkips';
+import { createWalkController } from './walkController';
+import { createJoystick } from '../joystick';
+import { createKeyboard } from '../keyboard';
+import type { Direction } from '../player';
 import { setItemWireFlags } from '../net/common/itemFlags';
 import { parseDat } from '../dat';
 import { Application } from 'pixi.js';
@@ -45,6 +49,7 @@ mountLoginScreen(root, {
     startPingLoop(client);
     loadAssetsForRendering();
     const world = bindGameWorld(client);
+    bindMovementInput(client, world);
     ensurePixiApp().catch((err) => {
       console.warn('[jamera] PIXI bootstrap failed:', err);
     });
@@ -326,3 +331,38 @@ function parseClientVersion(raw: string | null): number | undefined {
 // before a human finishes typing credentials. onEnterGame calls this
 // again, which retries if this first attempt failed and no-ops otherwise.
 loadAssetsForRendering();
+
+/**
+ * Movement input: joystick (coarse-pointer devices) + keyboard feed a
+ * walk controller that does server-confirmed stepping. Re-login tears
+ * the previous session's input down first — two controllers would
+ * double-send steps for the same hold.
+ */
+let teardownMovement: (() => void) | null = null;
+
+function bindMovementInput(client: GameClient, world: GameWorld): void {
+  teardownMovement?.();
+
+  let joystickDir: Direction | null = null;
+  const joystick = createJoystick({ onChange: (dir) => { joystickDir = dir; } });
+  const joystickQuery = window.matchMedia('(pointer: coarse)');
+  const applyJoystickVisibility = (): void => joystick.setVisible(joystickQuery.matches);
+  applyJoystickVisibility();
+  joystickQuery.addEventListener('change', applyJoystickVisibility);
+
+  const keyboard = createKeyboard();
+
+  const walker = createWalkController({
+    client,
+    world,
+    getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
+  });
+
+  teardownMovement = () => {
+    walker.destroy();
+    joystickQuery.removeEventListener('change', applyJoystickVisibility);
+    joystick.destroy();
+    keyboard.destroy();
+    teardownMovement = null;
+  };
+}

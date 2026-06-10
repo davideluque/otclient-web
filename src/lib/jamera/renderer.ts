@@ -9,6 +9,7 @@ import type { SpriteAtlas } from '../spriteAtlas';
 import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
 import { VIEWPORT_EVENT } from './viewport';
+import { reportMetric } from './metrics';
 
 /** How long after a confirmed step a creature keeps its walk pose. */
 const WALK_ANIM_MS = 400;
@@ -114,6 +115,7 @@ export function bindRenderer(
     const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}:${world.creatureRevision}:${walkTick}`;
     if (key === paintedKey && currentContainer) return;
 
+    const repaintStart = performance.now();
     const { container } = renderTileRegion(
       world,
       atlas.datIndex,
@@ -134,6 +136,9 @@ export function bindRenderer(
     app.stage.addChild(container);
     currentContainer = container;
     paintedKey = key;
+    // Full-region rebuild cost on this device — the phone-CPU half of
+    // the walk-lag decomposition.
+    reportMetric('repaint', performance.now() - repaintStart);
   };
 
   // A viewport change alters `app.screen` and the stage zoom but fires

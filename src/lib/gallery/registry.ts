@@ -18,6 +18,8 @@ import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
+import { createMetricsOverlay } from '../jamera/metricsOverlay';
+import { reportMetric } from '../jamera/metrics';
 import { createChangelogPane } from '../changelogPane';
 import { CHANGELOG } from '../changelog';
 import { ChatManager } from '../chat/ChatManager';
@@ -229,6 +231,22 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Toggle', () => pane.toggle());
       log(`${CHANGELOG.length} entries, latest: ${CHANGELOG[0]?.text}`);
       return () => pane.destroy();
+    },
+  },
+
+  {
+    name: 'Metrics overlay',
+    description:
+      'Dev metrics (top-center): FPS, walk-step latency (network + '
+      + 'server), repaint cost (device CPU) — the walk-lag decomposition. '
+      + 'In-game: Settings → Show metrics, or ?metrics=1.',
+    mount({ knobs, log }) {
+      const overlay = createMetricsOverlay();
+      knobs.button('Report step 180ms', () => { reportMetric('step', 180); log('step 180ms'); });
+      knobs.button('Report step 520ms', () => { reportMetric('step', 520); log('step 520ms'); });
+      knobs.button('Report repaint 6ms', () => { reportMetric('repaint', 6); log('repaint 6ms'); });
+      knobs.button('Report repaint 48ms (slow device)', () => { reportMetric('repaint', 48); log('repaint 48ms'); });
+      return () => overlay.destroy();
     },
   },
 

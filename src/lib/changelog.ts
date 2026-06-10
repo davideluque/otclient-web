@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Settings → Show metrics: on-screen FPS, walk latency, and repaint cost for the lag hunt (?metrics=1 works too).' },
   { date: '2026-06-10', text: 'Added Settings to the menu — auto-attack toggle, synced with the ⚔ circle.' },
   { date: '2026-06-10', text: 'Fixed monsters not visibly walking (their steps were being dropped).' },
   { date: '2026-06-10', text: 'Rats now spawn just east of the D\'aracia depot for combat testing.' },

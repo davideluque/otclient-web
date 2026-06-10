@@ -51,7 +51,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
         world.playerZ !== pending.z;
       if (moved) {
         pending = null; // server confirmed the step
-      } else if (Date.now() > pending.deadline) {
+      } else if (performance.now() > pending.deadline) {
         pending = null; // rejected or lost — allow another attempt
       } else {
         return; // still waiting on the server
@@ -61,12 +61,20 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
     const dir = opts.getHeldDirection();
     if (dir === null) return;
 
-    client.send(client.getProtocol().movement.buildMove(dir));
+    try {
+      client.send(client.getProtocol().movement.buildMove(dir));
+    } catch (e) {
+      // A throw here means the state flipped mid-tick (defensive — the
+      // state check above runs in the same synchronous tick). Don't let
+      // it kill the interval.
+      console.warn('[jamera] walk send failed:', e instanceof Error ? e.message : e);
+      return;
+    }
     pending = {
       x: world.playerX,
       y: world.playerY,
       z: world.playerZ,
-      deadline: Date.now() + stepTimeoutMs,
+      deadline: performance.now() + stepTimeoutMs,
     };
   };
 

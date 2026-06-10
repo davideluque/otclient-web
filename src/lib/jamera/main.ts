@@ -39,6 +39,15 @@ mountLoginScreen(root, {
     loadAssetsForRendering();
     return assetsReady;
   },
+  onLeaveGame: () => {
+    // Disconnect/kick: drop the per-session surfaces instead of leaving
+    // a live joystick and chat floating over the re-shown login screen.
+    teardownMovement?.();
+    teardownChat?.destroy();
+    teardownChat = null;
+    teardownStats?.destroy();
+    teardownStats = null;
+  },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
     // live-map renderer, chat UI, and movement input. Surface the live

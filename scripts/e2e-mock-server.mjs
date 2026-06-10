@@ -59,7 +59,7 @@ try {
 } catch { fail('chat echo never rendered'); }
 console.log('CHAT: echo rendered');
 
-await page.screenshot({ path: 'process.env.E2E_SHOT ?? "/tmp/e2e-jamera.png"' });
+await page.screenshot({ path: process.env.E2E_SHOT ?? '/tmp/e2e-jamera.png' });
 const warnings = logs.filter((l) => l.startsWith('warning') && l.includes('Unhandled opcode'));
 console.log('unhandled-opcode warnings:', warnings.length);
 console.log('PASS');

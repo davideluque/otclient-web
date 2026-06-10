@@ -22,8 +22,9 @@ const WALK_ANIM_MS = 400;
 const WALK_FRAME_MS = 125;
 
 function walkPhase(c: WorldCreature, now: number): number {
-  const last = c.lastMoveAt ?? 0;
-  if (now - last >= WALK_ANIM_MS) return 0; // idle
+  // performance.now() starts near 0, so an undefined stamp must mean
+  // idle explicitly rather than defaulting to 0 and looking recent.
+  if (c.lastMoveAt === undefined || now - c.lastMoveAt >= WALK_ANIM_MS) return 0;
   // Phases 1..n-1 are the walk cycle (renderPlayer clamps to the
   // outfit's actual phase count).
   return 1 + (Math.floor(now / WALK_FRAME_MS) % 2);
@@ -72,11 +73,11 @@ export function bindRenderer(
   let rafId = 0;
 
   const update = (): void => {
-    const now = Date.now();
+    const now = performance.now();
     // While anything is mid-walk-animation the key changes every walk
     // frame, and a rAF loop keeps ticking until everyone is idle again.
     const anyWalking = world.getAllCreatures().some(
-      (c) => c.z === world.playerZ && now - (c.lastMoveAt ?? 0) < WALK_ANIM_MS,
+      (c) => c.z === world.playerZ && c.lastMoveAt !== undefined && now - c.lastMoveAt < WALK_ANIM_MS,
     );
     const walkTick = anyWalking ? Math.floor(now / WALK_FRAME_MS) : -1;
     if (anyWalking && rafId === 0) {
@@ -125,6 +126,10 @@ export function bindRenderer(
 
   return () => {
     if (rafId !== 0) cancelAnimationFrame(rafId);
+    // Tinted outfit textures are dynamically created GPU resources; the
+    // shared atlas textures live for the page, but these are per-binding.
+    for (const tex of tintedCache.values()) tex.destroy(true);
+    tintedCache.clear();
     window.removeEventListener('resize', onResize);
     if (world.onChange === update) world.onChange = null;
     if (currentContainer) {
@@ -156,7 +161,7 @@ function drawCreatures(
   );
   visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
-  const now = Date.now();
+  const now = performance.now();
   for (const c of visible) {
     const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
     if (sprite) container.addChild(sprite);

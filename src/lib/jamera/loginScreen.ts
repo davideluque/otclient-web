@@ -37,6 +37,14 @@ export interface MountOptions {
   onEnterGame?: (client: GameClient) => void;
 
   /**
+   * Invoked when the session leaves the game world (in_game → anything
+   * else, e.g. a kick or disconnect). Pair with onEnterGame to tear down
+   * per-session UI — input, chat, HUD — instead of leaving it mounted
+   * over the re-shown login screen.
+   */
+  onLeaveGame?: () => void;
+
+  /**
    * Awaited before entering the game world (character select). Use it to
    * gate game entry on prerequisites like the asset bundle: the first
    * map packet arrives instantly after game login and is unparseable
@@ -72,9 +80,12 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   const events: GameClientEvents = {};
   const client = new GameClient(proxyUrl, events, protocol);
 
+  let lastState: GameClientState = 'disconnected';
   events.onStateChange = (state) => {
     updateState(ui, state);
     if (state === 'in_game') opts.onEnterGame?.(client);
+    if (lastState === 'in_game' && state !== 'in_game') opts.onLeaveGame?.();
+    lastState = state;
   };
   events.onLoginError = (msg) => showError(ui, msg);
   events.onCharacterList = (characters, premiumDays, motd) => {

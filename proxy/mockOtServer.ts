@@ -59,9 +59,13 @@ function writeMapArea(w: FrameWriter, width: number, height: number, playerZ: nu
   for (const z of floors) {
     if (z === playerZ) {
       // Grass tiles: ground item, then a zero-skip slot terminator each.
+      // The player creature goes on the tile matching the SelfAppear
+      // position: the description window starts at (x-8, y-6), so the
+      // player's cell is column 8, row 6.
+      const playerCell = 8 * height + 6;
       for (let i = 0; i < width * height; i++) {
         w.u16(GROUND_ID);
-        if (i === 0 && z === SPAWN.z) {
+        if (i === playerCell && width === 18 && z === SPAWN.z) {
           // The player stands on the first tile (known-creature form not
           // needed — 0x61 introduces it with name + outfit).
           w.u16(0x61);

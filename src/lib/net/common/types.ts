@@ -118,20 +118,28 @@ export interface ChatMessage {
 // pragmatically shared across most OT versions; if a future version's wire
 // codes diverge, expose per-version values on `GameProtocol.chat` instead of
 // importing this constant from caller code.
+// 7.6 SpeakClasses, verified against the jamera server's const76.h —
+// these are NOT the 8.x values (8.x shifted Channel to 0x07 and the
+// monster classes to 0x0d/0x0e; using those against a 7.6 server
+// misparses every channel and monster message).
 export const MessageType = {
   Say: 0x01,
   Whisper: 0x02,
   Yell: 0x03,
   PrivateFrom: 0x04,
-  PrivateTo: 0x05,
-  ChannelManagement: 0x06,
-  Channel: 0x07,
-  ChannelHighlight: 0x08,
+  // 7.6 has a single private speak class for both directions.
+  PrivateTo: 0x04,
+  Channel: 0x05, // yellow
+  RuleViolationChannel: 0x06,
+  RuleViolationAnswer: 0x07,
+  RuleViolationContinue: 0x08,
   Broadcast: 0x09,
-  ChannelRed: 0x0a,
-  PrivateRed: 0x0b,
-  MonsterSay: 0x0d,
-  MonsterYell: 0x0e,
+  ChannelRed: 0x0a, // #c
+  PrivateRed: 0x0b, // @name@
+  ChannelOrange: 0x0c,
+  ChannelRedAnonymous: 0x0e, // #d — sent with an empty sender name
+  MonsterSay: 0x10,
+  MonsterYell: 0x11,
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -190,6 +198,25 @@ export interface MapProtocol {
   parsePosition(packet: InputPacket): { x: number; y: number; z: number };
 
   /**
+   * Parse one wire item (U16 client ID + count byte when the .dat flags
+   * the type as stackable/splash/fluid).
+   */
+  parseItem(packet: InputPacket): MapTileItem;
+
+  /**
+   * Parse the things of one non-empty tile slot into `tile`, consuming
+   * the trailing skip marker. Returns the marker's carried skip count.
+   */
+  parseTileSlot(packet: InputPacket, tile: MapTile): number;
+
+  /**
+   * Parse one creature block — the payload following a 0x61 (known) or
+   * 0x62 (unknown) thing marker; the marker itself must already be
+   * consumed. `isNew` is the 0x62 form (removeKnown ID + name).
+   */
+  parseCreature(packet: InputPacket, isNew: boolean): MapCreature;
+
+  /**
    * Parse a rectangular map region across all currently-visible floors,
    * based on `playerZ` (the server sends 8 layers above ground or 5
    * layers underground). A single skip counter carries tiles across
@@ -231,7 +258,9 @@ export interface ServerOpcodes {
   readonly LoginCharacterList: number;
   readonly SelfAppear: number;
   readonly GMActions: number;
+  readonly LoginQueue: number;
   readonly Ping: number;
+  readonly ReloginWindow: number;
   readonly MapDescription: number;
   readonly MoveNorth: number;
   readonly MoveEast: number;
@@ -244,12 +273,42 @@ export interface ServerOpcodes {
   readonly InventorySet: number;
   readonly InventoryClear: number;
   readonly CreatureMove: number;
+  readonly CreatureSquare: number;
+  readonly CreatureHealth: number;
+  readonly CreatureLight: number;
+  readonly CreatureOutfit: number;
+  readonly CreatureSpeed: number;
+  readonly CreatureSkull: number;
+  readonly CreatureShield: number;
   readonly ContainerOpen: number;
   readonly ContainerClose: number;
+  readonly ContainerAddItem: number;
+  readonly ContainerUpdateItem: number;
+  readonly ContainerRemoveItem: number;
+  readonly TradeRequest: number;
+  readonly TradeRequestAck: number;
+  readonly TradeClose: number;
+  readonly TextWindow: number;
+  readonly HouseWindow: number;
   readonly WorldLight: number;
   readonly PlayerStats: number;
   readonly PlayerSkills: number;
+  readonly Icons: number;
+  readonly CancelTarget: number;
+  readonly TextMessage: number;
+  readonly CancelWalk: number;
+  readonly FloorChangeUp: number;
+  readonly FloorChangeDown: number;
   readonly CreatureSpeak: number;
+  readonly ChannelsDialog: number;
+  readonly ChannelOpen: number;
+  readonly PrivateChannelOpen: number;
+  readonly RuleViolationsChannel: number;
+  readonly RuleViolationRemove: number;
+  readonly RuleViolationCancel: number;
+  readonly RuleViolationLock: number;
+  readonly PrivateChannelCreate: number;
+  readonly ChannelClose: number;
   readonly MagicEffect: number;
   readonly AnimatedText: number;
   readonly DistanceShot: number;

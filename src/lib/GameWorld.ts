@@ -32,6 +32,13 @@ export interface WorldCreature {
   outfit: MapCreature['outfit'];
   /** performance.now()-style stamp of the last confirmed step (for walk animation). */
   lastMoveAt?: number;
+  /**
+   * Tile the last confirmed step departed from (same z) — the renderer
+   * interpolates screen positions from here to (x, y) over the step
+   * duration. Unset (or a >1-tile delta / z change) means teleport: snap.
+   */
+  fromX?: number;
+  fromY?: number;
 }
 
 /**
@@ -361,6 +368,12 @@ export class GameWorld {
     // Missing destination tile: leave the MapCreature where it is — the
     // registry below still tracks the true position, and dropping the
     // creature entirely would erase the player from the tile model.
+    // Interpolation origin only for true single-tile steps on the same
+    // floor — floor changes and teleports must snap, not glide.
+    const isStep = oldZ === this.playerZ
+      && Math.abs(this.playerX - oldX) <= 1 && Math.abs(this.playerY - oldY) <= 1;
+    self.fromX = isStep ? oldX : undefined;
+    self.fromY = isStep ? oldY : undefined;
     self.x = this.playerX;
     self.y = this.playerY;
     self.z = this.playerZ;
@@ -508,6 +521,10 @@ export class GameWorld {
       );
       const wc = this.creatures.get(creature.id);
       if (wc) {
+        const isStep = event.fromZ === event.toZ
+          && Math.abs(event.toX - event.fromX) <= 1 && Math.abs(event.toY - event.fromY) <= 1;
+        wc.fromX = isStep ? event.fromX : undefined;
+        wc.fromY = isStep ? event.fromY : undefined;
         wc.x = event.toX;
         wc.y = event.toY;
         wc.z = event.toZ;

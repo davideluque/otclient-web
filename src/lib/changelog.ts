@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Walking is smooth now: the camera and creatures glide between tiles instead of snapping.' },
   { date: '2026-06-10', text: 'The screen no longer dims/sleeps while playing (wake lock, like the offline map).' },
   { date: '2026-06-10', text: 'Tap-to-walk is back: tap a tile and the player paths to it (long-press still looks, double-tap still uses).' },
   { date: '2026-06-10', text: 'The inventory now shows real item graphics instead of numbers.' },

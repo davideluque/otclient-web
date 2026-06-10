@@ -16,14 +16,25 @@ export function resolveProxyOverride(
   try {
     url = new URL(raw);
   } catch {
+    warnRejected(raw, 'not a valid URL');
     return undefined;
   }
 
-  if (!ALLOWED_PROXY_PROTOCOLS.has(url.protocol)) return undefined;
+  if (!ALLOWED_PROXY_PROTOCOLS.has(url.protocol)) {
+    warnRejected(raw, 'only ws:// and wss:// proxies are allowed');
+    return undefined;
+  }
   if (isLoopbackHost(url.hostname) || isSamePageHost(url.hostname, pageLocation.hostname)) {
     return url.href.replace(/\/$/, '');
   }
+  warnRejected(raw, 'host must be loopback or match the page hostname');
   return undefined;
+}
+
+// Loud fallback: a dev with a typo'd ?proxy= should learn why they're
+// suddenly talking to the default proxy instead of their own.
+function warnRejected(raw: string, reason: string): void {
+  console.warn(`Ignoring ?proxy=${raw} (${reason}); using the default proxy.`);
 }
 
 function isSamePageHost(proxyHost: string, pageHost: string): boolean {

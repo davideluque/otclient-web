@@ -147,11 +147,16 @@ export class GameWorld {
     this.tileRevision++;
     if (tile.creatures.length > 0) this.creatureRevision++;
 
-    // Register any creatures on this tile
+    // Register any creatures on this tile. KNOWN-form creatures (0x62)
+    // carry no name on the wire — the server expects the client to
+    // remember it. Floor changes re-describe the player as KNOWN (going
+    // down there isn't even a 0x6D), so clobbering the stored name here
+    // is exactly the "my name disappears when I go down" bug.
     for (const c of tile.creatures) {
+      const known = this.creatures.get(c.id);
       this.creatures.set(c.id, {
         id: c.id,
-        name: c.name,
+        name: c.name || known?.name || '',
         x: tile.x,
         y: tile.y,
         z: tile.z,
@@ -204,9 +209,11 @@ export class GameWorld {
       const creature = this.protocol.map.parseCreature(packet, peek === 0x61);
       tile.creatures.push(creature);
       this.creatureRevision++;
+      // KNOWN form carries no name — preserve the remembered one.
+      const known = this.creatures.get(creature.id);
       this.creatures.set(creature.id, {
         id: creature.id,
-        name: creature.name,
+        name: creature.name || known?.name || '',
         x: pos.x, y: pos.y, z: pos.z,
         direction: creature.direction,
         health: creature.health,

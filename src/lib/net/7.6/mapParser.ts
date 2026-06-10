@@ -70,12 +70,16 @@ export function parseMapDescription(
   let skipTiles = 0;
 
   for (const z of floors) {
-    // Each visible floor is sent at a screen-position offset to preserve
-    // perspective: above-ground (z < playerZ) shifts NW (dz negative),
-    // underground (z > playerZ) shifts SE (dz positive). Translate to
-    // world coordinates as we emit each tile so callers can index by
-    // world position uniformly.
-    const dz = z - playerZ;
+    // Each visible floor is sent at a perspective offset: the server
+    // reads floor `z` at world (x + n + offset) with offset = playerZ - z
+    // (GetMapDescription → GetFloorDescription, offset = z_camera - nz).
+    // Reconstructing world coordinates therefore ADDS that same offset —
+    // floors above the camera (z < playerZ) sit further SE in world
+    // space for the same screen cell. Getting this sign wrong displaces
+    // every off-camera floor by 2×(playerZ−z) tiles, which is invisible
+    // until a floor change makes one of those floors current ("the stair
+    // is 2 right and 2 down of where I appear").
+    const dz = playerZ - z;
     for (let nx = startX; nx <= endX; nx++) {
       for (let ny = startY; ny <= endY; ny++) {
         if (skipTiles > 0) {

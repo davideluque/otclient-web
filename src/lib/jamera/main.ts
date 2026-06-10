@@ -9,6 +9,7 @@ import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
 import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
+import { createMetricsOverlay, type MetricsOverlayHandle } from './metricsOverlay';
 import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane';
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
@@ -74,6 +75,7 @@ mountLoginScreen(root, {
     teardownCombat = null;
     settingsPane?.destroy();
     settingsPane = null;
+    setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
     changelogPane?.close();
@@ -117,7 +119,16 @@ mountLoginScreen(root, {
         get: () => teardownCombat?.attacking ?? false,
         set: (on) => teardownCombat?.setAttacking(on),
       },
+      {
+        label: 'Show metrics',
+        hint: 'FPS, walk-step latency, repaint cost — for the lag hunt.',
+        get: () => metricsOverlay !== null,
+        set: (on) => setMetricsVisible(on),
+      },
     ]);
+    // ?metrics=1 arms the overlay from the URL (e.g. before reporting a
+    // lag trace) — the Settings toggle does the same thing in-game.
+    if (params.get('metrics') === '1') setMetricsVisible(true);
     teardownStats = bindStats(client, document.body, [
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
       { label: 'Settings', onSelect: () => settingsPane?.open() },
@@ -513,4 +524,14 @@ let teardownInteractions: InteractionsHandle | null = null;
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
+let metricsOverlay: MetricsOverlayHandle | null = null;
+
+function setMetricsVisible(on: boolean): void {
+  if (on && !metricsOverlay) {
+    metricsOverlay = createMetricsOverlay();
+  } else if (!on && metricsOverlay) {
+    metricsOverlay.destroy();
+    metricsOverlay = null;
+  }
+}
 let changelogPane: ChangelogPaneHandle | null = null;

@@ -1,4 +1,5 @@
 import type { GameClient } from '../net/common/GameClient';
+import { reportMetric } from './metrics';
 import type { GameWorld } from '../GameWorld';
 import type { Direction } from '../player';
 
@@ -35,7 +36,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
   const stepTimeoutMs = opts.stepTimeoutMs ?? 800;
   const tickMs = opts.tickMs ?? 60;
 
-  let pending: { x: number; y: number; z: number; deadline: number } | null = null;
+  let pending: { x: number; y: number; z: number; deadline: number; sentAt: number } | null = null;
 
   const tick = (): void => {
     const { client, world } = opts;
@@ -50,6 +51,9 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
         world.playerY !== pending.y ||
         world.playerZ !== pending.z;
       if (moved) {
+        // Send → confirmation = network round-trip + server walk tick;
+        // the metrics overlay charts it for the lag investigation.
+        reportMetric('step', performance.now() - pending.sentAt);
         pending = null; // server confirmed the step
       } else if (performance.now() > pending.deadline) {
         pending = null; // rejected or lost — allow another attempt
@@ -75,6 +79,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
       y: world.playerY,
       z: world.playerZ,
       deadline: performance.now() + stepTimeoutMs,
+      sentAt: performance.now(),
     };
   };
 

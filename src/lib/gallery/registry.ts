@@ -20,6 +20,7 @@ import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
 import { createCombatModes } from '../combatModes';
+import { createStatusBar, StatusIcon } from '../statusBar';
 import { createMetricsOverlay } from '../jamera/metricsOverlay';
 import { reportMetric } from '../jamera/metrics';
 import { createChangelogPane } from '../changelogPane';
@@ -238,6 +239,25 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Force defensive externally', () => modes.setState({ fightMode: 3 }));
       knobs.toggle('Visible', true, (on) => modes.setVisible(on));
       return () => modes.destroy();
+    },
+  },
+
+  {
+    name: 'Status bar',
+    description:
+      'Player condition chips (top-left, under the HUD) from the 0xA2 '
+      + 'icon bitmask: poison, burn, energy, drunk, mana shield, '
+      + 'paralyze, haste, in-fight. Hidden entirely when no condition.',
+    mount({ knobs, log }) {
+      const bar = createStatusBar();
+      let mask = 0;
+      const apply = () => { bar.setIcons(mask); log(`mask = ${mask}`); };
+      knobs.button('Toggle poison', () => { mask ^= StatusIcon.Poison; apply(); });
+      knobs.button('Toggle haste', () => { mask ^= StatusIcon.Haste; apply(); });
+      knobs.button('Toggle in-fight ⚔', () => { mask ^= StatusIcon.InFight; apply(); });
+      knobs.button('Everything at once', () => { mask = 255; apply(); });
+      knobs.button('Clear', () => { mask = 0; apply(); });
+      return () => bar.destroy();
     },
   },
 

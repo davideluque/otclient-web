@@ -21,6 +21,7 @@ import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindCombatModes, type CombatModesBindingHandle } from './combatModesBinding';
+import { bindStatus, type StatusBindingHandle } from './statusBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { createJoystick } from '../joystick';
@@ -89,6 +90,8 @@ mountLoginScreen(root, {
     teardownMinimap = null;
     teardownCombatModes?.destroy();
     teardownCombatModes = null;
+    teardownStatus?.destroy();
+    teardownStatus = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
@@ -133,6 +136,8 @@ mountLoginScreen(root, {
     teardownMinimap = bindMinimap(world, () => jameraAtlas?.datIndex ?? null);
     teardownCombatModes?.destroy();
     teardownCombatModes = bindCombatModes(client);
+    teardownStatus?.destroy();
+    teardownStatus = bindStatus(client);
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
     // current session even across re-logins.
@@ -581,6 +586,7 @@ let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownCombatModes: CombatModesBindingHandle | null = null;
+let teardownStatus: StatusBindingHandle | null = null;
 let metricsOverlay: MetricsOverlayHandle | null = null;
 
 function setMetricsVisible(on: boolean): void {

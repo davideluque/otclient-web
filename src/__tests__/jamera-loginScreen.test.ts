@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountLoginScreen } from '../lib/jamera/loginScreen';
+import { GameClient } from '../lib/net/common/GameClient';
 
 /**
  * These tests exercise the login screen as a black box — they don't open
@@ -138,5 +139,72 @@ describe('mountLoginScreen', () => {
     mounted.client.events.onLoginError?.('Account is banned.');
     const err = root.querySelector('[data-role="error"]');
     expect(err?.textContent).toBe('Account is banned.');
+  });
+});
+
+describe('mountLoginScreen autoLogin', () => {
+  const CHARS = [
+    { name: 'Flash Ivan', worldName: 'Jamera', worldIp: '127.0.0.1', worldPort: 7172 },
+    { name: 'Squirrel', worldName: 'Jamera', worldIp: '127.0.0.1', worldPort: 7172 },
+  ];
+  let root: HTMLElement;
+  let loginSpy: ReturnType<typeof vi.spyOn>;
+  let selectSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    // No real sockets in happy-dom — intercept at the GameClient boundary.
+    loginSpy = vi.spyOn(GameClient.prototype, 'login').mockResolvedValue(undefined);
+    selectSpy = vi.spyOn(GameClient.prototype, 'selectCharacter').mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    loginSpy.mockRestore();
+    selectSpy.mockRestore();
+    root.remove();
+  });
+
+  it('submits the credentials on mount and picks the first character once', async () => {
+    const mounted = mountLoginScreen(root, { autoLogin: { account: 1, password: '1' } });
+    await Promise.resolve();
+    expect(loginSpy).toHaveBeenCalledWith(1, '1');
+
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).toHaveBeenCalledTimes(1);
+    expect(selectSpy).toHaveBeenCalledWith(CHARS[0]);
+
+    // One-shot: a later character list (re-login after logout) must not
+    // auto-pick — the user is back on the normal flow.
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).toHaveBeenCalledTimes(1);
+    mounted.unmount();
+  });
+
+  it('a login error disarms the auto-pick', async () => {
+    const mounted = mountLoginScreen(root, { autoLogin: { account: 1, password: 'wrong' } });
+    await Promise.resolve();
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onLoginError?.('Wrong password.');
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).not.toHaveBeenCalled();
+    mounted.unmount();
+  });
+
+  it('does not auto-anything without the option', async () => {
+    const mounted = mountLoginScreen(root);
+    await Promise.resolve();
+    expect(loginSpy).not.toHaveBeenCalled();
+    // @ts-expect-error reaching into private events
+    mounted.client.events.onCharacterList?.(CHARS, 0, 'Welcome.');
+    await Promise.resolve();
+    expect(selectSpy).not.toHaveBeenCalled();
+    mounted.unmount();
   });
 });

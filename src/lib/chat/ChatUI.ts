@@ -9,15 +9,29 @@ export type SendPacketFn = (packet: OutputPacket) => void;
  * Creates the chat UI DOM elements and wires them to the ChatManager.
  * Returns the root element to append to the document.
  */
+export interface ChatUIOptions {
+  /**
+   * Renders a ✕ button at the right of the tab strip and invokes this
+   * when it's pressed. The host owns what "close" means (the jamera
+   * binding hides the panel behind its 💬 toggle); without the option
+   * the button isn't rendered.
+   */
+  onClose?: () => void;
+}
+
 export function createChatUI(
   chatManager: ChatManager,
   protocol: GameProtocol,
   sendPacket: SendPacketFn,
+  opts: ChatUIOptions = {},
 ): HTMLElement {
   const root = document.createElement('div');
   root.id = 'chat-ui';
   root.innerHTML = `
-    <div class="chat-tabs" id="chat-tabs"></div>
+    <div class="chat-tabs-row">
+      <div class="chat-tabs" id="chat-tabs"></div>
+      <button class="chat-close" title="Close chat" aria-label="Close chat">✕</button>
+    </div>
     <div class="chat-messages" id="chat-messages"></div>
     <div class="chat-input-row">
       <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
@@ -31,12 +45,17 @@ export function createChatUI(
       position: fixed; bottom: 0; left: 0; right: 0;
       background: rgba(0, 0, 0, 0.85); color: #e0e0e0;
       font-family: system-ui, sans-serif; font-size: 0.8rem;
-      max-height: 40vh; display: flex; flex-direction: column;
+      display: flex; flex-direction: column;
       z-index: 20; border-top: 1px solid #333;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .chat-tabs-row {
+      display: flex; align-items: center;
+      border-bottom: 1px solid #333; flex-shrink: 0;
     }
     .chat-tabs {
       display: flex; gap: 2px; padding: 4px 8px; overflow-x: auto;
-      border-bottom: 1px solid #333; flex-shrink: 0;
+      flex: 1; min-width: 0;
     }
     .chat-tabs button {
       background: #222; color: #aaa; border: 1px solid #444;
@@ -45,9 +64,18 @@ export function createChatUI(
     }
     .chat-tabs button.active { background: #333; color: #fff; border-bottom-color: #333; }
     .chat-tabs button.unread { color: #7c5cbf; }
+    .chat-close {
+      background: none; border: none; color: #888;
+      font-size: 0.95rem; padding: 4px 12px; cursor: pointer;
+      flex-shrink: 0;
+    }
+    .chat-close:hover, .chat-close:active { color: #fff; }
+    /* Fixed compact height — roughly four message lines. The panel must
+       not grow/shrink with whichever channel happens to be active; on a
+       phone a content-driven height makes the whole panel jump on every
+       tab switch and bury the joystick when a channel is busy. */
     .chat-messages {
-      flex: 1; overflow-y: auto; padding: 8px;
-      min-height: 80px; max-height: 30vh;
+      height: 6.5em; flex: none; overflow-y: auto; padding: 6px 8px;
     }
     .chat-messages .msg { margin: 2px 0; line-height: 1.4; }
     .chat-messages .msg .sender { color: #7c5cbf; font-weight: bold; }
@@ -58,7 +86,10 @@ export function createChatUI(
     }
     #chat-input {
       flex: 1; background: #111; color: #eee; border: 1px solid #444;
-      border-radius: 4px; padding: 6px 8px; font-size: 0.85rem;
+      border-radius: 4px; padding: 6px 8px;
+      /* 16px minimum: iOS pinch-zooms the page on focusing any smaller
+         input and stays zoomed — same bug as the login form. */
+      font-size: 16px;
       outline: none;
     }
     #chat-input:focus { border-color: #7c5cbf; }
@@ -74,6 +105,13 @@ export function createChatUI(
   const messagesEl = root.querySelector('#chat-messages') as HTMLElement;
   const inputEl = root.querySelector('#chat-input') as HTMLInputElement;
   const sendBtn = root.querySelector('#chat-send') as HTMLButtonElement;
+  const closeBtn = root.querySelector('.chat-close') as HTMLButtonElement;
+
+  if (opts.onClose) {
+    closeBtn.addEventListener('click', opts.onClose);
+  } else {
+    closeBtn.style.display = 'none';
+  }
 
   function renderTabs() {
     tabsEl.innerHTML = '';

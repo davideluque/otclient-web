@@ -67,7 +67,19 @@ function ensureStyles(): void {
   document.head.appendChild(style);
 }
 
-export function createInventoryPane(parent: HTMLElement = document.body): InventoryPaneHandle {
+export interface InventoryPaneOptions {
+  /**
+   * Render an item graphic for a slot (a canvas the cell scales to
+   * fit). Return null to fall back to the textual #id label — also the
+   * behavior when the option is absent (gallery, pre-asset mounts).
+   */
+  renderThumb?: (itemId: number) => HTMLCanvasElement | null;
+}
+
+export function createInventoryPane(
+  parent: HTMLElement = document.body,
+  opts: InventoryPaneOptions = {},
+): InventoryPaneHandle {
   ensureStyles();
 
   const el = document.createElement('div');
@@ -96,13 +108,21 @@ export function createInventoryPane(parent: HTMLElement = document.body): Invent
     setSlot: (slot, itemId, count) => {
       const s = slots.get(slot);
       if (!s) return;
+      s.cell.querySelector('canvas')?.remove();
       if (itemId === null) {
         s.cell.classList.remove('filled');
         s.label.textContent = slot;
         s.count.textContent = '';
       } else {
         s.cell.classList.add('filled');
-        s.label.textContent = `#${itemId}`;
+        const thumb = opts.renderThumb?.(itemId) ?? null;
+        if (thumb) {
+          thumb.style.cssText = 'position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
+          s.cell.appendChild(thumb);
+          s.label.textContent = '';
+        } else {
+          s.label.textContent = `#${itemId}`;
+        }
         s.count.textContent = count !== undefined && count > 1 ? String(count) : '';
       }
     },

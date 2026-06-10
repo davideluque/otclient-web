@@ -1,4 +1,4 @@
-import { createInventoryPane, slotName, type InventoryPaneHandle } from '../inventoryPane';
+import { createInventoryPane, slotName, type InventoryPaneHandle, type InventoryPaneOptions } from '../inventoryPane';
 import type { GameClient } from '../net/common/GameClient';
 
 /**
@@ -14,7 +14,11 @@ export interface InventoryBindingHandle {
   destroy(): void;
 }
 
-export function bindInventory(client: GameClient, parent: HTMLElement = document.body): InventoryBindingHandle {
+export function bindInventory(
+  client: GameClient,
+  parent: HTMLElement = document.body,
+  paneOpts: InventoryPaneOptions = {},
+): InventoryBindingHandle {
   const protocol = client.getProtocol();
   const op = protocol.serverOpcodes;
   const dispatcher = client.getDispatcher();
@@ -23,7 +27,7 @@ export function bindInventory(client: GameClient, parent: HTMLElement = document
   let open = false;
   const ensurePane = (): InventoryPaneHandle => {
     if (!pane) {
-      pane = createInventoryPane(parent);
+      pane = createInventoryPane(parent, paneOpts);
       pane.setVisible(open);
     }
     return pane;

@@ -1,5 +1,6 @@
 import type { Application, Container } from 'pixi.js';
 import { renderTileRegion, renderPlayer, type TintedTextureCache } from '../tileRenderer';
+import { createNameplate, type NameplateHandle } from './nameplate';
 import type { GameWorld, WorldCreature } from '../GameWorld';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
@@ -59,6 +60,9 @@ export function bindRenderer(
   // Outfit tint compositions are expensive; cache them for the lifetime
   // of this binding (i.e. per session).
   const tintedCache: TintedTextureCache = new Map();
+  // Nameplates persist across rebuilds (PIXI Text layout is costly);
+  // keyed by creature id, evicted when the creature leaves view.
+  const nameplates = new Map<number, NameplateHandle>();
 
   // Center the player tile on the canvas. The 0.5 offset puts the
   // *center* of the player's tile at the canvas center instead of
@@ -99,7 +103,7 @@ export function bindRenderer(
       world.playerX + HALF_W_RIGHT, world.playerY + HALF_H_BOTTOM,
       world.playerZ,
     );
-    drawCreatures(world, atlas, container, tintedCache);
+    drawCreatures(world, atlas, container, tintedCache, nameplates);
     recenter(container);
 
     if (currentContainer) {
@@ -130,6 +134,8 @@ export function bindRenderer(
     // shared atlas textures live for the page, but these are per-binding.
     for (const tex of tintedCache.values()) tex.destroy(true);
     tintedCache.clear();
+    for (const plate of nameplates.values()) plate.destroy();
+    nameplates.clear();
     window.removeEventListener('resize', onResize);
     if (world.onChange === update) world.onChange = null;
     if (currentContainer) {
@@ -150,6 +156,7 @@ function drawCreatures(
   atlas: SpriteAtlas,
   container: Container,
   tintedCache: TintedTextureCache,
+  nameplates: Map<number, NameplateHandle>,
 ): void {
   const x1 = world.playerX - HALF_W_LEFT;
   const x2 = world.playerX + HALF_W_RIGHT;
@@ -162,9 +169,30 @@ function drawCreatures(
   visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
   const now = performance.now();
+  const seen = new Set<number>();
   for (const c of visible) {
     const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
     if (sprite) container.addChild(sprite);
+
+    // Nameplate (name + six-band health bar) above the creature's tile.
+    // Reparented into the fresh container each rebuild; updated in place.
+    seen.add(c.id);
+    let plate = nameplates.get(c.id);
+    if (!plate) {
+      plate = createNameplate(c.name, c.health);
+      nameplates.set(c.id, plate);
+    } else {
+      plate.update(c.name, c.health);
+    }
+    plate.container.x = (c.x + 0.5) * TILE_SIZE;
+    plate.container.y = c.y * TILE_SIZE - 14;
+    container.addChild(plate.container);
+  }
+  for (const [id, plate] of nameplates) {
+    if (!seen.has(id)) {
+      plate.destroy();
+      nameplates.delete(id);
+    }
   }
 }
 

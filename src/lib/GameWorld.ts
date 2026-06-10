@@ -313,7 +313,31 @@ export class GameWorld {
     this.onChange?.();
   }
 
+  /**
+   * The server never sends CreatureMove for the player's own steps — the
+   * 0x65–0x68 row updates ARE the confirmation. Relocate the player's
+   * creature (registry + tile lists) whenever the player position moves.
+   */
+  private syncSelfCreature(oldX: number, oldY: number, oldZ: number): void {
+    const self = this.creatures.get(this.playerCreatureId);
+    if (!self) return;
+    const fromTile = this.getTile(oldX, oldY, oldZ);
+    if (fromTile) {
+      const i = fromTile.creatures.findIndex((c) => c.id === this.playerCreatureId);
+      if (i >= 0) {
+        const [mc] = fromTile.creatures.splice(i, 1);
+        this.getTile(this.playerX, this.playerY, this.playerZ)?.creatures.push(mc);
+      }
+    }
+    self.x = this.playerX;
+    self.y = this.playerY;
+    self.z = this.playerZ;
+    this.creatureRevision++;
+  }
+
   private handleMoveNorth(packet: InputPacket): void {
+    const oldX = this.playerX;
+    const oldY = this.playerY;
     this.playerY--;
     const tiles = this.protocol.map.parseDescription(
       packet,
@@ -322,10 +346,13 @@ export class GameWorld {
       this.playerZ,
     );
     for (const tile of tiles) this.setTile(tile);
+    this.syncSelfCreature(oldX, oldY, this.playerZ);
     this.onChange?.();
   }
 
   private handleMoveEast(packet: InputPacket): void {
+    const oldX = this.playerX;
+    const oldY = this.playerY;
     this.playerX++;
     const tiles = this.protocol.map.parseDescription(
       packet,
@@ -334,10 +361,13 @@ export class GameWorld {
       this.playerZ,
     );
     for (const tile of tiles) this.setTile(tile);
+    this.syncSelfCreature(oldX, oldY, this.playerZ);
     this.onChange?.();
   }
 
   private handleMoveSouth(packet: InputPacket): void {
+    const oldX = this.playerX;
+    const oldY = this.playerY;
     this.playerY++;
     const tiles = this.protocol.map.parseDescription(
       packet,
@@ -346,10 +376,13 @@ export class GameWorld {
       this.playerZ,
     );
     for (const tile of tiles) this.setTile(tile);
+    this.syncSelfCreature(oldX, oldY, this.playerZ);
     this.onChange?.();
   }
 
   private handleMoveWest(packet: InputPacket): void {
+    const oldX = this.playerX;
+    const oldY = this.playerY;
     this.playerX--;
     const tiles = this.protocol.map.parseDescription(
       packet,
@@ -358,6 +391,7 @@ export class GameWorld {
       this.playerZ,
     );
     for (const tile of tiles) this.setTile(tile);
+    this.syncSelfCreature(oldX, oldY, this.playerZ);
     this.onChange?.();
   }
 

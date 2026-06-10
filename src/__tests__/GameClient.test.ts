@@ -94,6 +94,46 @@ describe('Connection.connect', () => {
   });
 });
 
+describe('GameClient credential retention', () => {
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('drops the stored password once the game login packet is sent', async () => {
+    const client = new GameClient('ws://proxy', {}, new GameProtocol());
+    // @ts-expect-error driving private state for the test
+    client.state = 'character_list';
+    // @ts-expect-error seeding the credentials login() would have stored
+    client.password = 'hunter2';
+
+    const selecting = client.selectCharacter({
+      name: 'Trinity', worldName: 'Jamera', worldIp: '127.0.0.1', worldPort: 7172,
+    });
+    MockWebSocket.instances.at(-1)!.open();
+    await selecting;
+
+    expect(client.getState()).toBe('in_game');
+    // @ts-expect-error reading private state for the test
+    expect(client.password).toBe('');
+  });
+
+  it('drops the stored password on any transition to disconnected', () => {
+    const client = new GameClient('ws://proxy', {}, new GameProtocol());
+    // @ts-expect-error seeding private state for the test
+    client.password = 'hunter2';
+
+    client.disconnect();
+
+    // @ts-expect-error reading private state for the test
+    expect(client.password).toBe('');
+  });
+});
+
 describe('GameClient.getProtocol', () => {
   it('returns the injected protocol instance', () => {
     const protocol = new GameProtocol();

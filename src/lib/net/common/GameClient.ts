@@ -145,6 +145,10 @@ export class GameClient {
         this.password,
       );
       this.gameConn.send(gamePacket);
+      // The password has served its purpose (login request + game login
+      // packet); every later flow that needs it starts with a fresh
+      // login(). Don't retain credentials in memory for the whole session.
+      this.password = '';
       if (this.protocol.config.useXTEA) {
         // XTEA was introduced in Tibia 8.0+; the key is generated here so
         // the protocol implementation can negotiate it before encrypted
@@ -203,6 +207,10 @@ export class GameClient {
   }
 
   private setState(state: GameClientState): void {
+    // Every road back to `disconnected` requires a fresh login() (which
+    // re-supplies credentials), so this choke point can always drop the
+    // retained password — error paths and manual disconnects included.
+    if (state === 'disconnected') this.password = '';
     this.state = state;
     this.events.onStateChange?.(state);
   }

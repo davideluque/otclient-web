@@ -36,8 +36,9 @@ describe('bindCombat', () => {
     const { client, sent } = makeClient();
     bindCombat(client, makeWorld([]));
 
+    // Slots resolve through the registry now: icon + short name.
     const exura = [...document.querySelectorAll('.spell-bar button')]
-      .find((b) => b.textContent === 'exura') as HTMLButtonElement;
+      .find((b) => b.textContent?.includes('Light')) as HTMLButtonElement;
     exura.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 
     expect(sent).toHaveLength(1);

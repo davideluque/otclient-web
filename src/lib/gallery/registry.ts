@@ -20,6 +20,8 @@ import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
 import { createBattleList } from '../battleList';
+import { createSpellCustomizer } from '../spellCustomizer';
+import { DEFAULT_SLOTS } from '../spells';
 import { createCombatModes } from '../combatModes';
 import { createStatusBar, StatusIcon } from '../statusBar';
 import { createMetricsOverlay } from '../jamera/metricsOverlay';
@@ -290,6 +292,23 @@ export const ENTRIES: GalleryEntry[] = [
       });
       knobs.toggle('Visible', true, (on) => list.setVisible(on));
       return () => list.destroy();
+    },
+  },
+
+  {
+    name: 'Spell customizer',
+    description:
+      'Slot configurator (menu → Spells): tap a row to cycle through the '
+      + 'known 7.6 spell registry (curated emoji icons — 7.6 ships no '
+      + 'spell sprites). Changes apply to the live spell bar immediately.',
+    mount({ knobs, log }) {
+      const customizer = createSpellCustomizer({
+        initial: [...DEFAULT_SLOTS],
+        onChange: (slots) => log(`slots → ${slots.join(' | ')}`),
+      });
+      knobs.button('Open', () => customizer.open());
+      knobs.button('Close', () => customizer.close());
+      return () => customizer.destroy();
     },
   },
 

@@ -259,6 +259,34 @@ describe('GameWorld tile operations', () => {
     expect(w.getTile(100, 200, 7)).toBeUndefined();
   });
 
+  it('bumps creatureRevision (not tileRevision) for creature-only updates, and vice versa', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    // @ts-expect-error driving private state for the test
+    w.creatures.set(9, { id: 9, name: 'Rat', x: 1, y: 1, z: 7, direction: 0, health: 80, speed: 180, outfit: { lookType: 21, head: 0, body: 0, legs: 0, feet: 0 } });
+    seedTile(w, 100, 200, 7, [PLAIN_ID]);
+
+    const t0 = w.tileRevision;
+    const c0 = w.creatureRevision;
+
+    // Creature-only: health update.
+    const health = new OutputPacket();
+    health.addU8(0x8c); health.addU32(9); health.addU8(50);
+    d.dispatch(new InputPacket(health.toArrayBuffer()));
+    expect(w.creatureRevision).toBeGreaterThan(c0);
+    expect(w.tileRevision).toBe(t0);
+
+    // Tile-only: an item appears.
+    const c1 = w.creatureRevision;
+    const add = new OutputPacket();
+    add.addU8(0x6a);
+    add.addU16(100); add.addU16(200); add.addU8(7);
+    add.addU16(PLAIN_ID);
+    d.dispatch(new InputPacket(add.toArrayBuffer()));
+    expect(w.tileRevision).toBeGreaterThan(t0);
+    expect(w.creatureRevision).toBe(c1);
+  });
+
   it('0x8C updates creature health through the registry', () => {
     const w = world();
     const d = dispatcherFor(w);

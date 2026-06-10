@@ -44,6 +44,13 @@ export class GameWorld {
    */
   tileRevision = 0;
 
+  /**
+   * Bumped whenever creature state changes (position, direction, health,
+   * outfit, speed, appear/disappear) — the creature-layer counterpart of
+   * tileRevision, so the renderer can key its repaints on both.
+   */
+  creatureRevision = 0;
+
   private protocol: GameProtocol;
 
   constructor(protocol: GameProtocol) {
@@ -117,6 +124,7 @@ export class GameWorld {
   private setTile(tile: MapTile): void {
     this.tiles.set(`${tile.x}:${tile.y}:${tile.z}`, tile);
     this.tileRevision++;
+    if (tile.creatures.length > 0) this.creatureRevision++;
 
     // Register any creatures on this tile
     for (const c of tile.creatures) {
@@ -174,6 +182,7 @@ export class GameWorld {
       // server's AddCreature), 0x62 the known short form.
       const creature = this.protocol.map.parseCreature(packet, peek === 0x61);
       tile.creatures.push(creature);
+      this.creatureRevision++;
       this.creatures.set(creature.id, {
         id: creature.id,
         name: creature.name,
@@ -204,6 +213,7 @@ export class GameWorld {
       const turn = this.protocol.creature.parseTurn(packet);
       const wc = this.creatures.get(turn.creatureId);
       if (wc) wc.direction = turn.direction;
+      this.creatureRevision++;
       const tile = this.getTile(pos.x, pos.y, pos.z);
       const tc = tile?.creatures.find((c) => c.id === turn.creatureId);
       if (tc) tc.direction = turn.direction;
@@ -236,7 +246,10 @@ export class GameWorld {
         // item list refers to one of the tile's creatures.
         const ci = stackPos - tile.items.length;
         const [removed] = tile.creatures.splice(ci, 1);
-        if (removed) this.creatures.delete(removed.id);
+        if (removed) {
+          this.creatures.delete(removed.id);
+          this.creatureRevision++;
+        }
       }
       this.tileRevision++;
     }
@@ -247,7 +260,10 @@ export class GameWorld {
   private handleCreatureHealth(packet: InputPacket): void {
     const ev = this.protocol.creature.parseHealth(packet);
     const wc = this.creatures.get(ev.creatureId);
-    if (wc) wc.health = ev.healthPercent;
+    if (wc) {
+      wc.health = ev.healthPercent;
+      this.creatureRevision++;
+    }
     this.onChange?.();
   }
 
@@ -257,6 +273,7 @@ export class GameWorld {
     const wc = this.creatures.get(ev.creatureId);
     if (wc) {
       wc.outfit = { lookType: ev.lookType, head: ev.head, body: ev.body, legs: ev.legs, feet: ev.feet };
+      this.creatureRevision++;
     }
     this.onChange?.();
   }
@@ -345,6 +362,7 @@ export class GameWorld {
   private handleCreatureMove(packet: InputPacket): void {
     const event = this.protocol.creature.parseMove(packet);
     const fromTile = this.getTile(event.fromX, event.fromY, event.fromZ);
+    this.creatureRevision++;
     if (fromTile && fromTile.creatures.length > event.fromStack) {
       // Remove creature from source tile
       const [creature] = fromTile.creatures.splice(event.fromStack, 1);

@@ -1,6 +1,7 @@
 import type { Application, Container } from 'pixi.js';
-import { renderTileRegion } from '../tileRenderer';
-import type { GameWorld } from '../GameWorld';
+import { renderTileRegion, renderPlayer, type TintedTextureCache } from '../tileRenderer';
+import type { GameWorld, WorldCreature } from '../GameWorld';
+import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
 import { TILE_SIZE } from '../../constants';
 
@@ -26,8 +27,10 @@ const HALF_H_BOTTOM = 7;
  * scratch. Adequate for first-paint correctness; a follow-up PR will
  * diff tile-by-tile so single moves don't trigger ~250-tile rebuilds.
  *
- * No creature/player rendering yet — `renderPlayer` needs outfit-tint
- * resolution which is its own concern.
+ * Creatures (the player included — it's just a creature the server put
+ * on a tile) draw after the tile pass, north-to-south so southern
+ * creatures overlap correctly, idle pose for now (walk animation is a
+ * follow-up).
  */
 export function bindRenderer(
   world: GameWorld,
@@ -35,11 +38,13 @@ export function bindRenderer(
   app: Application,
 ): () => void {
   let currentContainer: Container | null = null;
-  // Snapshot of what the current container was painted from. Creature
-  // moves fire `onChange` constantly but don't touch tiles — when neither
-  // the player position nor the tile revision moved, skip the ~250-tile
-  // rebuild (this renderer draws tiles only; see header comment).
+  // Snapshot of what the current container was painted from: player
+  // position plus the tile and creature revision counters — onChange
+  // fires for plenty of packets that change none of these.
   let paintedKey = '';
+  // Outfit tint compositions are expensive; cache them for the lifetime
+  // of this binding (i.e. per session).
+  const tintedCache: TintedTextureCache = new Map();
 
   // Center the player tile on the canvas. The 0.5 offset puts the
   // *center* of the player's tile at the canvas center instead of
@@ -52,7 +57,7 @@ export function bindRenderer(
   };
 
   const update = (): void => {
-    const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}`;
+    const key = `${world.playerX}:${world.playerY}:${world.playerZ}:${world.tileRevision}:${world.creatureRevision}`;
     if (key === paintedKey && currentContainer) return;
 
     const { container } = renderTileRegion(
@@ -64,6 +69,7 @@ export function bindRenderer(
       world.playerX + HALF_W_RIGHT, world.playerY + HALF_H_BOTTOM,
       world.playerZ,
     );
+    drawCreatures(world, atlas, container, tintedCache);
     recenter(container);
 
     if (currentContainer) {
@@ -97,4 +103,63 @@ export function bindRenderer(
       currentContainer = null;
     }
   };
+}
+
+/**
+ * Draw every creature in the visible region (the player included) on top
+ * of the tile pass. North-to-south so southern creatures overlap the
+ * ones behind them, matching the tile painter order.
+ */
+function drawCreatures(
+  world: GameWorld,
+  atlas: SpriteAtlas,
+  container: Container,
+  tintedCache: TintedTextureCache,
+): void {
+  const x1 = world.playerX - HALF_W_LEFT;
+  const x2 = world.playerX + HALF_W_RIGHT;
+  const y1 = world.playerY - HALF_H_TOP;
+  const y2 = world.playerY + HALF_H_BOTTOM;
+
+  const visible = world.getAllCreatures().filter((c) =>
+    c.z === world.playerZ && c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2,
+  );
+  visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+  for (const c of visible) {
+    const sprite = renderCreature(c, atlas, tintedCache);
+    if (sprite) container.addChild(sprite);
+  }
+}
+
+function renderCreature(
+  c: WorldCreature,
+  atlas: SpriteAtlas,
+  tintedCache: TintedTextureCache,
+): Container | null {
+  if (!c.outfit || c.outfit.lookType === 0) return null; // invisible / item-look: not drawn yet
+  return renderPlayer(
+    {
+      x: c.x,
+      y: c.y,
+      z: c.z,
+      // The wire direction byte is value-compatible with Direction
+      // (0 north, 1 east, 2 south, 3 west); renderPlayer additionally
+      // clamps to the outfit's pattern count.
+      direction: (c.direction & 3) as Direction,
+      animationPhase: 0, // idle pose; walk animation is a follow-up
+      outfit: {
+        lookType: c.outfit.lookType,
+        headColor: c.outfit.head,
+        bodyColor: c.outfit.body,
+        legsColor: c.outfit.legs,
+        feetColor: c.outfit.feet,
+      },
+    },
+    atlas.creatureIndex,
+    atlas.atlasTextures,
+    atlas.atlasPages,
+    atlas.layout,
+    tintedCache,
+  );
 }

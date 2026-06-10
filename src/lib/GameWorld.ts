@@ -157,8 +157,15 @@ export class GameWorld {
   /** 0x6A — a thing (item or creature) appeared on a tile. */
   private handleTileAddThing(packet: InputPacket): void {
     const pos = this.protocol.map.parsePosition(packet);
-    const tile = this.getTile(pos.x, pos.y, pos.z)
-      ?? { x: pos.x, y: pos.y, z: pos.z, items: [], creatures: [] };
+    // Mutate the existing tile in place rather than routing through
+    // setTile: setTile re-registers every creature on the tile, which
+    // would overwrite health/speed/outfit updates applied to the
+    // registry since the tile was first parsed.
+    let tile = this.getTile(pos.x, pos.y, pos.z);
+    if (!tile) {
+      tile = { x: pos.x, y: pos.y, z: pos.z, items: [], creatures: [] };
+      this.tiles.set(`${pos.x}:${pos.y}:${pos.z}`, tile);
+    }
 
     const peek = packet.peekU16();
     if (peek === 0x61 || peek === 0x62) {
@@ -179,7 +186,7 @@ export class GameWorld {
       // paint order well enough for the current renderer.
       tile.items.push(this.protocol.map.parseItem(packet));
     }
-    this.setTile(tile);
+    this.tileRevision++;
     this.onChange?.();
   }
 

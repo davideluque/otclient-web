@@ -15,6 +15,7 @@
 
 import type { DatFile } from '../../dat';
 import { DatAttr } from '../../dat';
+import { ParseError } from '../../parseError';
 
 let countedIds: Set<number> | null = null;
 
@@ -32,9 +33,20 @@ export function setItemWireFlags(dat: DatFile): void {
   countedIds = ids;
 }
 
-/** True when the wire form of `clientId` carries a trailing count byte. */
+/**
+ * True when the wire form of `clientId` carries a trailing count byte.
+ * Throws (as a ParseError, so the receive loop drops the frame instead
+ * of crashing) when called before setItemWireFlags — guessing here would
+ * silently misalign the stream on the first stackable, which is far
+ * harder to debug than an explicit per-frame failure.
+ */
 export function itemHasCountByte(clientId: number): boolean {
-  return countedIds?.has(clientId) ?? false;
+  if (countedIds === null) {
+    throw new ParseError(
+      'item wire flags not initialized — setItemWireFlags must run (asset .dat parsed) before parsing items',
+    );
+  }
+  return countedIds.has(clientId);
 }
 
 /** Whether setItemWireFlags has run — parsers misalign on stackables until then. */

@@ -73,19 +73,21 @@ export function createInventoryPane(parent: HTMLElement = document.body): Invent
   const el = document.createElement('div');
   el.className = 'inventory-pane';
 
-  const slots = new Map<InventorySlotName, { cell: HTMLElement; count: HTMLElement }>();
+  const slots = new Map<InventorySlotName, { cell: HTMLElement; label: HTMLElement; count: HTMLElement }>();
   for (const name of INVENTORY_SLOTS) {
     const [col, row] = SLOT_GRID[name];
     const cell = document.createElement('div');
     cell.className = 'slot';
     cell.style.gridColumn = String(col + 1);
     cell.style.gridRow = String(row + 1);
-    cell.textContent = name;
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = name;
     const count = document.createElement('span');
     count.className = 'count';
-    cell.appendChild(count);
+    cell.append(label, count);
     el.appendChild(cell);
-    slots.set(name, { cell, count });
+    slots.set(name, { cell, label, count });
   }
   parent.appendChild(el);
 
@@ -96,11 +98,11 @@ export function createInventoryPane(parent: HTMLElement = document.body): Invent
       if (!s) return;
       if (itemId === null) {
         s.cell.classList.remove('filled');
-        s.cell.childNodes[0].textContent = slot;
+        s.label.textContent = slot;
         s.count.textContent = '';
       } else {
         s.cell.classList.add('filled');
-        s.cell.childNodes[0].textContent = `#${itemId}`;
+        s.label.textContent = `#${itemId}`;
         s.count.textContent = count !== undefined && count > 1 ? String(count) : '';
       }
     },

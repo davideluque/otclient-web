@@ -1,6 +1,6 @@
 import { createHud, type HudHandle } from '../hud';
 import { createSkillPane, SKILL_NAMES, type SkillPaneHandle } from '../skillPane';
-import { createGameMenu, type GameMenuHandle } from '../gameMenu';
+import { createGameMenu, type GameMenuHandle, type GameMenuItem } from '../gameMenu';
 import type { GameClient } from '../net/common/GameClient';
 import type { PlayerSkills } from '../net/common/types';
 
@@ -26,7 +26,11 @@ const WIRE_TO_PANE: ReadonlyArray<{ key: keyof PlayerSkills; name: (typeof SKILL
   { key: 'fishing', name: 'Fishing' },
 ];
 
-export function bindStats(client: GameClient, parent: HTMLElement = document.body): StatsBindingHandle {
+export function bindStats(
+  client: GameClient,
+  parent: HTMLElement = document.body,
+  extraMenuItems: GameMenuItem[] = [],
+): StatsBindingHandle {
   const protocol = client.getProtocol();
   const op = protocol.serverOpcodes;
 
@@ -59,6 +63,7 @@ export function bindStats(client: GameClient, parent: HTMLElement = document.bod
         pane?.setVisible(paneOpen);
       },
     },
+    ...extraMenuItems,
   ], parent);
 
   return {

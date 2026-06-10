@@ -2,8 +2,8 @@
 
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearCached, getCached, putCached } from '../lib/assetCache';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearCached, consumeEvictionNotice, getCached, putCached } from '../lib/assetCache';
 import type { CompleteLoadedFiles } from '../lib/fileLoader';
 
 function makeBundle(seed: number): CompleteLoadedFiles {
@@ -16,8 +16,10 @@ function makeBundle(seed: number): CompleteLoadedFiles {
 }
 
 beforeEach(() => {
-  // Fresh IDB per test so version keys don't leak across cases.
+  // Fresh IDB per test so version keys don't leak across cases; the
+  // was-cached markers live in localStorage and need the same isolation.
   globalThis.indexedDB = new IDBFactory();
+  localStorage.clear();
 });
 
 afterEach(async () => {
@@ -67,5 +69,50 @@ describe('assetCache', () => {
 
     await clearCached('760');
     expect(await getCached('760')).toBeNull();
+  });
+
+  it('reports ok with firstWrite only on the first successful put', async () => {
+    expect(await putCached('760', makeBundle(1))).toEqual({ ok: true, firstWrite: true });
+    expect(await putCached('760', makeBundle(2))).toEqual({ ok: true, firstWrite: false });
+  });
+
+  it('classifies QuotaExceededError as a quota failure', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+
+    expect(await putCached('760', makeBundle(1))).toEqual({ ok: false, reason: 'quota' });
+    // A failed write must not arm the eviction notice.
+    expect(consumeEvictionNotice('760')).toBe(false);
+
+    put.mockRestore();
+    warn.mockRestore();
+  });
+
+  it('reports unavailable when there is no IndexedDB at all', async () => {
+    // @ts-expect-error simulating a browser without IndexedDB
+    delete globalThis.indexedDB;
+
+    expect(await putCached('760', makeBundle(1))).toEqual({ ok: false, reason: 'unavailable' });
+    expect(await getCached('760')).toBeNull();
+  });
+
+  it('detects eviction: cached before, gone now, notice fires exactly once', async () => {
+    await putCached('760', makeBundle(7));
+    // The browser silently dropping the DB under disk pressure looks like
+    // a brand-new empty IDB while the localStorage marker survives.
+    globalThis.indexedDB = new IDBFactory();
+    expect(await getCached('760')).toBeNull();
+
+    expect(consumeEvictionNotice('760')).toBe(true);
+    expect(consumeEvictionNotice('760')).toBe(false);
+  });
+
+  it('does not arm the eviction notice for an intentional clearCached', async () => {
+    await putCached('760', makeBundle(7));
+    await clearCached('760');
+
+    expect(consumeEvictionNotice('760')).toBe(false);
   });
 });

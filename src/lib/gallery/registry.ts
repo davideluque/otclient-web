@@ -129,6 +129,17 @@ export const ENTRIES: GalleryEntry[] = [
       + 'in wire order.',
     mount({ knobs, log }) {
       const pane = createSkillPane();
+      const stats = {
+        level: 80, levelPercent: 35, experience: 85_316_000,
+        magicLevel: 22, magicLevelPercent: 60, capacity: 2000, soul: 100,
+      };
+      pane.setStats(stats);
+      knobs.button('Gain experience (level bar is RED)', () => {
+        stats.levelPercent = (stats.levelPercent + 20) % 100;
+        stats.experience += 120_000;
+        pane.setStats(stats);
+        log(`xp → ${stats.experience.toLocaleString()} (${stats.levelPercent}%)`);
+      });
       const levels = new Map(SKILL_NAMES.map((n) => [n, { level: 10, percent: 0 }]));
       for (const name of SKILL_NAMES) pane.setSkill(name, 10, 0);
       knobs.button('Train a random skill', () => {

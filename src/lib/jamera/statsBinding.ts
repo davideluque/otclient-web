@@ -43,6 +43,12 @@ export function bindStats(
     const stats = protocol.player.parseStats(p);
     if (!hud) hud = createHud(stats, parent);
     else hud.setStats(stats);
+    // The skills pane shows the character block from the same packet.
+    if (!pane) {
+      pane = createSkillPane(parent);
+      pane.setVisible(paneOpen);
+    }
+    pane.setStats(stats);
   });
   dispatcher.on(op.PlayerSkills, (p) => {
     const skills = protocol.player.parseSkills(p);

@@ -7,6 +7,7 @@ import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
 import { Application } from 'pixi.js';
+import { resolveProxyOverride } from './proxyUrl';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -14,7 +15,7 @@ if (!root) {
 }
 
 const params = new URLSearchParams(window.location.search);
-const proxyUrl = params.get('proxy') ?? undefined;
+const proxyUrl = resolveProxyOverride(params.get('proxy'));
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 
 mountLoginScreen(root, {

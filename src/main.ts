@@ -34,6 +34,7 @@ import { createFileLoader } from './lib/fileLoader';
 import { tryAutoload } from './lib/assetAutoload';
 import { putCached } from './lib/assetCache';
 import { resolveVersion } from './lib/clientVersion';
+import { showStorageNotice } from './lib/storageNotice';
 import { RenderTexture } from 'pixi.js';
 import type { DatFile } from './lib/dat';
 import type { SprFile } from './lib/spr';
@@ -61,20 +62,6 @@ function addFileToList(name: string) {
   const li = document.createElement('li');
   li.textContent = name;
   fileListEl.appendChild(li);
-}
-
-// Storage notices (quota, eviction, no-IDB) need their own surface: the
-// status line lives inside #loader, which is gone once the game is running,
-// and several of these fire *after* a successful boot. Click to dismiss.
-function showStorageNotice(msg: string): void {
-  // One notice at a time — a second one would render on top of the first.
-  document.querySelector('.storage-notice')?.remove();
-  const el = document.createElement('div');
-  el.className = 'storage-notice';
-  el.textContent = msg;
-  el.addEventListener('click', () => el.remove());
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 15000);
 }
 
 // "Low on storage" is only actionable with numbers — pair the bundle size

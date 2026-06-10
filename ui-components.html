@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OTClient Web — UI components</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        background: #0f0f1a;
+        color: #e0e0e0;
+        font-family: system-ui, sans-serif;
+      }
+      #gallery {
+        display: flex; height: 100%;
+      }
+      #gallery-sidebar {
+        width: 180px; flex-shrink: 0; overflow-y: auto;
+        background: #14142400; border-right: 1px solid #2a2a40;
+        padding: 12px 0;
+      }
+      #gallery-sidebar::before {
+        content: "UI components";
+        display: block; padding: 4px 16px 12px;
+        font-size: 0.8rem; color: #7c5cbf; font-weight: bold;
+        text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      #gallery-sidebar button {
+        display: block; width: 100%; text-align: left;
+        background: none; border: none; color: #aaa;
+        padding: 10px 16px; font-size: 0.9rem; cursor: pointer;
+      }
+      #gallery-sidebar button:hover { color: #fff; }
+      #gallery-sidebar button.active {
+        color: #fff; background: rgba(124, 92, 191, 0.18);
+        border-right: 2px solid #7c5cbf;
+      }
+      #gallery-main {
+        flex: 1; padding: 20px 24px; overflow-y: auto;
+        display: flex; flex-direction: column; gap: 14px;
+      }
+      #gallery-title { font-size: 1.3rem; }
+      #gallery-desc { color: #999; font-size: 0.9rem; max-width: 52rem; line-height: 1.5; }
+      #gallery-knobs {
+        display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      }
+      .knob-btn {
+        background: #1a1a2e; color: #e0e0e0;
+        border: 1px solid #7c5cbf; border-radius: 6px;
+        padding: 7px 12px; font-size: 0.82rem; cursor: pointer;
+      }
+      .knob-btn:active { background: #2a2244; }
+      .knob-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 0.82rem; color: #ccc; cursor: pointer;
+        border: 1px solid #2a2a40; border-radius: 6px; padding: 7px 12px;
+      }
+      #gallery-stage { min-height: 20px; }
+      #gallery-log {
+        font-family: ui-monospace, monospace; font-size: 0.75rem;
+        background: #0a0a14; border: 1px solid #2a2a40; border-radius: 8px;
+        padding: 10px 12px; height: 180px; overflow-y: auto;
+        color: #8f8;
+      }
+      #gallery-log:empty::before { content: "event log — interact with the component"; color: #555; }
+      #gallery-log .log-line { white-space: pre-wrap; }
+
+      /* Narrow screens: sidebar becomes a horizontal chip bar. */
+      @media (max-width: 640px) {
+        #gallery { flex-direction: column; }
+        #gallery-sidebar {
+          width: 100%; display: flex; overflow-x: auto;
+          border-right: none; border-bottom: 1px solid #2a2a40;
+          padding: 8px;
+        }
+        #gallery-sidebar::before { display: none; }
+        #gallery-sidebar button { width: auto; white-space: nowrap; }
+        #gallery-sidebar button.active { border-right: none; border-bottom: 2px solid #7c5cbf; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="gallery">
+      <nav id="gallery-sidebar"></nav>
+      <main id="gallery-main">
+        <h1 id="gallery-title"></h1>
+        <p id="gallery-desc"></p>
+        <div id="gallery-knobs"></div>
+        <div id="gallery-stage"></div>
+        <div id="gallery-log"></div>
+      </main>
+    </div>
+    <script type="module" src="/src/lib/gallery/main.ts"></script>
+  </body>
+</html>

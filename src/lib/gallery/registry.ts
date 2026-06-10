@@ -1,0 +1,238 @@
+/**
+ * The component registry for the /ui-components.html gallery.
+ *
+ * Every entry mounts one UI component in isolation and returns a
+ * teardown. The contract this page enforces is the same one the
+ * components live by in the game: a factory that takes params, a handle
+ * with update methods + destroy, no hidden dependencies on page CSS.
+ * If a component can't render here, it isn't standalone — fix the
+ * component, not the gallery.
+ */
+
+import { createJoystick } from '../joystick';
+import { createDevControls } from '../devControls';
+import { createHud } from '../hud';
+import { createSpellBar } from '../spellBar';
+import { createSkillPane, SKILL_NAMES } from '../skillPane';
+import { createGameMenu } from '../gameMenu';
+import { showStorageNotice } from '../storageNotice';
+import { ChatManager } from '../chat/ChatManager';
+import { createChatUI } from '../chat/ChatUI';
+import { GameProtocol } from '../net/7.6/GameProtocol';
+import { MessageType, ChannelId } from '../net/common/types';
+
+export interface GalleryCtx {
+  /** Inline area inside the gallery card (fixed-position components ignore it). */
+  stage: HTMLElement;
+  knobs: {
+    button(label: string, fn: () => void): void;
+    toggle(label: string, initial: boolean, fn: (on: boolean) => void): void;
+  };
+  log(msg: string): void;
+}
+
+export interface GalleryEntry {
+  name: string;
+  description: string;
+  /** Mount the component; return a teardown that fully removes it. */
+  mount(ctx: GalleryCtx): () => void;
+}
+
+export const ENTRIES: GalleryEntry[] = [
+  {
+    name: 'Joystick',
+    description:
+      'Touch joystick (bottom-left). Drag the knob — the active cardinal '
+      + 'direction lands in the event log. Dead zone and axis hysteresis '
+      + 'prevent accidental flips near diagonals.',
+    mount({ knobs, log }) {
+      const joystick = createJoystick({
+        onChange: (dir) => log(`direction: ${dir === null ? 'released' : dir}`),
+      });
+      // The factory starts hidden (the game shows it only on coarse-pointer
+      // devices); the gallery always wants it on screen.
+      joystick.setVisible(true);
+      knobs.toggle('Visible', true, (on) => joystick.setVisible(on));
+      return () => joystick.destroy();
+    },
+  },
+
+  {
+    name: 'HUD',
+    description:
+      'Health/mana bars + level badge (top-left). The stats shape mirrors '
+      + 'the 7.6 AddPlayerStats packet (0xA0), so the live wire-up is a '
+      + 'field-for-field map.',
+    mount({ knobs, log }) {
+      const stats = { health: 150, maxHealth: 185, mana: 35, maxMana: 90, level: 12 };
+      const hud = createHud(stats);
+      const apply = () => { hud.setStats({ ...stats }); };
+      knobs.button('Take 25 damage', () => {
+        stats.health = Math.max(0, stats.health - 25);
+        apply(); log(`hp ${stats.health}/${stats.maxHealth}`);
+      });
+      knobs.button('Heal 40', () => {
+        stats.health = Math.min(stats.maxHealth, stats.health + 40);
+        apply(); log(`hp ${stats.health}/${stats.maxHealth}`);
+      });
+      knobs.button('Spend 20 mana', () => {
+        stats.mana = Math.max(0, stats.mana - 20);
+        apply(); log(`mana ${stats.mana}/${stats.maxMana}`);
+      });
+      knobs.button('Level up', () => {
+        stats.level += 1;
+        stats.maxHealth += 15; stats.health = stats.maxHealth;
+        stats.maxMana += 10; stats.mana = stats.maxMana;
+        apply(); log(`level ${stats.level}!`);
+      });
+      knobs.toggle('Visible', true, (on) => hud.setVisible(on));
+      return () => hud.destroy();
+    },
+  },
+
+  {
+    name: 'Spell bar',
+    description:
+      'Cast buttons with cooldown sweeps (bottom-right). Pressing a ready '
+      + 'button casts and starts its cooldown; presses during cooldown are '
+      + 'swallowed. Buttons can be disabled (e.g. not enough mana).',
+    mount({ knobs, log }) {
+      const bar = createSpellBar({
+        spells: [
+          { id: 'exura', label: 'exura', cooldownMs: 1000 },
+          { id: 'exori', label: 'exori', cooldownMs: 4000 },
+          { id: 'utani-hur', label: 'haste', cooldownMs: 2000 },
+        ],
+        onCast: (id) => log(`cast: ${id}`),
+      });
+      knobs.button('Trigger exori cooldown externally', () => bar.triggerCooldown('exori'));
+      knobs.toggle('exura enabled', true, (on) => bar.setEnabled('exura', on));
+      knobs.toggle('Visible', true, (on) => bar.setVisible(on));
+      return () => bar.destroy();
+    },
+  },
+
+  {
+    name: 'Skill pane',
+    description:
+      'The seven 7.6 skills with progress-to-next bars (right edge). '
+      + 'Mirrors the AddPlayerSkills packet (0xA1) — level + percent pairs '
+      + 'in wire order.',
+    mount({ knobs, log }) {
+      const pane = createSkillPane();
+      const levels = new Map(SKILL_NAMES.map((n) => [n, { level: 10, percent: 0 }]));
+      for (const name of SKILL_NAMES) pane.setSkill(name, 10, 0);
+      knobs.button('Train a random skill', () => {
+        const name = SKILL_NAMES[Math.floor(Math.random() * SKILL_NAMES.length)];
+        const s = levels.get(name)!;
+        s.percent += 15 + Math.floor(Math.random() * 30);
+        if (s.percent >= 100) { s.level += 1; s.percent = 0; log(`${name} advanced to ${s.level}!`); }
+        pane.setSkill(name, s.level, s.percent);
+      });
+      knobs.toggle('Visible', true, (on) => pane.setVisible(on));
+      return () => pane.destroy();
+    },
+  },
+
+  {
+    name: 'Game menu',
+    description:
+      'Hamburger button (top-right) sliding in a contextual menu pane. '
+      + 'Planned future home of the temporary Dev panel: skills, settings, '
+      + 'dev toggles, logout — one mobile surface.',
+    mount({ knobs, log }) {
+      const menu = createGameMenu([
+        { label: 'Skills', onSelect: () => log('selected: Skills') },
+        { label: 'Minimap', onSelect: () => log('selected: Minimap') },
+        { label: 'Settings', onSelect: () => log('selected: Settings') },
+        { label: 'Log out', onSelect: () => log('selected: Log out') },
+      ]);
+      knobs.button('Open', () => menu.open());
+      knobs.button('Close', () => menu.close());
+      knobs.button('Swap to short item set', () => {
+        menu.setItems([{ label: 'Only one item', onSelect: () => log('selected: Only one item') }]);
+        log('items swapped');
+      });
+      return () => menu.destroy();
+    },
+  },
+
+  {
+    name: 'Storage notice',
+    description:
+      'Dismissable toast (bottom-center) for storage events: quota '
+      + 'pressure, browser eviction, no IndexedDB. One at a time, latest '
+      + 'wins, click to dismiss, 15s auto-hide.',
+    mount({ knobs }) {
+      knobs.button('Quota warning', () => showStorageNotice(
+        'Your device is low on storage (~100 MB needed, about 30 MB available). '
+        + 'The game still runs, but it can\'t save assets for instant offline play.',
+      ));
+      knobs.button('Evicted notice', () => showStorageNotice(
+        'Your saved game assets were cleared by the browser to free up space. '
+        + 'They will be saved again after this load.',
+      ));
+      knobs.button('No-IndexedDB notice', () => showStorageNotice(
+        'This browser can\'t store game assets, so offline play and instant boots are unavailable here.',
+      ));
+      return () => document.querySelector('.storage-notice')?.remove();
+    },
+  },
+
+  {
+    name: 'Dev controls',
+    description:
+      'Collapsible developer toggle panel (top-right). Interim surface — '
+      + 'its entries are planned to fold into the Game menu.',
+    mount({ knobs, log }) {
+      const controls = createDevControls([
+        { label: 'Night mode', defaultOn: false, onChange: (on) => log(`Night mode: ${on}`) },
+        { label: 'Show light sources', defaultOn: true, onChange: (on) => log(`Show light sources: ${on}`) },
+        { label: 'Free zoom', defaultOn: false, onChange: (on) => log(`Free zoom: ${on}`) },
+      ]);
+      knobs.button('Force "Night mode" on (external)', () => controls.setToggle('Night mode', true));
+      knobs.toggle('Visible', true, (on) => controls.setVisible(on));
+      return () => controls.destroy();
+    },
+  },
+
+  {
+    name: 'Chat',
+    description:
+      'Chat overlay (bottom): tabs, message list, input with /w, /whisper '
+      + 'and /yell commands. Outgoing packets land in the event log as '
+      + 'opcode bytes. The XSS knob proves hostile sender names render '
+      + 'as text.',
+    mount({ knobs, log }) {
+      const manager = new ChatManager();
+      const protocol = new GameProtocol();
+      const ui = createChatUI(manager, protocol, (packet) => {
+        const bytes = packet.toUint8Array();
+        log(`sent packet: 0x${bytes[0].toString(16).padStart(2, '0')} (${bytes.length} bytes)`);
+      });
+      document.body.appendChild(ui);
+      let n = 0;
+      knobs.button('Incoming say', () => manager.handleMessage({
+        senderName: 'Trinity', messageType: MessageType.Say,
+        text: `hello from the gallery #${++n}`, timestamp: Date.now(),
+      }));
+      knobs.button('Incoming Game Chat msg', () => manager.handleMessage({
+        senderName: 'Loot Goblin', messageType: MessageType.Channel,
+        channelId: ChannelId.GameChat, text: 'channel message', timestamp: Date.now(),
+      }));
+      knobs.button('Hostile sender name (XSS check)', () => manager.handleMessage({
+        senderName: '<img src=x onerror=alert(1)>', messageType: MessageType.Say,
+        text: '<b>not bold</b>', timestamp: Date.now(),
+      }));
+      knobs.button('Spam 50 messages', () => {
+        for (let i = 0; i < 50; i++) {
+          manager.handleMessage({
+            senderName: 'Spammer', messageType: MessageType.Say,
+            text: `spam ${i}`, timestamp: Date.now(),
+          });
+        }
+      });
+      return () => ui.remove();
+    },
+  },
+];

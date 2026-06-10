@@ -25,6 +25,7 @@ import { createChangelogPane } from '../changelogPane';
 import { CHANGELOG } from '../changelog';
 import { ChatManager } from '../chat/ChatManager';
 import { createChatUI } from '../chat/ChatUI';
+import { createFullChatView } from '../chat/FullChatView';
 import { GameProtocol } from '../net/7.6/GameProtocol';
 import { MessageType, ChannelId } from '../net/common/types';
 
@@ -329,10 +330,10 @@ export const ENTRIES: GalleryEntry[] = [
         const bytes = packet.toUint8Array();
         log(`sent packet: 0x${bytes[0].toString(16).padStart(2, '0')} (${bytes.length} bytes)`);
       }, {
-        onClose: () => { ui.style.display = 'none'; log('chat closed (✕)'); },
+        onClose: () => { ui.el.style.display = 'none'; log('chat closed (✕)'); },
       });
-      document.body.appendChild(ui);
-      knobs.button('Reopen chat', () => { ui.style.display = 'flex'; });
+      document.body.appendChild(ui.el);
+      knobs.button('Reopen chat', () => { ui.el.style.display = 'flex'; });
       let n = 0;
       knobs.button('Incoming say', () => manager.handleMessage({
         senderName: 'Trinity', messageType: MessageType.Say,
@@ -354,7 +355,31 @@ export const ENTRIES: GalleryEntry[] = [
           });
         }
       });
-      return () => ui.remove();
+      return () => ui.destroy();
+    },
+  },
+
+  {
+    name: 'Full chat',
+    description:
+      'Full-screen chat interface (menu → Chat) — a second consumer of '
+      + 'the ChatManager API. Shares history and channels with the '
+      + 'compact overlay; both re-render via ChatManager.subscribe.',
+    mount({ knobs, log }) {
+      const manager = new ChatManager();
+      const protocol = new GameProtocol();
+      const view = createFullChatView(manager, protocol, (packet) => {
+        const bytes = packet.toUint8Array();
+        log(`sent packet: 0x${bytes[0].toString(16).padStart(2, '0')} (${bytes.length} bytes)`);
+      });
+      let n = 0;
+      knobs.button('Open', () => view.open());
+      knobs.button('Close', () => view.close());
+      knobs.button('Incoming say', () => manager.handleMessage({
+        senderName: 'Trinity', messageType: MessageType.Say,
+        text: `full view message #${++n}`, timestamp: Date.now(),
+      }));
+      return () => view.destroy();
     },
   },
 ];

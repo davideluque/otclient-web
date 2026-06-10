@@ -19,12 +19,17 @@ export interface ChatUIOptions {
   onClose?: () => void;
 }
 
+export interface ChatUIHandle {
+  readonly el: HTMLElement;
+  destroy(): void;
+}
+
 export function createChatUI(
   chatManager: ChatManager,
   protocol: GameProtocol,
   sendPacket: SendPacketFn,
   opts: ChatUIOptions = {},
-): HTMLElement {
+): ChatUIHandle {
   const root = document.createElement('div');
   root.id = 'chat-ui';
   root.innerHTML = `
@@ -164,17 +169,19 @@ export function createChatUI(
     if (e.key === 'Enter') handleSend();
   });
 
-  // Re-render when messages arrive
-  const origHandle = chatManager.handleMessage.bind(chatManager);
-  chatManager.handleMessage = (msg) => {
-    origHandle(msg);
-    renderMessages();
-  };
+  // Re-render when messages arrive.
+  const unsubscribe = chatManager.subscribe(() => renderMessages());
 
   renderTabs();
   renderMessages();
 
-  return root;
+  return {
+    el: root,
+    destroy: () => {
+      unsubscribe();
+      root.remove();
+    },
+  };
 }
 
 /**

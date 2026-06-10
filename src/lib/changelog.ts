@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-10', text: 'Added a full-screen chat (menu → Chat) — same channels and history as the bottom panel.' },
   { date: '2026-06-10', text: 'Added the minimap (top-right) — real automap colors, toggle it in Settings.' },
   { date: '2026-06-10', text: 'Fixed the game loading zoomed-in/off-center (you only saw the tiles north of you) — the screen now re-measures itself after iOS settles.' },
   { date: '2026-06-10', text: 'Walking rebuilt on game-netcode patterns: a small playback delay absorbs Wi-Fi hiccups, and steps are pre-queued on the server — waves of good/bad smoothness should be gone.' },

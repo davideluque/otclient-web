@@ -22,6 +22,7 @@ export class ChatManager {
   private channels = new Map<number, Channel>();
   private _activeChannelId: number;
   private _speechBubbles: SpeechBubble[] = [];
+  private listeners = new Set<(msg: ChatMessage) => void>();
 
   constructor() {
     // Default channels
@@ -72,6 +73,17 @@ export class ChatManager {
   }
 
   /**
+   * Subscribe to every processed message. THE extension point for chat
+   * interfaces (compact overlay, full view, speech bubbles): consumers
+   * used to monkey-patch handleMessage and chain each other — fragile
+   * with more than one. Returns an unsubscribe.
+   */
+  subscribe(listener: (msg: ChatMessage) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /**
    * Process an incoming chat message and route it to the correct channel.
    */
   handleMessage(msg: ChatMessage): void {
@@ -96,6 +108,8 @@ export class ChatManager {
         expiresAt: Date.now() + SPEECH_BUBBLE_DURATION_MS,
       });
     }
+
+    for (const listener of this.listeners) listener(msg);
   }
 
   /**

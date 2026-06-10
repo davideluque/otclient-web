@@ -156,6 +156,7 @@ mountLoginScreen(root, {
     if (params.get('metrics') === '1') setMetricsVisible(true);
     teardownStats = bindStats(client, document.body, [
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
+      { label: 'Chat', onSelect: () => teardownChat?.fullView.open() },
       { label: 'Settings', onSelect: () => settingsPane?.open() },
       {
         label: 'Changelog',

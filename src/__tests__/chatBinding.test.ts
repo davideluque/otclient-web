@@ -85,7 +85,7 @@ describe('bindChat', () => {
     // Tests run with a fine pointer, so the panel starts open.
     expect(ui.style.display).toBe('flex');
 
-    (document.querySelector('#chat-close') as HTMLButtonElement).click();
+    (document.querySelector('.chat-close') as HTMLButtonElement).click();
     expect(ui.style.display).toBe('none');
 
     // The floating 💬 toggle reopens it.

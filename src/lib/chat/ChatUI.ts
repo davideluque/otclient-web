@@ -30,7 +30,7 @@ export function createChatUI(
   root.innerHTML = `
     <div class="chat-tabs-row">
       <div class="chat-tabs" id="chat-tabs"></div>
-      <button id="chat-close" title="Close chat" aria-label="Close chat">✕</button>
+      <button class="chat-close" title="Close chat" aria-label="Close chat">✕</button>
     </div>
     <div class="chat-messages" id="chat-messages"></div>
     <div class="chat-input-row">
@@ -64,12 +64,12 @@ export function createChatUI(
     }
     .chat-tabs button.active { background: #333; color: #fff; border-bottom-color: #333; }
     .chat-tabs button.unread { color: #7c5cbf; }
-    #chat-close {
+    .chat-close {
       background: none; border: none; color: #888;
       font-size: 0.95rem; padding: 4px 12px; cursor: pointer;
       flex-shrink: 0;
     }
-    #chat-close:hover, #chat-close:active { color: #fff; }
+    .chat-close:hover, .chat-close:active { color: #fff; }
     /* Fixed compact height — roughly four message lines. The panel must
        not grow/shrink with whichever channel happens to be active; on a
        phone a content-driven height makes the whole panel jump on every
@@ -105,7 +105,7 @@ export function createChatUI(
   const messagesEl = root.querySelector('#chat-messages') as HTMLElement;
   const inputEl = root.querySelector('#chat-input') as HTMLInputElement;
   const sendBtn = root.querySelector('#chat-send') as HTMLButtonElement;
-  const closeBtn = root.querySelector('#chat-close') as HTMLButtonElement;
+  const closeBtn = root.querySelector('.chat-close') as HTMLButtonElement;
 
   if (opts.onClose) {
     closeBtn.addEventListener('click', opts.onClose);

@@ -80,14 +80,23 @@ export function bindViewportCover(app: Application): () => void {
   window.visualViewport?.addEventListener('resize', schedule);
 
   apply();
-  // Cold-start fix: installed iOS PWAs can report visualViewport before
-  // the status-bar layout settles, leaving a black strip at the top.
-  // One deferred remeasure catches the post-layout size without user
-  // interaction.
+  // Cold-start fixes: iOS (Safari and installed PWAs) can report a
+  // stale viewport for a while after load — URL-bar/status-bar layout
+  // settles late and does NOT always fire a resize when it does. A
+  // wrong first measurement leaves the canvas larger than the screen,
+  // top-anchored by inset:0 — the player renders below the visible
+  // center and "only the north tiles" show. apply() no-ops when
+  // nothing changed, so a few delayed remeasures are free insurance.
   schedule();
+  const settleTimers = [300, 1000, 3000].map((ms) => setTimeout(schedule, ms));
+  // First interaction is the strongest "layout is real now" signal.
+  const onFirstTouch = (): void => schedule();
+  window.addEventListener('pointerdown', onFirstTouch, { once: true });
 
   return () => {
     if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
+    for (const t of settleTimers) clearTimeout(t);
+    window.removeEventListener('pointerdown', onFirstTouch);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
     window.visualViewport?.removeEventListener('resize', schedule);

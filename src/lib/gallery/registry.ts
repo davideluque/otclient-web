@@ -19,6 +19,7 @@ import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
+import { createCombatModes } from '../combatModes';
 import { createMetricsOverlay } from '../jamera/metricsOverlay';
 import { reportMetric } from '../jamera/metrics';
 import { createChangelogPane } from '../changelogPane';
@@ -210,6 +211,22 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Walk south', () => { cy += 1; minimap.refresh(); log(`center ${cx},${cy}`); });
       knobs.toggle('Visible', true, (on) => minimap.setVisible(on));
       return () => minimap.destroy();
+    },
+  },
+
+  {
+    name: 'Combat modes',
+    description:
+      'The classic trio (right edge, above the spell bar): fight stance '
+      + 'cycles offensive/balanced/defensive, chase follows the target, '
+      + 'secure mode blocks attacking players. Wire: one 0xA0 per change.',
+    mount({ knobs, log }) {
+      const modes = createCombatModes({
+        onChange: (s) => log(`0xA0 fight=${s.fightMode} chase=${s.chase} secure=${s.secure}`),
+      });
+      knobs.button('Force defensive externally', () => modes.setState({ fightMode: 3 }));
+      knobs.toggle('Visible', true, (on) => modes.setVisible(on));
+      return () => modes.destroy();
     },
   },
 

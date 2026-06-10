@@ -47,3 +47,21 @@ export function buildAttackPacket(creatureId: number): OutputPacket {
   out.addU32(creatureId);
   return out;
 }
+
+/**
+ * 0xA0 — set fight/chase/secure modes. Wire bytes per the server's
+ * parseFightModes: fight 1=offensive 2=balanced 3=defensive; chase
+ * 0=stand 1=follow; secure 1=on (no attacking players).
+ */
+export function buildFightModesPacket(
+  fightMode: 1 | 2 | 3,
+  chase: boolean,
+  secure: boolean,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.SetFightModes);
+  out.addU8(fightMode);
+  out.addU8(chase ? 1 : 0);
+  out.addU8(secure ? 1 : 0);
+  return out;
+}

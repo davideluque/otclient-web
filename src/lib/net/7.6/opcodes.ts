@@ -33,6 +33,7 @@ export const ClientOp = {
 
   // Actions
   UseItem: 0x82,
+  SetFightModes: 0xa0,
   Attack: 0xa1,
   LookAt: 0x8c,
   Say: 0x96,

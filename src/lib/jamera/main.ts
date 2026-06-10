@@ -10,6 +10,7 @@ import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
 import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
 import { createMetricsOverlay, type MetricsOverlayHandle } from './metricsOverlay';
+import { initTelemetry } from './telemetry';
 import { renderItemThumbnail } from '../itemThumbnail';
 import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane';
 import { registerWireSkips } from '../net/7.6/wireSkips';
@@ -42,6 +43,12 @@ const clientVersion = parseClientVersion(params.get('clientVersion'));
 const autoLogin = import.meta.env.DEV && params.get('autologin') !== '0'
   ? { account: 1, password: '1' }
   : undefined;
+// Dev telemetry: stream walk/render events to the proxy's /telemetry
+// sink (same host/port as the game bridge) for offline aggregation.
+// ?telemetry=0 opts out; production builds never stream.
+if (import.meta.env.DEV && params.get('telemetry') !== '0' && proxyUrl) {
+  initTelemetry(proxyUrl);
+}
 
 mountLoginScreen(root, {
   proxyUrl,

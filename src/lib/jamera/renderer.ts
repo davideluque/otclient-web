@@ -81,7 +81,7 @@ export function bindRenderer(
   // cover zoom (see viewport.ts), so screen px → stage units divides
   // by the stage scale.
   const recenter = (container: Container): void => {
-    const zoom = app.stage.scale.x || 1;
+    const zoom = app.stage?.scale?.x || 1;
     container.x = app.screen.width / 2 / zoom - (world.playerX + 0.5) * TILE_SIZE;
     container.y = app.screen.height / 2 / zoom - (world.playerY + 0.5) * TILE_SIZE;
   };

@@ -66,13 +66,29 @@ describe('bindViewportCover', () => {
     window.removeEventListener(VIEWPORT_EVENT, onViewport);
   });
 
-  it('skips the renderer resize when dimensions are unchanged but still re-applies zoom', () => {
-    const { app, resize } = makeApp();
-    const unbind = bindViewportCover(app);
-    const calls = resize.mock.calls.length;
-    // Second apply with identical dimensions: no renderer.resize() churn.
-    window.dispatchEvent(new Event('resize'));
-    expect(resize.mock.calls.length).toBe(calls);
-    unbind();
+  it('a no-change re-apply neither resizes nor re-dispatches', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    try {
+      const { app, resize } = makeApp();
+      let events = 0;
+      const onViewport = () => events++;
+      window.addEventListener(VIEWPORT_EVENT, onViewport);
+      const unbind = bindViewportCover(app);
+      const calls = resize.mock.calls.length;
+      const dispatched = events;
+
+      // Debounced re-apply with identical dimensions (covers the
+      // cold-start double-apply and liberal visualViewport.resize).
+      window.dispatchEvent(new Event('resize'));
+      vi.advanceTimersToNextFrame();
+      vi.advanceTimersToNextFrame();
+      expect(resize.mock.calls.length).toBe(calls);
+      expect(events).toBe(dispatched);
+
+      unbind();
+      window.removeEventListener(VIEWPORT_EVENT, onViewport);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

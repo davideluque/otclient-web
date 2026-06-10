@@ -22,9 +22,10 @@ export const GUARANTEED_TILES_Y = 2 * Math.min(HALF_H_TOP, HALF_H_BOTTOM) + 1;
 export const VIEWPORT_EVENT = 'jamera:viewport';
 
 export function computeCoverZoom(screenWidth: number, screenHeight: number): number {
-  // Transient zero/negative dimensions happen during init and mid-
+  // Transient zero/negative/NaN dimensions happen during init and mid-
   // orientation; Infinity/NaN here would poison every position calc.
-  if (screenWidth <= 0 || screenHeight <= 0) return 1;
+  // Negated > comparisons so NaN/undefined fall into the guard too.
+  if (!(screenWidth > 0) || !(screenHeight > 0)) return 1;
   return Math.max(
     screenWidth / (GUARANTEED_TILES_X * TILE_SIZE),
     screenHeight / (GUARANTEED_TILES_Y * TILE_SIZE),
@@ -50,11 +51,15 @@ export function bindViewportCover(app: Application): () => void {
   const apply = (): void => {
     const w = window.visualViewport?.width ?? window.innerWidth;
     const h = window.visualViewport?.height ?? window.innerHeight;
-    if (w < 1 || h < 1) return; // hidden tab / mid-orientation
-    if (w !== app.screen.width || h !== app.screen.height) {
-      app.renderer.resize(w, h);
-    }
-    app.stage.scale.set(computeCoverZoom(w, h));
+    if (!(w >= 1) || !(h >= 1)) return; // hidden tab / mid-orientation
+    const zoom = computeCoverZoom(w, h);
+    const sizeChanged = w !== app.screen.width || h !== app.screen.height;
+    // visualViewport.resize fires liberally (URL-bar reveal, pinch) and
+    // the cold-start path applies twice by design — skip the renderer
+    // churn and the downstream recenters when nothing actually changed.
+    if (!sizeChanged && zoom === app.stage.scale.x) return;
+    if (sizeChanged) app.renderer.resize(w, h);
+    app.stage.scale.set(zoom);
     window.dispatchEvent(new Event(VIEWPORT_EVENT));
   };
 

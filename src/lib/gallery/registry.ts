@@ -107,9 +107,10 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Spell bar',
     description:
-      'Cast buttons with cooldown sweeps (bottom-right). Pressing a ready '
-      + 'button casts and starts its cooldown; presses during cooldown are '
-      + 'swallowed. Buttons can be disabled (e.g. not enough mana).',
+      'Cast buttons with cooldown sweeps (bottom-right). In-game the '
+      + 'slots come from the spell registry (configure via menu → '
+      + 'Spells); presses during cooldown are swallowed and buttons can '
+      + 'be disabled (e.g. not enough mana).',
     mount({ knobs, log }) {
       const bar = createSpellBar({
         spells: [
@@ -129,9 +130,9 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Skill pane',
     description:
-      'The seven 7.6 skills with progress-to-next bars (right edge). '
-      + 'Mirrors the AddPlayerSkills packet (0xA1) — level + percent pairs '
-      + 'in wire order.',
+      'Character block (level with the RED progress bar, experience, '
+      + 'magic, capacity, soul — from 0xA0) above the seven 7.6 skills '
+      + 'with progress bars (0xA1, wire order).',
     mount({ knobs, log }) {
       const pane = createSkillPane();
       const stats = {
@@ -162,14 +163,18 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Game menu',
     description:
-      'Hamburger button (top-right) sliding in a contextual menu pane. '
-      + 'Planned future home of the temporary Dev panel: skills, settings, '
-      + 'dev toggles, logout — one mobile surface.',
+      'Hamburger button (top-right) sliding in a contextual menu pane — '
+      + 'the one mobile surface. In-game it hosts: Inventory, Chat, '
+      + 'Battle, VIP, Spells, Settings, Changelog, Log out.',
     mount({ knobs, log }) {
       const menu = createGameMenu([
-        { label: 'Skills', onSelect: () => log('selected: Skills') },
-        { label: 'Minimap', onSelect: () => log('selected: Minimap') },
+        { label: 'Inventory', onSelect: () => log('selected: Inventory') },
+        { label: 'Chat', onSelect: () => log('selected: Chat') },
+        { label: 'Battle', onSelect: () => log('selected: Battle') },
+        { label: 'VIP', onSelect: () => log('selected: VIP') },
+        { label: 'Spells', onSelect: () => log('selected: Spells') },
         { label: 'Settings', onSelect: () => log('selected: Settings') },
+        { label: 'Changelog', onSelect: () => log('selected: Changelog') },
         { label: 'Log out', onSelect: () => log('selected: Log out') },
       ]);
       knobs.button('Open', () => menu.open());
@@ -186,8 +191,9 @@ export const ENTRIES: GalleryEntry[] = [
     name: 'Inventory',
     description:
       'Classic 10-slot equipment cross (right edge), wire order per the '
-      + 'server\'s creature.h. Item visuals are textual (#id + count) until '
-      + 'the sprite-thumbnail pass; slot semantics are final.',
+      + 'server\'s creature.h. In-game, slots render real item sprites '
+      + 'from the atlas; here (no atlas) they fall back to the textual '
+      + '#id form — the same fallback pre-asset mounts use.',
     mount({ knobs, log }) {
       const pane = createInventoryPane();
       knobs.button('Equip a kit', () => {

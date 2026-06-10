@@ -47,6 +47,11 @@ mountLoginScreen(root, {
     teardownChat = null;
     teardownStats?.destroy();
     teardownStats = null;
+    // The renderer too: its container and tinted-outfit textures belong
+    // to the dead session (mountRenderer also bumps the epoch on the
+    // next login, but freeing GPU resources shouldn't wait for one).
+    teardownRenderer?.();
+    teardownRenderer = null;
   },
   onEnterGame: (client) => {
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the

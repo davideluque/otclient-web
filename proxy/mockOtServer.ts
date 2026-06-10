@@ -60,12 +60,16 @@ function writeMapArea(w: FrameWriter, width: number, height: number, playerZ: nu
     if (z === playerZ) {
       // Grass tiles: ground item, then a zero-skip slot terminator each.
       // The player creature goes on the tile matching the SelfAppear
-      // position: the description window starts at (x-8, y-6), so the
-      // player's cell is column 8, row 6.
+      // position — only in the INITIAL full-map description. Cells run
+      // column-major (x outer, y inner, like GetMapDescription), so the
+      // window starting at (x-8, y-6) puts the player at column 8 row 6
+      // = cell 8*height + 6. Movement row/column slices must not repeat
+      // the creature or every step would duplicate the player.
+      const isFullMap = width === 18 && height === 14;
       const playerCell = 8 * height + 6;
       for (let i = 0; i < width * height; i++) {
         w.u16(GROUND_ID);
-        if (i === playerCell && width === 18 && z === SPAWN.z) {
+        if (isFullMap && i === playerCell && z === SPAWN.z) {
           // The player stands on the first tile (known-creature form not
           // needed — 0x61 introduces it with name + outfit).
           w.u16(0x61);

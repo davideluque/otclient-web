@@ -52,6 +52,15 @@ export interface MountOptions {
    * error and the character list re-enables.
    */
   waitForReady?: () => Promise<void>;
+
+  /**
+   * Dev convenience: submit these credentials immediately on mount and
+   * auto-pick the first character from the list — reload lands straight
+   * in the game. One-shot: a logout or kick returns to the normal form
+   * (otherwise logout would be untestable). Callers gate this on dev
+   * builds; never wire it up in production.
+   */
+  autoLogin?: { account: number; password: string };
 }
 
 export interface MountedScreen {
@@ -87,7 +96,13 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
     if (lastState === 'in_game' && state !== 'in_game') opts.onLeaveGame?.();
     lastState = state;
   };
-  events.onLoginError = (msg) => showError(ui, msg);
+  // One-shot auto-pilot flags; cleared as each leg completes (and on
+  // login error, so a bad dev password doesn't loop).
+  let autoPickCharacter = opts.autoLogin !== undefined;
+  events.onLoginError = (msg) => {
+    autoPickCharacter = false;
+    showError(ui, msg);
+  };
   events.onCharacterList = (characters, premiumDays, motd) => {
     renderCharacterList(ui, characters, premiumDays, motd, async (char) => {
       try {
@@ -101,6 +116,10 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
         enableCharacterButtons(ui);
       }
     });
+    if (autoPickCharacter && characters.length > 0) {
+      autoPickCharacter = false;
+      ui.characterListEl.querySelector('button')?.click();
+    }
   };
   // Disconnect is already surfaced by `onStateChange` → `updateState`
   // (GameClient calls setState('disconnected') immediately before
@@ -138,6 +157,14 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
       showError(ui, (err as Error).message);
     }
   });
+
+  if (opts.autoLogin) {
+    ui.accountInput.value = String(opts.autoLogin.account);
+    ui.passwordInput.value = opts.autoLogin.password;
+    // Through the real submit path so validation, error display, and the
+    // in-flight guard all behave exactly as a manual login would.
+    ui.form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
 
   return {
     client,

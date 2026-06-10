@@ -32,10 +32,17 @@ if (!root) {
 const params = new URLSearchParams(window.location.search);
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
 const clientVersion = parseClientVersion(params.get('clientVersion'));
+// Dev-server convenience: land straight in the game on every reload so
+// changes are visible immediately. ?autologin=0 opts out (e.g. to test
+// the login form itself); production builds never auto-login.
+const autoLogin = import.meta.env.DEV && params.get('autologin') !== '0'
+  ? { account: 1, password: '1' }
+  : undefined;
 
 mountLoginScreen(root, {
   proxyUrl,
   clientVersion,
+  autoLogin,
   // Gate game entry on the asset bundle: the first map packet lands
   // milliseconds after game login and needs the .dat-derived wire flags.
   // Calling loadAssetsForRendering here also makes the gate self-retrying

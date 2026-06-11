@@ -30,6 +30,18 @@ const DIRS: ReadonlyArray<{ dir: WalkDirection; dx: number; dy: number }> = [
 /** Search cap — the visible window is 18×14, anything past this is junk taps. */
 const MAX_EXPANDED_NODES = 1024;
 
+interface RouteNode {
+  readonly x: number;
+  readonly y: number;
+  readonly costFromStart: number;
+  readonly estimatedTotalCost: number;
+}
+
+interface RouteStep {
+  readonly from: string;
+  readonly direction: WalkDirection;
+}
+
 export function isWorldTileWalkable(
   world: GameWorld,
   datIndex: Map<number, ThingType>,
@@ -52,6 +64,58 @@ function creatureBlocks(world: GameWorld, x: number, y: number, z: number): bool
   return !!tile && tile.creatures.some((c) => c.id !== world.playerCreatureId);
 }
 
+function floorTileKey(x: number, y: number): string {
+  return `${x}:${y}`;
+}
+
+function manhattanDistanceToGoal(x: number, y: number, goalX: number, goalY: number): number {
+  return Math.abs(x - goalX) + Math.abs(y - goalY);
+}
+
+/**
+ * Pop the open node with the lowest estimated total cost. Linear scan
+ * on purpose: the search window is tiny (18×14 view, 1024-node cap), a
+ * heap is overkill.
+ */
+function takeLowestCostNode(openNodes: Map<string, RouteNode>): { key: string; node: RouteNode } | null {
+  let bestKey = '';
+  let bestNode: RouteNode | null = null;
+
+  for (const [key, node] of openNodes) {
+    if (!bestNode || node.estimatedTotalCost < bestNode.estimatedTotalCost) {
+      bestKey = key;
+      bestNode = node;
+    }
+  }
+
+  if (!bestNode) return null;
+  openNodes.delete(bestKey);
+  return { key: bestKey, node: bestNode };
+}
+
+/**
+ * Walk the cameFrom chain back from the goal, first-step-first. Null on
+ * a broken chain — an unreachable bookkeeping bug guard.
+ */
+function buildWalkRoute(
+  cameFrom: Map<string, RouteStep>,
+  startKey: string,
+  goalKey: string,
+): WalkDirection[] | null {
+  const route: WalkDirection[] = [];
+  let currentKey = goalKey;
+
+  while (currentKey !== startKey) {
+    const step = cameFrom.get(currentKey);
+    if (!step) return null;
+    route.push(step.direction);
+    currentKey = step.from;
+  }
+
+  route.reverse();
+  return route;
+}
+
 /**
  * A* from the player to (goalX, goalY) on the player's floor. Returns
  * the step directions first-step-first, [] when already there, or null
@@ -69,62 +133,55 @@ export function findWalkRoute(
   if (sx === goalX && sy === goalY) return [];
   if (!isWorldTileWalkable(world, datIndex, goalX, goalY, z)) return null;
 
-  const key = (x: number, y: number): string => `${x}:${y}`;
-  const h = (x: number, y: number): number => Math.abs(x - goalX) + Math.abs(y - goalY);
+  const openNodes = new Map<string, RouteNode>();
+  const cameFrom = new Map<string, RouteStep>();
+  const bestCostToTile = new Map<string, number>();
+  const visitedTiles = new Set<string>();
 
-  const open = new Map<string, { x: number; y: number; g: number; f: number }>();
-  const cameFrom = new Map<string, { from: string; dir: WalkDirection }>();
-  const gScore = new Map<string, number>();
-  const closed = new Set<string>();
-
-  const startKey = key(sx, sy);
-  open.set(startKey, { x: sx, y: sy, g: 0, f: h(sx, sy) });
-  gScore.set(startKey, 0);
+  const startKey = floorTileKey(sx, sy);
+  openNodes.set(startKey, {
+    x: sx,
+    y: sy,
+    costFromStart: 0,
+    estimatedTotalCost: manhattanDistanceToGoal(sx, sy, goalX, goalY),
+  });
+  bestCostToTile.set(startKey, 0);
 
   let expanded = 0;
-  while (open.size > 0 && expanded < MAX_EXPANDED_NODES) {
-    // Lowest f in the open set (the window is tiny — a heap is overkill).
-    let current: { x: number; y: number; g: number; f: number } | null = null;
-    let currentKey = '';
-    for (const [k, n] of open) {
-      if (!current || n.f < current.f) { current = n; currentKey = k; }
-    }
+  while (openNodes.size > 0 && expanded < MAX_EXPANDED_NODES) {
+    const current = takeLowestCostNode(openNodes);
     if (!current) break;
-    open.delete(currentKey);
-    closed.add(currentKey);
+    visitedTiles.add(current.key);
     expanded++;
 
-    if (current.x === goalX && current.y === goalY) {
-      // Reconstruct, walking back to the start.
-      const route: WalkDirection[] = [];
-      let k = currentKey;
-      while (k !== startKey) {
-        const step = cameFrom.get(k);
-        if (!step) return null; // unreachable bookkeeping bug guard
-        route.push(step.dir);
-        k = step.from;
-      }
-      route.reverse();
-      return route;
+    if (current.node.x === goalX && current.node.y === goalY) {
+      return buildWalkRoute(cameFrom, startKey, current.key);
     }
 
     for (const { dir, dx, dy } of DIRS) {
-      const nx = current.x + dx;
-      const ny = current.y + dy;
-      const nk = key(nx, ny);
-      if (closed.has(nk)) continue;
-      if (!isWorldTileWalkable(world, datIndex, nx, ny, z)) continue;
+      const nextX = current.node.x + dx;
+      const nextY = current.node.y + dy;
+      const nextKey = floorTileKey(nextX, nextY);
+      if (visitedTiles.has(nextKey)) continue;
+      if (!isWorldTileWalkable(world, datIndex, nextX, nextY, z)) continue;
+
       // Creatures block intermediate steps but not the goal tile itself
       // (the server stops the walk next to it anyway).
-      const isGoal = nx === goalX && ny === goalY;
-      if (!isGoal && creatureBlocks(world, nx, ny, z)) continue;
+      const isGoalTile = nextX === goalX && nextY === goalY;
+      if (!isGoalTile && creatureBlocks(world, nextX, nextY, z)) continue;
 
-      const g = current.g + 1;
-      const known = gScore.get(nk);
-      if (known !== undefined && g >= known) continue;
-      gScore.set(nk, g);
-      cameFrom.set(nk, { from: currentKey, dir });
-      open.set(nk, { x: nx, y: ny, g, f: g + h(nx, ny) });
+      const costFromStart = current.node.costFromStart + 1;
+      const knownCost = bestCostToTile.get(nextKey);
+      if (knownCost !== undefined && costFromStart >= knownCost) continue;
+
+      bestCostToTile.set(nextKey, costFromStart);
+      cameFrom.set(nextKey, { from: current.key, direction: dir });
+      openNodes.set(nextKey, {
+        x: nextX,
+        y: nextY,
+        costFromStart,
+        estimatedTotalCost: costFromStart + manhattanDistanceToGoal(nextX, nextY, goalX, goalY),
+      });
     }
   }
 

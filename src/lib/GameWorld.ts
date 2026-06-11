@@ -194,6 +194,9 @@ export class GameWorld {
 
   /** Remove the stack entry at a wire stack position. Returns it. */
   private removeAtStackPos(tile: MapTile, stackPos: number): MapTile['things'][number] | undefined {
+    // splice() treats negative starts as from-the-end — a -1 from a
+    // failed findIndex would silently eat the LAST stack entry.
+    if (stackPos < 0 || stackPos >= tile.things.length) return undefined;
     const [removed] = tile.things.splice(stackPos, 1);
     if (removed) GameWorld.syncTileViews(tile);
     return removed;

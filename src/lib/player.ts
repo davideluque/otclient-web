@@ -27,37 +27,22 @@ export interface PlayerState {
   animationPhase: number;
 }
 
-/**
- * Get the sprite ID for a creature given its frame group, direction, and animation phase.
- *
- * Sprite index layout (from Tibia .dat format):
- * index = ((phase * numPatternZ + z) * numPatternY + y) * numPatternX + x) * layers + layer) * h + hIdx) * w + wIdx
- *
- * For basic creatures: w=1, h=1, layers=1-2, numPatternX=4 (directions), numPatternZ=1
- */
 export function getCreatureSpriteId(
   fg: FrameGroup,
   direction: Direction,
   animationPhase: number,
   layer = 0,
 ): number {
-  const w = fg.width;
-  const h = fg.height;
-  const layers = fg.layers;
-  const patX = fg.numPatternX;
-  const patY = fg.numPatternY;
-  const patZ = fg.numPatternZ;
+  const clampedDirection = Math.max(0, Math.min(direction, fg.numPatternX - 1));
+  const clampedPhase = Math.max(0, Math.min(animationPhase, fg.animationPhases - 1));
+  const clampedLayer = Math.max(0, Math.min(layer, fg.layers - 1));
 
-  // Clamp values to valid ranges (enforce minimum 0)
-  const dir = Math.max(0, Math.min(direction, patX - 1));
-  const phase = Math.max(0, Math.min(animationPhase, fg.animationPhases - 1));
-  const l = Math.max(0, Math.min(layer, layers - 1));
+  const patternCount = fg.numPatternZ * fg.numPatternY * fg.numPatternX;
+  const spritesPerPattern = fg.layers * fg.height * fg.width;
+  const patternIndex = clampedPhase * patternCount + clampedDirection;
+  const spriteIndex = patternIndex * spritesPerPattern + clampedLayer * fg.height * fg.width;
 
-  // Sprite index for single-tile creatures (w=1, h=1, patY=1, patZ=1)
-  // Full formula: ((((phase * patZ) * patY) * patX + dir) * layers + layer) * h * w
-  const index = (((phase * patZ * patY) * patX + dir) * layers + l) * h * w;
-
-  return fg.spriteIds[index] ?? 0;
+  return fg.spriteIds[spriteIndex] ?? 0;
 }
 
 /** Build O(1) lookup from creature lookType (1-based ID) → ThingType. */

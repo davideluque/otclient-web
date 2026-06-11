@@ -14,6 +14,8 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-11', text: 'Night is dark again: the world follows the server\'s day/night light, torches and fire fields glow, and your character carries their own light.' },
+  { date: '2026-06-11', text: 'Settings → Brightness: 0% follows the server\'s darkness fully (classic Tibia), 100% ignores it — pick what your eyes want.' },
   { date: '2026-06-11', text: 'Dead creatures actually die now — they turn into their corpse instead of standing around with an empty health bar.' },
   { date: '2026-06-11', text: 'The menu pane scrolls now — entries past the bottom of the screen (VIP, Settings, Log out on small phones) are reachable again.' },
   { date: '2026-06-11', text: 'Spell buttons are bigger (thumb-sized) and the icons now fill the whole circle — tell us if the full-bleed look works.' },

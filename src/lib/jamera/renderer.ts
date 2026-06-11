@@ -1,5 +1,9 @@
-import { Container } from 'pixi.js';
-import type { Application } from 'pixi.js';
+import { Container, RenderTexture } from 'pixi.js';
+import type { Application, Sprite } from 'pixi.js';
+import {
+  buildIlluminationOverlay, computeAmbient, createLightMaskTexture,
+  loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
+} from '../lighting';
 import { renderTileRegion, renderPlayer, type TintedTextureCache } from '../tileRenderer';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
@@ -46,6 +50,13 @@ const GLIDE_PAD = 3;
  */
 const TILE_REBUILD_HYSTERESIS = 2;
 const TILE_REVISION_THROTTLE_MS = 300;
+
+/**
+ * Settings fires this when the brightness slider moves so the light
+ * overlay rebuilds immediately (a preference change fires no
+ * world.onChange).
+ */
+export const LIGHT_PREF_EVENT = 'jamera:light-pref';
 
 /**
  * Exponential moving average of a creature's step cadence. Exported for
@@ -143,6 +154,14 @@ export function bindRenderer(
   let root: Container | null = null;
   let tileLayer: Container | null = null;
   let creatureLayer: Container | null = null;
+  // Light overlay (multiply-blended) above tiles + creatures. The
+  // RenderTexture, bubble pool, and mask persist across rebuilds —
+  // buildIlluminationOverlay resizes/recycles them.
+  let lightLayer: Sprite | null = null;
+  let lightKey = '';
+  const illuminationTexture = RenderTexture.create({ width: 1, height: 1 });
+  const lightSpritePool = new LightSpritePool();
+  const lightMask = createLightMaskTexture();
   let paintedCenterX = NaN;
   let paintedCenterY = NaN;
   let paintedCenterZ = NaN;
@@ -320,8 +339,55 @@ export function bindRenderer(
       creatureKey = ck;
     }
 
+    // ── Light overlay: server world light × brightness preference ──
+    const brightness = loadBrightness();
+    const lk = brightness >= 100 ? 'off'
+      : `${paintedTileRevision}:${creatureKey}:${world.worldLight.level}:${world.worldLight.color}:${brightness}`;
+    if (lk !== lightKey) {
+      if (lightLayer) {
+        root.removeChild(lightLayer);
+        lightLayer.destroy();
+        lightLayer = null;
+      }
+      if (lk !== 'off') {
+        const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
+        const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
+        const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
+        const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
+        // Creature-carried lights (the player's glow, torches in hand)
+        // — only ones whose bubble can reach the visible region (light
+        // intensity caps at 7 tiles), matching the tile-light gather.
+        const MAX_LIGHT_REACH = 7;
+        const extraLights: LightSource[] = world.getAllCreatures()
+          .filter((c) => c.z === world.playerZ && c.lightLevel > 0
+            && c.x >= x1 - MAX_LIGHT_REACH && c.x <= x2 + MAX_LIGHT_REACH
+            && c.y >= y1 - MAX_LIGHT_REACH && c.y <= y2 + MAX_LIGHT_REACH)
+          .map((c) => ({
+            x: c.x, y: c.y,
+            intensity: c.lightLevel,
+            color: tibiaColorToHex(c.lightColor),
+          }));
+        lightLayer = buildIlluminationOverlay(
+          app, world, atlas.datIndex, lightMask,
+          illuminationTexture, lightSpritePool,
+          x1, y1, x2, y2, world.playerZ,
+          {
+            ambientColor: computeAmbient(world.worldLight.level, world.worldLight.color, brightness),
+            enabled: true,
+            extraLights,
+          },
+        );
+        // Above tiles and creatures, below the bubble layer.
+        root.addChildAt(lightLayer, creatureLayer ? root.getChildIndex(creatureLayer) + 1 : root.children.length);
+      }
+      lightKey = lk;
+    }
+
     glide(now);
   };
+
+  const onLightPref = (): void => update();
+  window.addEventListener(LIGHT_PREF_EVENT, onLightPref);
 
   // A viewport change alters `app.screen` and the stage zoom but fires
   // no world change — recenter the existing container without
@@ -344,6 +410,11 @@ export function bindRenderer(
   return () => {
     unsubscribeChat?.();
     if (rafId !== 0) cancelAnimationFrame(rafId);
+    window.removeEventListener(LIGHT_PREF_EVENT, onLightPref);
+    lightSpritePool.destroy();
+    illuminationTexture.destroy(true);
+    lightMask.destroy(true);
+    lightLayer = null; // destroyed with root below
     // Tinted outfit textures are dynamically created GPU resources; the
     // shared atlas textures live for the page, but these are per-binding.
     for (const tex of tintedCache.values()) tex.destroy(true);

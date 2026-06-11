@@ -366,17 +366,28 @@ export const ENTRIES: GalleryEntry[] = [
     mount({ knobs, log }) {
       let attacking = false;
       let sound = true;
+      let brightness = 25;
       const pane = createSettingsPane([
         {
+          kind: 'toggle',
           label: 'Auto-attack',
           hint: 'Same switch as the ⚔ circle on the combat bar.',
           get: () => attacking,
           set: (on) => { attacking = on; log(`auto-attack: ${on}`); },
         },
         {
+          kind: 'toggle',
           label: 'Sound (demo row)',
           get: () => sound,
           set: (on) => { sound = on; log(`sound: ${on}`); },
+        },
+        {
+          kind: 'slider',
+          label: 'Brightness',
+          hint: 'Slider row — in game this drives the light overlay.',
+          min: 0, max: 100, step: 5, unit: '%',
+          get: () => brightness,
+          set: (pct) => { brightness = pct; log(`brightness: ${pct}%`); },
         },
       ]);
       knobs.button('Open', () => pane.open());

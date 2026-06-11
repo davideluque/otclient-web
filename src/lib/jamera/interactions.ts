@@ -28,6 +28,18 @@ export interface InteractionsHandle {
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
 
+interface WorldPosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface TileStackItem {
+  position: WorldPosition;
+  spriteId: number;
+  stackPos: number;
+}
+
 /**
  * Canvas-space pixel → world tile, inverting the renderer's centering
  * math. Callers must convert viewport (client) coordinates to canvas
@@ -80,11 +92,18 @@ export function bindInteractions(
   const canvas = app.canvas as HTMLCanvasElement;
   const protocol = client.getProtocol();
 
-  function topItem(pos: { x: number; y: number; z: number }): { spriteId: number; stackPos: number } | null {
-    const tile = world.getTile(pos.x, pos.y, pos.z);
+  function worldTileAtPointer(clientX: number, clientY: number): WorldPosition {
+    const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
+    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
+  }
+
+  function topStackItemAtTile(position: WorldPosition): TileStackItem | null {
+    const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
-    const top = tile.items[tile.items.length - 1];
-    return { spriteId: top.id, stackPos: tile.items.length - 1 };
+
+    const topStackIndex = tile.items.length - 1;
+    const topStackItem = tile.items[topStackIndex];
+    return { position, spriteId: topStackItem.id, stackPos: topStackIndex };
   }
 
   function send(packet: { toUint8Array(): Uint8Array }): void {
@@ -96,19 +115,15 @@ export function bindInteractions(
   }
 
   function look(clientX: number, clientY: number): void {
-    const c = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    const pos = screenToWorldTile(app, world, c.x, c.y);
-    const item = topItem(pos);
-    if (!item) return;
-    send(protocol.actions.buildLookAt(pos, item.spriteId, item.stackPos));
+    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
+    if (!target) return;
+    send(protocol.actions.buildLookAt(target.position, target.spriteId, target.stackPos));
   }
 
   function use(clientX: number, clientY: number): void {
-    const c = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    const pos = screenToWorldTile(app, world, c.x, c.y);
-    const item = topItem(pos);
-    if (!item) return;
-    send(protocol.actions.buildUseItem(pos, item.spriteId, item.stackPos));
+    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
+    if (!target) return;
+    send(protocol.actions.buildUseItem(target.position, target.spriteId, target.stackPos));
   }
 
   // Tap/click-to-walk: A* over the known window, sent as one 0x64
@@ -118,8 +133,7 @@ export function bindInteractions(
   // client does too); a new tap simply replaces the route server-side.
   function walkTo(clientX: number, clientY: number): void {
     if (!datIndex) return;
-    const c = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    const pos = screenToWorldTile(app, world, c.x, c.y);
+    const pos = worldTileAtPointer(clientX, clientY);
     const route = findWalkRoute(world, datIndex, pos.x, pos.y);
     if (!route || route.length === 0) return;
     send(protocol.movement.buildAutoWalk(route));

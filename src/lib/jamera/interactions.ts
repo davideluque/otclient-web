@@ -1,5 +1,6 @@
 import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
+import type { WirePosition } from '../net/common/types';
 import type { GameWorld } from '../GameWorld';
 import type { ThingType } from '../dat';
 import { findWalkRoute } from './autowalk';
@@ -28,16 +29,10 @@ export interface InteractionsHandle {
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
 
-interface WorldPosition {
-  x: number;
-  y: number;
-  z: number;
-}
-
 interface TileStackItem {
-  position: WorldPosition;
-  spriteId: number;
-  stackPos: number;
+  readonly position: WirePosition;
+  readonly spriteId: number;
+  readonly stackPos: number;
 }
 
 /**
@@ -92,12 +87,12 @@ export function bindInteractions(
   const canvas = app.canvas as HTMLCanvasElement;
   const protocol = client.getProtocol();
 
-  function worldTileAtPointer(clientX: number, clientY: number): WorldPosition {
+  function worldTileAtPointer(clientX: number, clientY: number): WirePosition {
     const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
     return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
   }
 
-  function topStackItemAtTile(position: WorldPosition): TileStackItem | null {
+  function topStackItemAtTile(position: WirePosition): TileStackItem | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
 

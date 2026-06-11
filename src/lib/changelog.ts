@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-11', text: 'Fixed the full black screen when opening the game over the network (plain http) — a diagnostics API only existed on https/localhost.' },
   { date: '2026-06-10', text: 'The UI component gallery (/ui-components.html) now covers all 19 components with up-to-date descriptions.' },
   { date: '2026-06-10', text: 'Added the VIP list (menu → VIP): see who is online, add and remove friends.' },
   { date: '2026-06-10', text: 'Spell slots are customizable (menu → Spells) and every known spell has an icon now.' },

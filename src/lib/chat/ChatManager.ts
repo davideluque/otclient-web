@@ -8,14 +8,23 @@ export interface Channel {
 
 export interface SpeechBubble {
   senderName: string;
+  /** Concatenated messages from this speaker, newline-separated. */
   text: string;
+  /** Drives the on-screen style: yellow says:/whispers:/yells: for
+   *  players, orange bare text for monsters (OTClient statictext). */
+  messageType: number;
   x: number;
   y: number;
   z: number;
   expiresAt: number;
 }
 
-const SPEECH_BUBBLE_DURATION_MS = 5000;
+// OTClient statictext durations: per-character with a floor, doubled
+// for yells so long-range shouting stays readable.
+const SPEECH_MS_PER_CHAR = 60;
+const SPEECH_MIN_DURATION_MS = 3000;
+/** Stacked-lines cap per speaker (OTClient's deque holds 10). */
+const MAX_SPEECH_LINES = 10;
 const MAX_MESSAGES_PER_CHANNEL = 200;
 const DEFAULT_CHANNELS = [
   { id: ChannelId.Default, name: 'Default' },
@@ -133,13 +142,38 @@ export class ChatManager {
   }
 
   private addSpeechBubble(msg: ChatMessage, position: NonNullable<ChatMessage['position']>): void {
+    let duration = Math.max(SPEECH_MIN_DURATION_MS, msg.text.length * SPEECH_MS_PER_CHAR);
+    if (msg.messageType === MessageType.Yell || msg.messageType === MessageType.MonsterYell) {
+      duration *= 2;
+    }
+    // Same speaker, same kind, still on screen → stack the new line
+    // under the existing text (classic Tibia pushes the says-text up).
+    const existing = this._speechBubbles.find(
+      (b) => b.senderName === msg.senderName
+        && b.messageType === msg.messageType
+        && b.expiresAt > msg.timestamp,
+    );
+    if (existing) {
+      // Cap the stack (OTClient keeps 10): spam must not grow the PIXI
+      // text texture unboundedly. Oldest lines fall off the top.
+      const lines = `${existing.text}\n${msg.text}`.split('\n');
+      existing.text = lines.slice(-MAX_SPEECH_LINES).join('\n');
+      existing.x = position.x;
+      existing.y = position.y;
+      existing.z = position.z;
+      // Never shorten: a quick "hi" after a long text must not cut the
+      // long text's remaining display time.
+      existing.expiresAt = Math.max(existing.expiresAt, msg.timestamp + duration);
+      return;
+    }
     this._speechBubbles.push({
       senderName: msg.senderName,
       text: msg.text,
+      messageType: msg.messageType,
       x: position.x,
       y: position.y,
       z: position.z,
-      expiresAt: msg.timestamp + SPEECH_BUBBLE_DURATION_MS,
+      expiresAt: msg.timestamp + duration,
     });
   }
 

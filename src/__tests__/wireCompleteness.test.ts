@@ -390,3 +390,50 @@ describe('GameWorld floor changes', () => {
     expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 5]);
   });
 });
+
+describe('GameWorld lighting packets', () => {
+  function world(): GameWorld {
+    return new GameWorld(new GameProtocol());
+  }
+
+  function dispatcherFor(w: GameWorld): PacketDispatcher {
+    const d = new PacketDispatcher();
+    w.registerHandlers(d);
+    return d;
+  }
+
+  it('0x82 updates the world light', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    expect(w.worldLight).toEqual({ level: 250, color: 0xd7 }); // daylight default
+
+    const out = new OutputPacket();
+    out.addU8(0x82);
+    out.addU8(40);   // night level
+    out.addU8(0xd7); // white
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(w.worldLight).toEqual({ level: 40, color: 0xd7 });
+  });
+
+  it('0x8D updates a known creature light', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    // @ts-expect-error driving private registry for the test
+    w.creatures.set(777, {
+      id: 777, name: 'Rat', x: 100, y: 200, z: 7, direction: 0, health: 80,
+      speed: 180, outfit: { lookType: 21, head: 0, body: 0, legs: 0, feet: 0 },
+      lightLevel: 0, lightColor: 0,
+    });
+
+    const out = new OutputPacket();
+    out.addU8(0x8d);
+    out.addU32(777);
+    out.addU8(7);    // torch level
+    out.addU8(0xd1); // orange-ish
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(w.getCreature(777)?.lightLevel).toBe(7);
+    expect(w.getCreature(777)?.lightColor).toBe(0xd1);
+  });
+});

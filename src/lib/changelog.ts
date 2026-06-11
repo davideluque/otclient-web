@@ -14,6 +14,8 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-11', text: 'Night is dark again: the world follows the server\'s day/night light, torches and fire fields glow, and your character carries their own light.' },
+  { date: '2026-06-11', text: 'Settings → Brightness: 0% follows the server\'s darkness fully (classic Tibia), 100% ignores it — pick what your eyes want.' },
   { date: '2026-06-11', text: 'Spell buttons are bigger (thumb-sized) and the icons now fill the whole circle — tell us if the full-bleed look works.' },
   { date: '2026-06-11', text: 'The minimap moved to the left side under the health bar, and the 💬 chat bubble is gone (it sat on top of the spell buttons — chat lives in menu → Chat).' },
   { date: '2026-06-11', text: 'The spell buttons now fan out in a quarter-circle around the ⚔ attack button in the bottom-right corner (MOBA-style) — easier to reach with your thumb than the old vertical column.' },

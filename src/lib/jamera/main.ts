@@ -28,6 +28,8 @@ import { bindCombatModes, type CombatModesBindingHandle } from './combatModesBin
 import { bindStatus, type StatusBindingHandle } from './statusBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
+import { loadBrightness, saveBrightness } from '../lighting';
+import { LIGHT_PREF_EVENT } from './renderer';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -166,21 +168,38 @@ mountLoginScreen(root, {
     settingsPane?.destroy();
     settingsPane = createSettingsPane([
       {
+        kind: 'toggle',
         label: 'Auto-attack',
         hint: 'Same switch as the ⚔ circle on the combat bar.',
         get: () => teardownCombat?.attacking ?? false,
         set: (on) => teardownCombat?.setAttacking(on),
       },
       {
+        kind: 'toggle',
         label: 'Show minimap',
         get: () => teardownMinimap?.visible ?? false,
         set: (on) => teardownMinimap?.setVisible(on),
       },
       {
+        kind: 'toggle',
         label: 'Show metrics',
         hint: 'FPS, walk-step latency, repaint cost — for the lag hunt.',
         get: () => metricsOverlay !== null,
         set: (on) => setMetricsVisible(on),
+      },
+      {
+        kind: 'slider',
+        label: 'Brightness',
+        hint: '0% follows the server’s day/night fully; 100% ignores darkness.',
+        min: 0,
+        max: 100,
+        step: 5,
+        unit: '%',
+        get: () => loadBrightness(),
+        set: (pct) => {
+          saveBrightness(pct);
+          window.dispatchEvent(new Event(LIGHT_PREF_EVENT));
+        },
       },
     ]);
     // ?metrics=1 arms the overlay from the URL (e.g. before reporting a

@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, RenderTexture, Sprite, Texture } from 'pixi.js';
-import type { TileMap } from './tileMap';
+import type { TileSource } from './tileRenderer';
 import type { ThingType, Light } from './dat';
 import { DatAttr } from './dat';
 import type { Pixel } from './types';
@@ -20,6 +20,49 @@ export interface LightingOptions {
   ambientColor: number;
   /** If false, lighting is bypassed entirely (full daylight). */
   enabled: boolean;
+  /**
+   * Lights that don't live on tiles as items — creature-carried lights
+   * (torches in hand, the player's own glow) gathered by the caller.
+   */
+  extraLights?: LightSource[];
+}
+
+/** localStorage key + default for the player's brightness preference. */
+const BRIGHTNESS_KEY = 'jamera.brightness';
+export const DEFAULT_BRIGHTNESS = 25;
+
+export function loadBrightness(): number {
+  try {
+    const raw = Number(localStorage.getItem(BRIGHTNESS_KEY));
+    if (Number.isFinite(raw) && raw >= 0 && raw <= 100) return raw;
+  } catch { /* storage blocked */ }
+  return DEFAULT_BRIGHTNESS;
+}
+
+export function saveBrightness(pct: number): void {
+  try {
+    localStorage.setItem(BRIGHTNESS_KEY, String(Math.max(0, Math.min(100, Math.round(pct)))));
+  } catch { /* storage blocked — session-only */ }
+}
+
+/**
+ * Effective ambient color for the overlay: the server's world light
+ * (0x82 level 0–255 scaling its palette color) blended toward full
+ * white by the brightness preference — Tibia's classic ambient-light
+ * option. 0% honors the server exactly, 100% ignores darkness.
+ */
+export function computeAmbient(level: number, colorIndex: number, brightnessPct: number): number {
+  const server = tibiaColorToHex(colorIndex);
+  const scale = Math.max(0, Math.min(255, level)) / 255;
+  const t = Math.max(0, Math.min(100, brightnessPct)) / 100;
+  const blend = (c: number): number => {
+    const fromServer = c * scale;
+    return Math.round(fromServer + (255 - fromServer) * t);
+  };
+  const r = blend((server >> 16) & 0xff);
+  const g = blend((server >> 8) & 0xff);
+  const b = blend(server & 0xff);
+  return (r << 16) | (g << 8) | b;
 }
 
 export const NIGHT_AMBIENT: LightingOptions = {
@@ -67,7 +110,7 @@ export function tibiaColorToHex(paletteIndex: number): number {
 }
 
 export function* gatherLights(
-  tileMap: TileMap,
+  tileMap: TileSource,
   datIndex: Map<number, ThingType>,
   x1: number, y1: number, x2: number, y2: number, z: number,
 ): Generator<LightSource> {
@@ -140,7 +183,7 @@ export class LightSpritePool {
  */
 export function buildIlluminationOverlay(
   app: Application,
-  tileMap: TileMap,
+  tileMap: TileSource,
   datIndex: Map<number, ThingType>,
   mask: Texture,
   texture: RenderTexture,
@@ -172,12 +215,7 @@ export function buildIlluminationOverlay(
   // gather rect by MAX_INTENSITY tiles so a light just outside the visible
   // rectangle still contributes when its bubble reaches in — otherwise the
   // screen edges go dark and torches pop in as the viewport pans.
-  for (const light of gatherLights(
-    tileMap, datIndex,
-    x1 - MAX_INTENSITY, y1 - MAX_INTENSITY,
-    x2 + MAX_INTENSITY, y2 + MAX_INTENSITY,
-    z,
-  )) {
+  const addBubble = (light: LightSource): void => {
     const sprite = pool.acquire(mask);
     sprite.x = (light.x - x1) * TILE_SIZE + TILE_SIZE / 2;
     sprite.y = (light.y - y1) * TILE_SIZE + TILE_SIZE / 2;
@@ -186,7 +224,19 @@ export function buildIlluminationOverlay(
     sprite.height = radius * 2;
     sprite.tint = light.color;
     scene.addChild(sprite);
+  };
+
+  for (const light of gatherLights(
+    tileMap, datIndex,
+    x1 - MAX_INTENSITY, y1 - MAX_INTENSITY,
+    x2 + MAX_INTENSITY, y2 + MAX_INTENSITY,
+    z,
+  )) {
+    addBubble(light);
   }
+  // Creature-carried lights (torches in hand, the player's glow) come
+  // from the caller — they live on creatures, not tile items.
+  for (const light of opts.extraLights ?? []) addBubble(light);
 
   app.renderer.render({ container: scene, target: texture, clear: true });
 

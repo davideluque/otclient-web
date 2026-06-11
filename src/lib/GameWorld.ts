@@ -30,6 +30,10 @@ export interface WorldCreature {
   health: number;
   speed: number;
   outfit: MapCreature['outfit'];
+  /** Light emitted by the creature (torch in hand, fire fields…); 0 = none. */
+  lightLevel: number;
+  /** 7.6 palette index for the creature's light tint. */
+  lightColor: number;
   /** performance.now()-style stamp of the last confirmed step (for walk animation). */
   lastMoveAt?: number;
   /**
@@ -86,6 +90,14 @@ export class GameWorld {
   creatureRevision = 0;
 
   /**
+   * Ambient world light from 0x82: level 0–255 (the server's day/night
+   * cycle; ~250 full day, ~40 night) and a 7.6 palette color index.
+   * Defaults to full daylight until the server says otherwise — the
+   * 0x82 always arrives right after login.
+   */
+  worldLight = { level: 250, color: 0xd7 };
+
+  /**
    * While true, syncSelfCreature records no glide origin. Set by
    * handleFloorChange and cleared in a microtask: the 0x65–0x68 resync
    * slices embedded in (and trailing) a floor-change message dispatch
@@ -118,6 +130,29 @@ export class GameWorld {
     dispatcher.on(op.CreatureSpeed, (p) => this.handleCreatureSpeed(p));
     dispatcher.on(op.FloorChangeUp, (p) => this.handleFloorChange(p, -1));
     dispatcher.on(op.FloorChangeDown, (p) => this.handleFloorChange(p, +1));
+    // Registered after registerWireSkips, so these override the skips
+    // (PacketDispatcher.on is a Map.set) — same pattern as the chat
+    // binding.
+    dispatcher.on(op.WorldLight, (p) => this.handleWorldLight(p));
+    dispatcher.on(op.CreatureLight, (p) => this.handleCreatureLight(p));
+  }
+
+  /** 0x82 — ambient light: the server's day/night cycle. */
+  private handleWorldLight(packet: InputPacket): void {
+    this.worldLight = { level: packet.getU8(), color: packet.getU8() };
+    this.onChange?.();
+  }
+
+  /** 0x8D — a creature's emitted light changed (torch lit/burned out). */
+  private handleCreatureLight(packet: InputPacket): void {
+    const ev = this.protocol.creature.parseLight(packet);
+    const wc = this.creatures.get(ev.creatureId);
+    if (wc) {
+      wc.lightLevel = ev.lightLevel;
+      wc.lightColor = ev.lightColor;
+      this.creatureRevision++;
+    }
+    this.onChange?.();
   }
 
   getTile(x: number, y: number, z: number): MapTile | undefined {
@@ -188,6 +223,8 @@ export class GameWorld {
         health: c.health,
         speed: c.speed,
         outfit: c.outfit,
+        lightLevel: c.lightLevel,
+        lightColor: c.lightColor,
       });
     }
   }
@@ -243,6 +280,8 @@ export class GameWorld {
         health: creature.health,
         speed: creature.speed,
         outfit: creature.outfit,
+        lightLevel: creature.lightLevel,
+        lightColor: creature.lightColor,
       });
     } else {
       // The server inserts by stack priority; pushing approximates the

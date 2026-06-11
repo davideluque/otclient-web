@@ -49,6 +49,8 @@ interface PixelDisplacement {
   y: number;
 }
 
+const ZERO_DISPLACEMENT: PixelDisplacement = { x: 0, y: 0 };
+
 /**
  * Pixel offset from .dat that shifts a sprite so its visible body sits on
  * the tile origin: Tibia 7.6 creatures typically declare (8, 8) — without
@@ -60,7 +62,7 @@ function readPixelDisplacement(thingType: ThingType): PixelDisplacement {
   if (isPixelDisplacement(displacement)) {
     return displacement;
   }
-  return { x: 0, y: 0 };
+  return ZERO_DISPLACEMENT;
 }
 
 function isPixelDisplacement(value: unknown): value is PixelDisplacement {
@@ -69,6 +71,8 @@ function isPixelDisplacement(value: unknown): value is PixelDisplacement {
     && value !== null
     && 'x' in value
     && 'y' in value
+    && typeof value.x === 'number'
+    && typeof value.y === 'number'
   );
 }
 

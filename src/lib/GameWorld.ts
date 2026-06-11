@@ -2,6 +2,8 @@ import type { InputPacket } from './net/common/InputPacket';
 import type { PacketDispatcher } from './net/common/PacketDispatcher';
 import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
 import type { ResolvedTile } from './tileMap';
+import type { ThingType } from './dat';
+import { DatAttr } from './dat';
 
 /**
  * 7.6 sends no facing with movement — neither the 0x65–0x68 self-step
@@ -96,8 +98,117 @@ export class GameWorld {
 
   private protocol: GameProtocol;
 
+  /** Client-ID → ThingType, for stack-order classification of items. */
+  private datIndex: Map<number, ThingType> | null = null;
+
   constructor(protocol: GameProtocol) {
     this.protocol = protocol;
+  }
+
+  /**
+   * Lets the world classify items into the server's stack sections
+   * (ground / top items / down items) when inserting 0x6A adds. Without
+   * it, adds fall back to the down-item section — right for the common
+   * runtime adds (splashes, corpses, dropped loot).
+   */
+  setDatIndex(index: Map<number, ThingType>): void {
+    this.datIndex = index;
+  }
+
+  // ── Tile stack helpers ─────────────────────────────────────────────
+  // `tile.things` mirrors the server stack exactly (otserv
+  // Tile::__getIndexOfThing order: ground, top items, creatures, down
+  // items), so wire stack positions index it directly. The items/
+  // creatures views are rebuilt after every mutation.
+
+  private static syncTileViews(tile: MapTile): void {
+    tile.items = [];
+    tile.creatures = [];
+    for (const t of tile.things) {
+      if (t.kind === 'item') tile.items.push(t.item);
+      else tile.creatures.push(t.creature);
+    }
+  }
+
+  /**
+   * The server's topOrder for an item: ground 0, ground border 1,
+   * on-bottom 2, on-top 3; 4 = regular down item. Unknown IDs (no dat
+   * yet) classify as down items.
+   */
+  private topOrder(clientId: number): number {
+    const thing = this.datIndex?.get(clientId);
+    if (!thing) return 4;
+    if (thing.attrs.has(DatAttr.Ground)) return 0;
+    if (thing.attrs.has(DatAttr.GroundBorder)) return 1;
+    if (thing.attrs.has(DatAttr.OnBottom)) return 2;
+    if (thing.attrs.has(DatAttr.OnTop)) return 3;
+    return 4;
+  }
+
+  /** Index where the creature section starts (first creature, or the
+   *  boundary between top items and down items). */
+  private creatureSectionStart(tile: MapTile): number {
+    let i = 0;
+    for (const t of tile.things) {
+      if (t.kind === 'creature') return i;
+      if (this.topOrder(t.item.id) >= 4) return i;
+      i++;
+    }
+    return i;
+  }
+
+  /** Index just past the last creature (where down items begin). */
+  private downSectionStart(tile: MapTile): number {
+    let i = this.creatureSectionStart(tile);
+    while (i < tile.things.length && tile.things[i].kind === 'creature') i++;
+    return i;
+  }
+
+  /** Mirror of otserv creatures.insert(begin): newest creature first. */
+  private insertCreature(tile: MapTile, creature: MapCreature): void {
+    tile.things.splice(this.creatureSectionStart(tile), 0, { kind: 'creature', creature });
+    GameWorld.syncTileViews(tile);
+  }
+
+  /** Mirror of otserv Tile::__addThing for items. */
+  private insertItem(tile: MapTile, item: MapTile['items'][number]): void {
+    const order = this.topOrder(item.id);
+    if (order >= 4) {
+      // downItems.insert(begin): newest down item right after creatures.
+      tile.things.splice(this.downSectionStart(tile), 0, { kind: 'item', item });
+    } else {
+      // Top section: insert before the first top item with a HIGHER
+      // topOrder (otserv keeps topItems sorted by it); ground replaces
+      // slot 0 territory by ordering naturally.
+      const boundary = this.creatureSectionStart(tile);
+      let at = 0;
+      while (at < boundary) {
+        const t = tile.things[at];
+        if (t.kind === 'item' && this.topOrder(t.item.id) > order) break;
+        at++;
+      }
+      tile.things.splice(at, 0, { kind: 'item', item });
+    }
+    GameWorld.syncTileViews(tile);
+  }
+
+  /** Remove the stack entry at a wire stack position. Returns it. */
+  private removeAtStackPos(tile: MapTile, stackPos: number): MapTile['things'][number] | undefined {
+    // splice() treats negative starts as from-the-end — a -1 from a
+    // failed findIndex would silently eat the LAST stack entry.
+    if (stackPos < 0 || stackPos >= tile.things.length) return undefined;
+    const [removed] = tile.things.splice(stackPos, 1);
+    if (removed) GameWorld.syncTileViews(tile);
+    return removed;
+  }
+
+  /** Remove a creature from a tile's stack by id (server order kept). */
+  private removeCreatureFromTile(tile: MapTile, creatureId: number): MapCreature | undefined {
+    const i = tile.things.findIndex((t) => t.kind === 'creature' && t.creature.id === creatureId);
+    if (i === -1) return undefined;
+    const removed = tile.things.splice(i, 1)[0];
+    GameWorld.syncTileViews(tile);
+    return removed.kind === 'creature' ? removed.creature : undefined;
   }
 
   registerHandlers(dispatcher: PacketDispatcher): void {
@@ -206,7 +317,7 @@ export class GameWorld {
       this.onChange?.();
       return;
     }
-    const tile: MapTile = { x: pos.x, y: pos.y, z: pos.z, items: [], creatures: [] };
+    const tile: MapTile = { x: pos.x, y: pos.y, z: pos.z, things: [], items: [], creatures: [] };
     this.protocol.map.parseTileSlot(packet, tile);
     this.setTile(tile);
     this.onChange?.();
@@ -221,7 +332,7 @@ export class GameWorld {
     // registry since the tile was first parsed.
     let tile = this.getTile(pos.x, pos.y, pos.z);
     if (!tile) {
-      tile = { x: pos.x, y: pos.y, z: pos.z, items: [], creatures: [] };
+      tile = { x: pos.x, y: pos.y, z: pos.z, things: [], items: [], creatures: [] };
       this.tiles.set(`${pos.x}:${pos.y}:${pos.z}`, tile);
     }
 
@@ -231,7 +342,7 @@ export class GameWorld {
       // 0x61 is the UNKNOWN long form in 7.6 (verified against the
       // server's AddCreature), 0x62 the known short form.
       const creature = this.protocol.map.parseCreature(packet, peek === 0x61);
-      tile.creatures.push(creature);
+      this.insertCreature(tile, creature);
       this.creatureRevision++;
       // KNOWN form carries no name — preserve the remembered one.
       const known = this.creatures.get(creature.id);
@@ -245,9 +356,10 @@ export class GameWorld {
         outfit: creature.outfit,
       });
     } else {
-      // The server inserts by stack priority; pushing approximates the
-      // paint order well enough for the current renderer.
-      tile.items.push(this.protocol.map.parseItem(packet));
+      // Insert by the server's stack priority (top items by topOrder,
+      // down items at the front of the down section) so later wire
+      // stack positions resolve against the same order the server used.
+      this.insertItem(tile, this.protocol.map.parseItem(packet));
     }
     this.tileRevision++;
     this.onChange?.();
@@ -275,33 +387,36 @@ export class GameWorld {
     const item = this.protocol.map.parseItem(packet);
     const tile = this.getTile(pos.x, pos.y, pos.z);
     if (tile) {
-      // Our tile model splits items and creatures, so the wire stack
-      // position (which interleaves them) maps approximately: positions
-      // inside the item list replace in place, anything else appends.
-      if (stackPos < tile.items.length) tile.items[stackPos] = item;
-      else tile.items.push(item);
+      const target = tile.things[stackPos];
+      if (target && target.kind === 'item') {
+        tile.things[stackPos] = { kind: 'item', item };
+      } else {
+        // Stale stack position (shouldn't happen with the exact stack
+        // model) — fall back to a priority insert rather than dropping.
+        this.insertItem(tile, item);
+      }
+      GameWorld.syncTileViews(tile);
       this.tileRevision++;
     }
     this.onChange?.();
   }
 
-  /** 0x6C — remove the thing at a stack position (item or creature). */
+  /**
+   * 0x6C — remove the thing at a stack position (item or creature).
+   * This is how creatures die on the wire: the server removes the
+   * creature and adds its corpse (0x6A) — the stack position must
+   * resolve exactly, or the corpse-for-creature swap removes the wrong
+   * thing and the dead creature lingers at 0 hp.
+   */
   private handleTileRemoveThing(packet: InputPacket): void {
     const pos = this.protocol.map.parsePosition(packet);
     const stackPos = packet.getU8();
     const tile = this.getTile(pos.x, pos.y, pos.z);
     if (tile) {
-      if (stackPos < tile.items.length) {
-        tile.items.splice(stackPos, 1);
-      } else {
-        // Same approximation as transform: a stack position beyond the
-        // item list refers to one of the tile's creatures.
-        const ci = stackPos - tile.items.length;
-        const [removed] = tile.creatures.splice(ci, 1);
-        if (removed) {
-          this.creatures.delete(removed.id);
-          this.creatureRevision++;
-        }
+      const removed = this.removeAtStackPos(tile, stackPos);
+      if (removed?.kind === 'creature') {
+        this.creatures.delete(removed.creature.id);
+        this.creatureRevision++;
       }
       this.tileRevision++;
     }
@@ -376,11 +491,10 @@ export class GameWorld {
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
     if (fromTile && toTile) {
-      const i = fromTile.creatures.findIndex((c) => c.id === this.playerCreatureId);
-      if (i >= 0) {
-        const [mc] = fromTile.creatures.splice(i, 1);
+      const mc = this.removeCreatureFromTile(fromTile, this.playerCreatureId);
+      if (mc) {
         mc.direction = facing;
-        toTile.creatures.push(mc);
+        this.insertCreature(toTile, mc);
       }
     }
     // Missing destination tile: leave the MapCreature where it is — the
@@ -528,20 +642,19 @@ export class GameWorld {
     const fromTile = this.getTile(event.fromX, event.fromY, event.fromZ);
     this.creatureRevision++;
     if (fromTile && fromTile.creatures.length > 0) {
-      // fromStack is a TILE stack position (ground + items + creatures
-      // + down items, in server stack order) — NOT an index into our
-      // creatures array. Our tile model splits items from creatures, so
-      // the exact split point is unrecoverable; approximate the creature
-      // index as (stackpos − item count) clamped into range. The clamp
-      // matters: a creature standing on plain ground arrives as stackpos
-      // 1 with creatures.length 1, and the old `creatures.length >
-      // fromStack` guard silently dropped that — i.e. nearly every
-      // monster step on a real server.
-      const ci = Math.min(
-        Math.max(event.fromStack - fromTile.items.length, 0),
-        fromTile.creatures.length - 1,
-      );
-      const [creature] = fromTile.creatures.splice(ci, 1);
+      // fromStack indexes the wire-ordered stack directly. If it
+      // doesn't land on a creature (a desync we shouldn't see with the
+      // exact stack model), fall back to the tile's first creature
+      // rather than dropping the move.
+      const at = fromTile.things[event.fromStack]?.kind === 'creature'
+        ? event.fromStack
+        : fromTile.things.findIndex((t) => t.kind === 'creature');
+      const entry = this.removeAtStackPos(fromTile, at);
+      if (!entry || entry.kind !== 'creature') {
+        this.onChange?.();
+        return;
+      }
+      const creature = entry.creature;
       creature.direction = directionFromDelta(
         event.toX - event.fromX, event.toY - event.fromY, creature.direction,
       );
@@ -557,10 +670,11 @@ export class GameWorld {
         wc.direction = creature.direction;
         wc.lastMoveAt = performance.now();
       }
-      // Add creature to destination tile
+      // Add creature to destination tile (front of its creature section,
+      // matching the server's creatures.insert(begin)).
       const toTile = this.getTile(event.toX, event.toY, event.toZ);
       if (toTile) {
-        toTile.creatures.push(creature);
+        this.insertCreature(toTile, creature);
       }
     }
     this.onChange?.();

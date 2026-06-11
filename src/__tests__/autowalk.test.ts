@@ -19,10 +19,13 @@ function makeWorld(
   grid.forEach((row, y) => {
     [...row].forEach((ch, x) => {
       if (ch === ' ') return;
-      const tile: MapTile = { x, y, z: 7, items: [{ id: ch === '#' ? 9 : 1 }], creatures: [] };
+      const item = { id: ch === '#' ? 9 : 1 };
+      const tile: MapTile = { x, y, z: 7, things: [{ kind: 'item', item }], items: [item], creatures: [] };
       if (ch === 'M') {
         const id = nextId++;
-        tile.creatures.push({ id } as MapTile['creatures'][number]);
+        const creature = { id } as MapTile['creatures'][number];
+        tile.things.push({ kind: 'creature', creature });
+        tile.creatures.push(creature);
         creatures.push({ id, x, y, z: 7 });
       }
       tiles.set(`${x}:${y}:7`, tile);

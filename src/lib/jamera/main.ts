@@ -192,7 +192,7 @@ mountLoginScreen(root, {
       { label: 'Battle', onSelect: () => teardownBattle?.setVisible(!teardownBattle.visible) },
       { label: 'VIP', onSelect: () => teardownVip?.list.open() },
       {
-        label: 'Spells',
+        label: 'Hotkeys',
         onSelect: () => {
           spellCustomizer ??= createSpellCustomizer({
             initial: loadSpellSlots(),

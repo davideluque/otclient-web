@@ -107,16 +107,17 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Spell bar',
     description:
-      'Cast buttons with cooldown sweeps (bottom-right). In-game the '
-      + 'slots come from the spell registry (configure via menu → '
-      + 'Spells); presses during cooldown are swallowed and buttons can '
-      + 'be disabled (e.g. not enough mana).',
+      'Cast buttons with cooldown sweeps (bottom-right), faced with the '
+      + 'tibia.com spell library images (emoji fallback for spells '
+      + 'without one). In-game the slots come from the spell registry '
+      + '(configure via menu → Hotkeys); presses during cooldown are '
+      + 'swallowed and buttons can be disabled (e.g. not enough mana).',
     mount({ knobs, log }) {
       const bar = createSpellBar({
         spells: [
-          { id: 'exura', label: 'exura', cooldownMs: 1000 },
+          { id: 'exura', label: 'exura', iconUrl: '/assets/spells/lighthealing.png', cooldownMs: 1000 },
           { id: 'exori', label: 'exori', cooldownMs: 4000 },
-          { id: 'utani-hur', label: 'haste', cooldownMs: 2000 },
+          { id: 'utani-hur', label: 'haste', iconUrl: '/assets/spells/haste.png', cooldownMs: 2000 },
         ],
         onCast: (id) => log(`cast: ${id}`),
       });
@@ -305,9 +306,10 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Spell customizer',
     description:
-      'Slot configurator (menu → Spells): tap a row to cycle through the '
-      + 'known 7.6 spell registry (curated emoji icons — 7.6 ships no '
-      + 'spell sprites). Changes apply to the live spell bar immediately.',
+      'Hotkeys menu (menu → Hotkeys): tap a slot to open the full spell '
+      + 'picker — every castable spell on the server, with tibia.com '
+      + 'library icons. Picking a spell already on another slot swaps '
+      + 'the two. Changes apply to the live spell bar immediately.',
     mount({ knobs, log }) {
       const customizer = createSpellCustomizer({
         initial: [...DEFAULT_SLOTS],

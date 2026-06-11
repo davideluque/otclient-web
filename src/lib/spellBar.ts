@@ -1,8 +1,12 @@
 /**
- * Spell button bar — a row of round cast buttons with cooldown sweeps.
- * Self-contained component (joystick.ts pattern): factory function,
- * injected styles, explicit handle. Touch-first: big hit targets,
- * pointerdown casting, no hover dependence.
+ * Spell buttons fanned along a quarter-circle hugging the bottom-right
+ * corner, MOBA-style (Mobile Legends): the corner anchor slot is the
+ * big always-there button (the auto-attack toggle in game), spells
+ * sweep the arc from straight-left of it (slot 1, where the thumb
+ * rests) up to straight-above. Self-contained component (joystick.ts
+ * pattern): factory function, injected styles, explicit handle.
+ * Touch-first: big hit targets, pointerdown casting, no hover
+ * dependence.
  */
 
 export interface SpellDef {
@@ -32,24 +36,37 @@ export interface SpellBarHandle {
 
 const STYLE_ID = 'spell-bar-style';
 
+/** Anchor-center → spell-center distance along the arc. */
+const ARC_RADIUS = 104;
+/** Spell button diameter; the corner anchor is ANCHOR_SIZE. */
+const BUTTON_SIZE = 56;
+const ANCHOR_SIZE = 64;
+
 function ensureStyles(): void {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
     .spell-bar {
-      position: fixed; right: 16px;
-      bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-      display: flex; flex-direction: column; gap: 10px;
-      z-index: 30; user-select: none;
+      position: fixed; right: 10px;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      width: ${ANCHOR_SIZE / 2 + ARC_RADIUS + BUTTON_SIZE / 2 + 4}px;
+      height: ${ANCHOR_SIZE / 2 + ARC_RADIUS + BUTTON_SIZE / 2 + 4}px;
+      z-index: 30; user-select: none; pointer-events: none;
     }
     .spell-bar button {
-      width: 56px; height: 56px; border-radius: 50%;
+      position: absolute; pointer-events: auto;
+      width: ${BUTTON_SIZE}px; height: ${BUTTON_SIZE}px; border-radius: 50%;
       background: rgba(22,22,22,0.9); color: #e0e0e0;
       border: 2px solid #9a9a9a; font-size: 0.7rem;
       font-family: system-ui, sans-serif;
-      position: relative; overflow: hidden;
+      overflow: hidden;
       cursor: pointer; touch-action: manipulation;
+    }
+    .spell-bar button.anchor {
+      right: 0; bottom: 0;
+      width: ${ANCHOR_SIZE}px; height: ${ANCHOR_SIZE}px;
+      font-size: 1.3rem;
     }
     .spell-bar button:disabled { border-color: #444; color: #666; cursor: default; }
     .spell-bar button img {
@@ -93,9 +110,20 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
     e.timer = setTimeout(() => { e.readyAt = 0; }, e.def.cooldownMs);
   }
 
-  for (const def of opts.spells) {
+  // Fan the slots over the quarter circle: slot 1 sits straight left
+  // of the corner anchor (closest to the resting thumb), the last slot
+  // straight above it. A single slot takes the 45° midpoint.
+  const count = opts.spells.length;
+  const anchorCenter = ANCHOR_SIZE / 2;
+  opts.spells.forEach((def, i) => {
+    const angle = ((count > 1 ? (i * 90) / (count - 1) : 45) * Math.PI) / 180;
+    const right = anchorCenter + ARC_RADIUS * Math.cos(angle) - BUTTON_SIZE / 2;
+    const bottom = anchorCenter + ARC_RADIUS * Math.sin(angle) - BUTTON_SIZE / 2;
+
     const btn = document.createElement('button');
     btn.type = 'button';
+    btn.style.right = `${Math.round(right)}px`;
+    btn.style.bottom = `${Math.round(bottom)}px`;
     btn.title = def.label;
     const cd = document.createElement('div');
     cd.className = 'cd';
@@ -123,7 +151,7 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
     });
     el.appendChild(btn);
     entries.set(def.id, { btn, cd, def, readyAt: 0 });
-  }
+  });
 
   return {
     el,
@@ -132,7 +160,7 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
       const e = entries.get(id);
       if (e) e.btn.disabled = !enabled;
     },
-    setVisible: (visible) => { el.style.display = visible ? 'flex' : 'none'; },
+    setVisible: (visible) => { el.style.display = visible ? '' : 'none'; },
     destroy: () => {
       for (const e of entries.values()) clearTimeout(e.timer);
       el.remove();

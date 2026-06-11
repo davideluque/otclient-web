@@ -17,12 +17,12 @@ export interface SpeechBubble {
 
 const SPEECH_BUBBLE_DURATION_MS = 5000;
 const MAX_MESSAGES_PER_CHANNEL = 200;
-const DEFAULT_CHANNELS: Array<Pick<Channel, 'id' | 'name'>> = [
+const DEFAULT_CHANNELS = [
   { id: ChannelId.Default, name: 'Default' },
   { id: ChannelId.GameChat, name: 'Game Chat' },
   { id: ChannelId.Trade, name: 'Trade' },
   { id: ChannelId.Help, name: 'Help' },
-];
+] as const;
 
 export class ChatManager {
   private channels = new Map<number, Channel>();
@@ -139,7 +139,7 @@ export class ChatManager {
       x: position.x,
       y: position.y,
       z: position.z,
-      expiresAt: Date.now() + SPEECH_BUBBLE_DURATION_MS,
+      expiresAt: msg.timestamp + SPEECH_BUBBLE_DURATION_MS,
     });
   }
 

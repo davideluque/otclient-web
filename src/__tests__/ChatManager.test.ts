@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ChatManager } from '../lib/chat/ChatManager';
+import { ChatManager, type SpeechBubble } from '../lib/chat/ChatManager';
+import { composeSpeech } from '../lib/chat/SpeechBubbleRenderer';
 import { MessageType, ChannelId, type ChatMessage } from '../lib/net/common/types';
 
 function makeMsg(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -89,6 +90,58 @@ describe('ChatManager', () => {
     expect(chat.speechBubbles).toHaveLength(0);
   });
 
+  it('stacks repeated speech from the same speaker into one bubble', () => {
+    const t = Date.now();
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Say,
+      position: { x: 100, y: 200, z: 7 },
+      text: 'exura',
+      timestamp: t,
+    }));
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Say,
+      position: { x: 100, y: 201, z: 7 },
+      text: 'exura vita',
+      timestamp: t + 500,
+    }));
+    expect(chat.speechBubbles).toHaveLength(1);
+    expect(chat.speechBubbles[0].text).toBe('exura\nexura vita');
+    // Bubble follows the speaker's latest position.
+    expect(chat.speechBubbles[0].y).toBe(201);
+
+    // A different speaker gets their own bubble.
+    chat.handleMessage(makeMsg({
+      senderName: 'Other',
+      messageType: MessageType.Say,
+      position: { x: 101, y: 200, z: 7 },
+      text: 'hi',
+      timestamp: t + 600,
+    }));
+    expect(chat.speechBubbles).toHaveLength(2);
+  });
+
+  it('scales bubble duration with text length, doubled for yells', () => {
+    const t = Date.now();
+    const short = 'hi'; // floor: 3000ms
+    const long = 'x'.repeat(100); // 100 × 60ms = 6000ms
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Say, position: { x: 0, y: 0, z: 7 }, text: short, timestamp: t,
+    }));
+    expect(chat.speechBubbles[0].expiresAt).toBe(t + 3000);
+    chat.cleanupBubbles(t + 10000);
+
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Say, position: { x: 0, y: 0, z: 7 }, text: long, timestamp: t,
+    }));
+    expect(chat.speechBubbles[0].expiresAt).toBe(t + 6000);
+    chat.cleanupBubbles(t + 10000);
+
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Yell, position: { x: 0, y: 0, z: 7 }, text: short, timestamp: t,
+    }));
+    expect(chat.speechBubbles[0].expiresAt).toBe(t + 6000);
+  });
+
   it('cleans up expired speech bubbles', () => {
     const now = Date.now();
     chat.handleMessage(makeMsg({
@@ -107,5 +160,32 @@ describe('ChatManager', () => {
       chat.handleMessage(makeMsg({ text: `msg ${i}` }));
     }
     expect(chat.getChannel(ChannelId.Default)!.messages.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('composeSpeech (classic on-screen format)', () => {
+  function bubble(messageType: number, text = 'exura'): SpeechBubble {
+    return { senderName: 'Gurz', text, messageType, x: 0, y: 0, z: 7, expiresAt: 0 };
+  }
+
+  it('players speak yellow with the says:/whispers:/yells: prefix', () => {
+    expect(composeSpeech(bubble(MessageType.Say)))
+      .toEqual({ text: 'Gurz says:\nexura', monster: false });
+    expect(composeSpeech(bubble(MessageType.Whisper)))
+      .toEqual({ text: 'Gurz whispers:\nexura', monster: false });
+    expect(composeSpeech(bubble(MessageType.Yell)))
+      .toEqual({ text: 'Gurz yells:\nexura', monster: false });
+  });
+
+  it('monsters get bare orange text, no prefix', () => {
+    expect(composeSpeech(bubble(MessageType.MonsterSay, 'Grrr')))
+      .toEqual({ text: 'Grrr', monster: true });
+    expect(composeSpeech(bubble(MessageType.MonsterYell, 'GRAAR')))
+      .toEqual({ text: 'GRAAR', monster: true });
+  });
+
+  it('stacked lines stay under one prefix', () => {
+    expect(composeSpeech(bubble(MessageType.Say, 'exura\nexura vita')))
+      .toEqual({ text: 'Gurz says:\nexura\nexura vita', monster: false });
   });
 });

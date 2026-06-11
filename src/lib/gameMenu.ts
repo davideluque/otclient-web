@@ -38,10 +38,12 @@ function ensureStyles(): void {
       background: rgba(20,20,20,0.98); color: #e0e0e0;
       border-left: 1px solid #9a9a9a;
       font-family: system-ui, sans-serif; font-size: 0.9rem;
-      z-index: 40; padding: 56px 0 12px;
+      z-index: 40; padding: 56px 0 calc(12px + env(safe-area-inset-bottom, 0px));
       transform: translateX(100%); transition: transform 0.2s ease;
       display: flex; flex-direction: column;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
     }
+    .game-menu-pane button { flex: none; }
     .game-menu-pane.open { transform: translateX(0); }
     .game-menu-pane button {
       background: none; border: none; color: #e0e0e0; text-align: left;

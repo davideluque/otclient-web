@@ -9,6 +9,8 @@ export interface SpellDef {
   id: string;
   /** Short label shown on the button, e.g. "exura" or an emoji rune. */
   label: string;
+  /** Library image for the button face; label stays as fallback/tooltip. */
+  iconUrl?: string | null;
   cooldownMs: number;
 }
 
@@ -50,6 +52,11 @@ function ensureStyles(): void {
       cursor: pointer; touch-action: manipulation;
     }
     .spell-bar button:disabled { border-color: #444; color: #666; cursor: default; }
+    .spell-bar button img {
+      width: 70%; height: 70%; object-fit: contain;
+      image-rendering: pixelated; pointer-events: none;
+    }
+    .spell-bar button:disabled img { opacity: 0.4; filter: grayscale(1); }
     .spell-bar button .cd {
       position: absolute; inset: 0; border-radius: 50%;
       background: rgba(0,0,0,0.65);
@@ -89,9 +96,24 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
   for (const def of opts.spells) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.textContent = def.label;
+    btn.title = def.label;
     const cd = document.createElement('div');
     cd.className = 'cd';
+    if (def.iconUrl) {
+      const img = document.createElement('img');
+      img.src = def.iconUrl;
+      img.alt = def.label;
+      img.draggable = false;
+      // A broken/missing asset degrades to the text label, inserted
+      // before the cooldown overlay so an active sweep isn't disturbed.
+      img.addEventListener('error', () => {
+        img.remove();
+        btn.insertBefore(document.createTextNode(def.label), cd);
+      });
+      btn.appendChild(img);
+    } else {
+      btn.textContent = def.label;
+    }
     btn.appendChild(cd);
     btn.addEventListener('pointerdown', () => {
       const e = entries.get(def.id);

@@ -37,10 +37,10 @@ export interface SpellBarHandle {
 const STYLE_ID = 'spell-bar-style';
 
 /** Anchor-center → spell-center distance along the arc. */
-const ARC_RADIUS = 104;
-/** Spell button diameter; the corner anchor is ANCHOR_SIZE. */
-const BUTTON_SIZE = 56;
-const ANCHOR_SIZE = 64;
+const ARC_RADIUS = 112;
+/** Spell button diameter — thumb-sized; the corner anchor is ANCHOR_SIZE. */
+const BUTTON_SIZE = 64;
+const ANCHOR_SIZE = 72;
 
 function ensureStyles(): void {
   if (document.getElementById(STYLE_ID)) return;
@@ -70,7 +70,8 @@ function ensureStyles(): void {
     }
     .spell-bar button:disabled { border-color: #444; color: #666; cursor: default; }
     .spell-bar button img {
-      width: 70%; height: 70%; object-fit: contain;
+      /* Full-bleed: the artwork fills the whole round slot. */
+      width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
       image-rendering: pixelated; pointer-events: none;
     }
     .spell-bar button:disabled img { opacity: 0.4; filter: grayscale(1); }

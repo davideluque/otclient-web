@@ -224,9 +224,9 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Minimap',
     description:
-      'Automap (top-right): known tiles painted from their .dat '
-      + 'MinimapColor in the original 216-color palette, player dot '
-      + 'centered, unknown tiles black.',
+      'Automap (left edge, under the HUD): known tiles painted from '
+      + 'their .dat MinimapColor in the original 216-color palette, '
+      + 'player dot centered, unknown tiles black.',
     mount({ knobs, log }) {
       let cx = 100, cy = 100;
       const minimap = createMinimap({

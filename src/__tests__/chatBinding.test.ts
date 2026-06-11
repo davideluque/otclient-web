@@ -78,7 +78,7 @@ describe('bindChat', () => {
     warn.mockRestore();
   });
 
-  it('the ✕ button collapses the panel behind the 💬 toggle', () => {
+  it('the ✕ button collapses the panel (no corner toggle — it overlapped the hotkey arc)', () => {
     const { client } = makeClient();
     bindChat(client);
     const ui = document.querySelector('#chat-ui') as HTMLElement;
@@ -88,15 +88,13 @@ describe('bindChat', () => {
     (document.querySelector('.chat-close') as HTMLButtonElement).click();
     expect(ui.style.display).toBe('none');
 
-    // The floating 💬 toggle reopens it.
+    // The 💬 corner toggle is gone; reopening goes through menu → Chat.
     const toggle = [...document.querySelectorAll('body > button')]
-      .find((b) => b.textContent === '💬') as HTMLButtonElement;
-    expect(toggle.style.display).toBe('block');
-    toggle.click();
-    expect(ui.style.display).toBe('flex');
+      .find((b) => b.textContent === '💬');
+    expect(toggle).toBeUndefined();
   });
 
-  it('destroy removes the UI and toggle', () => {
+  it('destroy removes the UI', () => {
     const { client } = makeClient();
     const binding = bindChat(client);
     expect(document.querySelector('#chat-ui')).not.toBeNull();

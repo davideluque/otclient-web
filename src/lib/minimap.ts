@@ -1,5 +1,5 @@
 /**
- * Minimap — a small canvas (top-right, under the menu button) painting
+ * Minimap — a small canvas (left edge, under the HUD) painting
  * the known tiles around the player from their .dat minimap colors,
  * exactly like the original client's automap. Self-contained component
  * (joystick.ts pattern): the host supplies a color lookup and a center,
@@ -45,7 +45,9 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .minimap {
-      position: fixed; top: calc(56px + env(safe-area-inset-top, 0px)); right: 8px;
+      /* Left column, under the HUD (top 8, ~50px tall) and the
+         status-bar condition row (top 86) — keeps top-right free. */
+      position: fixed; top: calc(112px + env(safe-area-inset-top, 0px)); left: 8px;
       border: 1px solid #555; border-radius: 8px;
       background: #000; z-index: 35; overflow: hidden;
       opacity: 0.92;

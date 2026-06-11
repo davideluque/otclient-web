@@ -14,6 +14,8 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-11', text: 'Spell buttons are bigger (thumb-sized) and the icons now fill the whole circle — tell us if the full-bleed look works.' },
+  { date: '2026-06-11', text: 'The minimap moved to the left side under the health bar, and the 💬 chat bubble is gone (it sat on top of the spell buttons — chat lives in menu → Chat).' },
   { date: '2026-06-11', text: 'The spell buttons now fan out in a quarter-circle around the ⚔ attack button in the bottom-right corner (MOBA-style) — easier to reach with your thumb than the old vertical column.' },
   { date: '2026-06-11', text: 'Hotkeys got real: menu → Hotkeys now lists every castable spell on the server with official tibia.com icons — tap a slot to assign or swap, and the cast buttons show the spell images.' },
   { date: '2026-06-11', text: 'Fixed a crash at login when saved combat-mode settings were corrupted — invalid values now fall back to balanced/safe defaults.' },

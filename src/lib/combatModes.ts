@@ -47,8 +47,8 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .combat-modes {
-      /* Clears the hotkey arc below (its corner box tops out ~184px). */
-      position: fixed; right: 8px; bottom: calc(200px + env(safe-area-inset-bottom, 0px));
+      /* Clears the hotkey arc below (its corner box tops out ~200px). */
+      position: fixed; right: 8px; bottom: calc(216px + env(safe-area-inset-bottom, 0px));
       display: flex; flex-direction: column; gap: 6px; z-index: 30;
     }
     .combat-modes button {

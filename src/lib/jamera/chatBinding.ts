@@ -11,8 +11,9 @@ import { MessageType } from '../net/common/types';
  * input box sends through the client. Registered after registerWireSkips
  * so these handlers override the discard consumers per opcode.
  *
- * On coarse-pointer devices the panel starts collapsed behind a 💬
- * toggle — a 40vh chat overlay on a phone would bury the joystick.
+ * On coarse-pointer devices the panel starts collapsed — a 40vh chat
+ * overlay on a phone would bury the joystick. Reopening goes through
+ * menu → Chat (the old 💬 corner toggle sat on top of the hotkey arc).
  */
 export interface ChatBindingHandle {
   /** The live ChatManager — the renderer reads speech bubbles from it. */
@@ -67,30 +68,15 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
     });
   });
 
-  // Collapse toggle. The ChatUI stylesheet sets display:flex on #chat-ui,
-  // so visibility is driven via style.display (the [hidden] attribute
-  // loses that specificity fight — same pitfall as the login overlay).
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.textContent = '💬';
-  toggle.style.cssText = [
-    'position:fixed', 'right:8px',
-    'bottom:calc(8px + env(safe-area-inset-bottom, 0px))',
-    'width:44px', 'height:44px', 'border-radius:50%',
-    'background:rgba(22,22,22,0.9)', 'border:1px solid #9a9a9a',
-    'font-size:1.1rem', 'z-index:45', 'cursor:pointer',
-  ].join(';');
+  // The ChatUI stylesheet sets display:flex on #chat-ui, so visibility
+  // is driven via style.display (the [hidden] attribute loses that
+  // specificity fight — same pitfall as the login overlay). Closing
+  // lives on ChatUI's explicit ✕ (the onClose above).
   let open = !window.matchMedia('(pointer: coarse)').matches;
   const applyOpen = (): void => {
     ui.style.display = open ? 'flex' : 'none';
-    toggle.style.display = open ? 'none' : 'block';
   };
-  toggle.addEventListener('click', () => { open = true; applyOpen(); });
-  // Closing lives on ChatUI's explicit ✕ (the onClose above). The old
-  // dblclick-on-tabs collapse was a touch footgun: two quick taps while
-  // switching channels read as a dblclick and made the panel vanish.
   applyOpen();
-  parent.appendChild(toggle);
 
   return {
     manager,
@@ -100,7 +86,6 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
       dispatcher.off(op.TextMessage);
       fullView.destroy();
       chatUi.destroy();
-      toggle.remove();
     },
   };
 }

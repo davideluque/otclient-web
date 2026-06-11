@@ -101,6 +101,7 @@ export class ChatManager {
     for (const listener of this.messageListeners) listener(msg);
   }
 
+  /** Remove expired speech bubbles. Call each frame. */
   cleanupBubbles(now: number): void {
     this._speechBubbles = this._speechBubbles.filter(b => b.expiresAt > now);
   }

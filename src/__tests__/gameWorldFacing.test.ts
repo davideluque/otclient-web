@@ -44,7 +44,12 @@ function makeCreature(id: number, direction: number): MapCreature {
 }
 
 function seedTile(world: GameWorld, x: number, y: number, z: number, creatures: MapCreature[]): void {
-  const tile: MapTile = { x, y, z, items: [], creatures };
+  const tile: MapTile = {
+    x, y, z,
+    things: creatures.map((creature) => ({ kind: 'creature' as const, creature })),
+    items: [],
+    creatures,
+  };
   // @ts-expect-error reaching into private state for the test
   (world.tiles as Map<string, MapTile>).set(`${x}:${y}:${z}`, tile);
 }

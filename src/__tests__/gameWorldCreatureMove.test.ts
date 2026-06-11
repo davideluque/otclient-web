@@ -35,12 +35,18 @@ function world6D(itemsOnFrom: number): { world: GameWorld; dispatcher: PacketDis
   const dispatcher = new PacketDispatcher();
   world.registerHandlers(dispatcher);
   const mc = makeCreature(42);
+  const fromItems = Array.from({ length: itemsOnFrom }, (_, i) => ({ id: 100 + i }));
   const fromTile: MapTile = {
     x: 100, y: 200, z: 7,
-    items: Array.from({ length: itemsOnFrom }, (_, i) => ({ id: 100 + i })),
+    things: [...fromItems.map((item) => ({ kind: 'item' as const, item })), { kind: 'creature', creature: mc }],
+    items: fromItems,
     creatures: [mc],
   };
-  const toTile: MapTile = { x: 101, y: 200, z: 7, items: [{ id: 100 }], creatures: [] };
+  const toItem = { id: 100 };
+  const toTile: MapTile = {
+    x: 101, y: 200, z: 7,
+    things: [{ kind: 'item', item: toItem }], items: [toItem], creatures: [],
+  };
   // @ts-expect-error private state
   world.tiles.set('100:200:7', fromTile);
   // @ts-expect-error private state

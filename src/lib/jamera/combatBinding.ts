@@ -1,5 +1,5 @@
 import { createSpellBar, type SpellBarHandle } from '../spellBar';
-import { loadSpellSlots, spellByWords } from '../spells';
+import { loadSpellSlots, spellByWords, spellIconUrl } from '../spells';
 import type { GameClient } from '../net/common/GameClient';
 import type { GameWorld } from '../GameWorld';
 
@@ -38,12 +38,13 @@ export interface CombatBindingHandle {
 const RETARGET_MS = 500;
 
 /** The configured right-side slots, resolved through the registry. */
-function slotSpells(): Array<{ id: string; label: string; cooldownMs: number }> {
+function slotSpells(): Array<{ id: string; label: string; iconUrl: string | null; cooldownMs: number }> {
   return loadSpellSlots().map((words) => {
     const def = spellByWords(words);
     return {
       id: words,
       label: def ? `${def.icon} ${def.name.split(' ')[0]}` : words,
+      iconUrl: def ? spellIconUrl(def) : null,
       cooldownMs: def?.cooldownMs ?? 2000,
     };
   });

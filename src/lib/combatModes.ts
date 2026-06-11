@@ -122,6 +122,7 @@ export function createCombatModes(opts: CombatModesOptions, parent: HTMLElement 
     el,
     get state() { return { ...state }; },
     setState: (next) => {
+      if (!next || typeof next !== 'object') return;
       if ('fightMode' in next) state.fightMode = normalizeFightMode(next.fightMode);
       if ('chase' in next) state.chase = normalizeBool(next.chase, state.chase);
       if ('secure' in next) state.secure = normalizeBool(next.secure, state.secure);

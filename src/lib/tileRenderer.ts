@@ -44,6 +44,38 @@ export function spriteIndex(
   return ((xyComponent * fg.layers + layer) * fg.height + h) * fg.width + w;
 }
 
+interface PixelDisplacement {
+  x: number;
+  y: number;
+}
+
+const ZERO_DISPLACEMENT: PixelDisplacement = { x: 0, y: 0 };
+
+/**
+ * Pixel offset from .dat that shifts a sprite so its visible body sits on
+ * the tile origin: Tibia 7.6 creatures typically declare (8, 8) — without
+ * subtracting it the citizen renders down-and-right — and walls/door
+ * frames use it to sit flush against the tile edge. Missing → (0, 0).
+ */
+function readPixelDisplacement(thingType: ThingType): PixelDisplacement {
+  const displacement = thingType.attrs.get(DatAttr.Displacement);
+  if (isPixelDisplacement(displacement)) {
+    return displacement;
+  }
+  return ZERO_DISPLACEMENT;
+}
+
+function isPixelDisplacement(value: unknown): value is PixelDisplacement {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && 'x' in value
+    && 'y' in value
+    && typeof value.x === 'number'
+    && typeof value.y === 'number'
+  );
+}
+
 /** Cache key → tinted 32×32 texture, owned by the caller (main.ts). */
 export type TintedTextureCache = Map<string, Texture>;
 
@@ -121,14 +153,7 @@ export function renderPlayer(
   const dir = Math.max(0, Math.min(player.direction, fg.numPatternX - 1));
   const phase = Math.max(0, Math.min(player.animationPhase, fg.animationPhases - 1));
   const hasMask = fg.layers >= 2;
-
-  // Creatures declare a pixel displacement so the sprite's visible body
-  // sits over the tile origin instead of jutting into the bottom-right
-  // corner. Tibia 7.6 creatures typically use (8, 8). Without subtracting
-  // this, the citizen renders shifted down-and-right.
-  const displacement = creature.attrs.get(DatAttr.Displacement);
-  const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
-  const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
+  const displacement = readPixelDisplacement(creature);
 
   const container = new Container();
   let drew = false;
@@ -155,8 +180,8 @@ export function renderPlayer(
       if (!texture) continue;
 
       const sprite = new Sprite(texture);
-      sprite.x = (player.x - w) * TILE_SIZE - dispX;
-      sprite.y = (player.y - h) * TILE_SIZE - dispY;
+      sprite.x = (player.x - w) * TILE_SIZE - displacement.x;
+      sprite.y = (player.y - h) * TILE_SIZE - displacement.y;
       container.addChild(sprite);
       drew = true;
     }
@@ -269,13 +294,7 @@ function renderTile(
     if (!thingType) {
       continue;
     }
-
-    // Pixel offset applied to every cell of this item — walls and door frames
-    // use it to sit flush against the tile edge, wall-mounted fixtures use it
-    // to overhang properly. Reads {x, y} from dat; both default to 0.
-    const displacement = thingType.attrs.get(DatAttr.Displacement);
-    const dispX = (typeof displacement === 'object' && displacement && 'x' in displacement) ? displacement.x : 0;
-    const dispY = (typeof displacement === 'object' && displacement && 'y' in displacement) ? displacement.y : 0;
+    const displacement = readPixelDisplacement(thingType);
 
     const fg = thingType.frameGroup;
     const { width, height, layers, numPatternX, numPatternY, numPatternZ, animationPhases, spriteIds } = fg;
@@ -311,8 +330,8 @@ function renderTile(
           }
 
           const sprite = new Sprite(texture);
-          sprite.x = screenX - w * TILE_SIZE - dispX;
-          sprite.y = screenY - h * TILE_SIZE - elevation - dispY;
+          sprite.x = screenX - w * TILE_SIZE - displacement.x;
+          sprite.y = screenY - h * TILE_SIZE - elevation - displacement.y;
           container.addChild(sprite);
 
           if (isAnimated) {

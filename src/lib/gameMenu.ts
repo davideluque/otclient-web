@@ -41,14 +41,14 @@ function ensureStyles(): void {
       z-index: 40; padding: 56px 0 calc(12px + env(safe-area-inset-bottom, 0px));
       transform: translateX(100%); transition: transform 0.2s ease;
       display: flex; flex-direction: column;
-      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      overflow-y: auto;
     }
-    .game-menu-pane button { flex: none; }
     .game-menu-pane.open { transform: translateX(0); }
     .game-menu-pane button {
       background: none; border: none; color: #e0e0e0; text-align: left;
       padding: 12px 18px; font-size: 0.9rem; cursor: pointer;
       border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex: none;
     }
     .game-menu-pane button:active { background: rgba(255,255,255,0.12); }
     .game-menu-backdrop {

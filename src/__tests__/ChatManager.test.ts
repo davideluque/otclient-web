@@ -120,6 +120,35 @@ describe('ChatManager', () => {
     expect(chat.speechBubbles).toHaveLength(2);
   });
 
+  it('caps stacked lines at 10 and never shortens the remaining display time', () => {
+    const t = Date.now();
+    for (let i = 0; i < 14; i++) {
+      chat.handleMessage(makeMsg({
+        messageType: MessageType.Say,
+        position: { x: 0, y: 0, z: 7 },
+        text: `line${i}`,
+        timestamp: t + i,
+      }));
+    }
+    expect(chat.speechBubbles).toHaveLength(1);
+    const lines = chat.speechBubbles[0].text.split('\n');
+    expect(lines).toHaveLength(10);
+    expect(lines[0]).toBe('line4'); // oldest fell off
+    expect(lines[9]).toBe('line13');
+
+    // A long text then a quick "hi" must not cut the long one short.
+    chat.cleanupBubbles(t + 100000);
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Say, position: { x: 0, y: 0, z: 7 },
+      text: 'x'.repeat(100), timestamp: t, // expires t + 6000
+    }));
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Say, position: { x: 0, y: 0, z: 7 },
+      text: 'hi', timestamp: t + 100, // own duration would end at t + 3100
+    }));
+    expect(chat.speechBubbles[0].expiresAt).toBe(t + 6000);
+  });
+
   it('scales bubble duration with text length, doubled for yells', () => {
     const t = Date.now();
     const short = 'hi'; // floor: 3000ms

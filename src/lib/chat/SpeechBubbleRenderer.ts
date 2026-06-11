@@ -96,7 +96,11 @@ export class SpeechBubbleRenderer {
       sprite.bubble = bubble;
       const { text, monster } = composeSpeech(bubble);
       sprite.text.text = text;
-      sprite.text.style = monster ? MONSTER_STYLE : PLAYER_STYLE;
+      // Only swap styles on an actual change — assignment dirties the
+      // PIXI text layout even for the identical object, and this runs
+      // every frame.
+      const style = monster ? MONSTER_STYLE : PLAYER_STYLE;
+      if (sprite.text.style !== style) sprite.text.style = style;
       // Slightly right of tile center, bottom edge just above the
       // nameplate (which sits at tileY − 14).
       sprite.text.x = (bubble.x - originX + 0.5) * TILE_SIZE * zoom + 2;

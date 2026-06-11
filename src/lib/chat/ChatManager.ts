@@ -23,6 +23,8 @@ export interface SpeechBubble {
 // for yells so long-range shouting stays readable.
 const SPEECH_MS_PER_CHAR = 60;
 const SPEECH_MIN_DURATION_MS = 3000;
+/** Stacked-lines cap per speaker (OTClient's deque holds 10). */
+const MAX_SPEECH_LINES = 10;
 const MAX_MESSAGES_PER_CHANNEL = 200;
 const DEFAULT_CHANNELS = [
   { id: ChannelId.Default, name: 'Default' },
@@ -152,11 +154,16 @@ export class ChatManager {
         && b.expiresAt > msg.timestamp,
     );
     if (existing) {
-      existing.text += `\n${msg.text}`;
+      // Cap the stack (OTClient keeps 10): spam must not grow the PIXI
+      // text texture unboundedly. Oldest lines fall off the top.
+      const lines = `${existing.text}\n${msg.text}`.split('\n');
+      existing.text = lines.slice(-MAX_SPEECH_LINES).join('\n');
       existing.x = position.x;
       existing.y = position.y;
       existing.z = position.z;
-      existing.expiresAt = msg.timestamp + duration;
+      // Never shorten: a quick "hi" after a long text must not cut the
+      // long text's remaining display time.
+      existing.expiresAt = Math.max(existing.expiresAt, msg.timestamp + duration);
       return;
     }
     this._speechBubbles.push({

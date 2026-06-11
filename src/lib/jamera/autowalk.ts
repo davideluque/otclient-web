@@ -72,6 +72,11 @@ function manhattanDistanceToGoal(x: number, y: number, goalX: number, goalY: num
   return Math.abs(x - goalX) + Math.abs(y - goalY);
 }
 
+/**
+ * Pop the open node with the lowest estimated total cost. Linear scan
+ * on purpose: the search window is tiny (18×14 view, 1024-node cap), a
+ * heap is overkill.
+ */
 function takeLowestCostNode(openNodes: Map<string, RouteNode>): { key: string; node: RouteNode } | null {
   let bestKey = '';
   let bestNode: RouteNode | null = null;
@@ -88,6 +93,10 @@ function takeLowestCostNode(openNodes: Map<string, RouteNode>): { key: string; n
   return { key: bestKey, node: bestNode };
 }
 
+/**
+ * Walk the cameFrom chain back from the goal, first-step-first. Null on
+ * a broken chain — an unreachable bookkeeping bug guard.
+ */
 function buildWalkRoute(
   cameFrom: Map<string, RouteStep>,
   startKey: string,
@@ -156,6 +165,8 @@ export function findWalkRoute(
       if (visitedTiles.has(nextKey)) continue;
       if (!isWorldTileWalkable(world, datIndex, nextX, nextY, z)) continue;
 
+      // Creatures block intermediate steps but not the goal tile itself
+      // (the server stops the walk next to it anyway).
       const isGoalTile = nextX === goalX && nextY === goalY;
       if (!isGoalTile && creatureBlocks(world, nextX, nextY, z)) continue;
 

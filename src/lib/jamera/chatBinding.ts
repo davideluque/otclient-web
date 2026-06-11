@@ -27,6 +27,11 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   const protocol = client.getProtocol();
   const manager = new ChatManager();
 
+  // Declared ahead of createChatUI so the onClose closure never touches
+  // a temporal dead zone; the real applyOpen is assigned once `ui` exists.
+  let open = !window.matchMedia('(pointer: coarse)').matches;
+  let applyOpen: () => void = () => {};
+
   const chatUi = createChatUI(manager, protocol, (packet) => {
     try {
       client.send(packet);
@@ -72,8 +77,7 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   // is driven via style.display (the [hidden] attribute loses that
   // specificity fight — same pitfall as the login overlay). Closing
   // lives on ChatUI's explicit ✕ (the onClose above).
-  let open = !window.matchMedia('(pointer: coarse)').matches;
-  const applyOpen = (): void => {
+  applyOpen = () => {
     ui.style.display = open ? 'flex' : 'none';
   };
   applyOpen();

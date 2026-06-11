@@ -49,6 +49,12 @@ interface PixelDisplacement {
   y: number;
 }
 
+/**
+ * Pixel offset from .dat that shifts a sprite so its visible body sits on
+ * the tile origin: Tibia 7.6 creatures typically declare (8, 8) — without
+ * subtracting it the citizen renders down-and-right — and walls/door
+ * frames use it to sit flush against the tile edge. Missing → (0, 0).
+ */
 function readPixelDisplacement(thingType: ThingType): PixelDisplacement {
   const displacement = thingType.attrs.get(DatAttr.Displacement);
   if (isPixelDisplacement(displacement)) {

@@ -27,6 +27,13 @@ export interface PlayerState {
   animationPhase: number;
 }
 
+/**
+ * Sprite ID for a creature frame, following the .dat sprite index layout:
+ * patterns are ordered (z, y, x) within each animation phase, with
+ * layers × height × width sprites per pattern. Creature pattern X is the
+ * facing direction; pattern Y/Z are 1, so direction alone picks the
+ * pattern within a phase.
+ */
 export function getCreatureSpriteId(
   fg: FrameGroup,
   direction: Direction,

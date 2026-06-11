@@ -161,36 +161,40 @@ export function createSpellCustomizer(
 
   const renderPicker = (): void => {
     pickerEl.innerHTML = '';
-    let lastGroup = '';
-    for (const def of SPELLS) {
-      const group = def.conjure ? 'Conjure & runes' : 'Instant';
-      if (group !== lastGroup) {
-        lastGroup = group;
-        const head = document.createElement('div');
-        head.className = 'group';
-        head.textContent = group;
-        pickerEl.appendChild(head);
+    // Pre-grouped (not streamed off registry order) so each header
+    // appears exactly once — the house commands sit at the registry's
+    // tail and would otherwise reopen a second "Instant" section.
+    const groups: Array<{ title: string; spells: SpellDef[] }> = [
+      { title: 'Instant', spells: SPELLS.filter((s) => !s.conjure) },
+      { title: 'Conjure & runes', spells: SPELLS.filter((s) => s.conjure) },
+    ];
+    for (const { title, spells } of groups) {
+      const head = document.createElement('div');
+      head.className = 'group';
+      head.textContent = title;
+      pickerEl.appendChild(head);
+      for (const def of spells) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pick';
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = def.name;
+        const words = document.createElement('span');
+        words.className = 'words';
+        words.textContent = def.words;
+        btn.append(iconEl(def), name, words);
+        const slotIdx = slots.indexOf(def.words);
+        if (slotIdx !== -1) {
+          btn.classList.add('assigned');
+          const tag = document.createElement('span');
+          tag.className = 'in-slot';
+          tag.textContent = `slot ${slotIdx + 1}`;
+          btn.appendChild(tag);
+        }
+        btn.addEventListener('click', () => assign(def));
+        pickerEl.appendChild(btn);
       }
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'pick';
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = def.name;
-      const words = document.createElement('span');
-      words.className = 'words';
-      words.textContent = def.words;
-      btn.append(iconEl(def), name, words);
-      const slotIdx = slots.indexOf(def.words);
-      if (slotIdx !== -1) {
-        btn.classList.add('assigned');
-        const tag = document.createElement('span');
-        tag.className = 'in-slot';
-        tag.textContent = `slot ${slotIdx + 1}`;
-        btn.appendChild(tag);
-      }
-      btn.addEventListener('click', () => assign(def));
-      pickerEl.appendChild(btn);
     }
   };
 

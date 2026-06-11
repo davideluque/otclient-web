@@ -63,8 +63,12 @@ describe('createSpellCustomizer (hotkeys menu)', () => {
     rows()[0].click();
     const el = document.querySelector('.spell-customizer') as HTMLElement;
     expect(el.classList.contains('picking')).toBe(true);
-    // The picker lists the whole registry.
+    // The picker lists the whole registry under exactly two headers
+    // (instants are pre-grouped — the house commands at the registry
+    // tail must not reopen a second "Instant" section).
     expect(picks().length).toBe(SPELLS.length);
+    const headers = [...document.querySelectorAll('.spell-customizer .group')].map((h) => h.textContent);
+    expect(headers).toEqual(['Instant', 'Conjure & runes']);
 
     const haste = picks().find((b) => b.textContent?.includes('Haste'))!;
     haste.click();

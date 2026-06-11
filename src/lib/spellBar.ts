@@ -132,11 +132,11 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
       img.src = def.iconUrl;
       img.alt = def.label;
       img.draggable = false;
-      // A broken/missing asset degrades to the text label.
+      // A broken/missing asset degrades to the text label, inserted
+      // before the cooldown overlay so an active sweep isn't disturbed.
       img.addEventListener('error', () => {
         img.remove();
-        btn.textContent = def.label;
-        btn.appendChild(cd);
+        btn.insertBefore(document.createTextNode(def.label), cd);
       });
       btn.appendChild(img);
     } else {

@@ -98,7 +98,7 @@ export function parseMapDescription(
 
         // Non-empty tile slot: parse its things, then the trailing skip
         // marker that closes the slot.
-        const tile: MapTile = { x: nx + dz, y: ny + dz, z, items: [], creatures: [] };
+        const tile: MapTile = { x: nx + dz, y: ny + dz, z, things: [], items: [], creatures: [] };
         skipTiles = parseTileSlot(packet, tile);
         tiles.push(tile);
       }
@@ -120,13 +120,19 @@ export function parseTileSlot(packet: InputPacket, tile: MapTile): number {
       return packet.getU16() & SKIP_COUNT_MASK;
     }
 
+    // Appending to things AND the matching view keeps both in wire
+    // order — during a parse nothing is removed, so no resync needed.
     if (peek === CREATURE_KNOWN || peek === CREATURE_UNKNOWN) {
       packet.getU16(); // consume marker
-      tile.creatures.push(parseCreature(packet, peek === CREATURE_UNKNOWN));
+      const creature = parseCreature(packet, peek === CREATURE_UNKNOWN);
+      tile.things.push({ kind: 'creature', creature });
+      tile.creatures.push(creature);
       continue;
     }
 
-    tile.items.push(parseItem(packet));
+    const item = parseItem(packet);
+    tile.things.push({ kind: 'item', item });
+    tile.items.push(item);
   }
 
   return 0;
@@ -244,6 +250,7 @@ export function parseFloorStream(
           x: startX + offset + col,
           y: startY + offset + row,
           z,
+          things: [],
           items: [],
           creatures: [],
         };

@@ -8,6 +8,7 @@
  */
 
 export interface SettingsToggle {
+  kind: 'toggle';
   label: string;
   /** Read the current value (called every time the pane opens). */
   get(): boolean;
@@ -15,6 +16,26 @@ export interface SettingsToggle {
   set(on: boolean): void;
   /** Optional explanation line under the label. */
   hint?: string;
+}
+
+/** A numeric range row (e.g. brightness %) — same adapter contract. */
+export interface SettingsSlider {
+  kind: 'slider';
+  label: string;
+  min: number;
+  max: number;
+  step?: number;
+  /** Suffix shown after the value readout, e.g. '%'. */
+  unit?: string;
+  get(): number;
+  set(value: number): void;
+  hint?: string;
+}
+
+export type SettingsEntry = SettingsToggle | SettingsSlider;
+
+function isSlider(entry: SettingsEntry): entry is SettingsSlider {
+  return entry.kind === 'slider';
 }
 
 export interface SettingsPaneHandle {
@@ -82,12 +103,20 @@ function ensureStyles(): void {
     .settings-switch[aria-checked="true"]::after {
       transform: translateX(20px); background: #e0e0e0;
     }
+    .settings-row input[type="range"] {
+      flex: 1; min-width: 90px; max-width: 160px; accent-color: #e0e0e0;
+      touch-action: none;
+    }
+    .settings-row .value {
+      flex-shrink: 0; width: 44px; text-align: right;
+      color: #aaa; font-size: 0.8rem; font-variant-numeric: tabular-nums;
+    }
   `;
   document.head.appendChild(style);
 }
 
 export function createSettingsPane(
-  toggles: SettingsToggle[],
+  entries: SettingsEntry[],
   parent: HTMLElement = document.body,
 ): SettingsPaneHandle {
   ensureStyles();
@@ -111,8 +140,8 @@ export function createSettingsPane(
   const list = document.createElement('div');
   list.className = 'settings-list';
 
-  const switches: Array<{ btn: HTMLButtonElement; toggle: SettingsToggle }> = [];
-  for (const toggle of toggles) {
+  const syncs: Array<() => void> = [];
+  for (const entry of entries) {
     const row = document.createElement('div');
     row.className = 'settings-row';
 
@@ -120,15 +149,41 @@ export function createSettingsPane(
     text.className = 'text';
     const label = document.createElement('div');
     label.className = 'label';
-    label.textContent = toggle.label;
+    label.textContent = entry.label;
     text.appendChild(label);
-    if (toggle.hint) {
+    if (entry.hint) {
       const hint = document.createElement('div');
       hint.className = 'hint';
-      hint.textContent = toggle.hint;
+      hint.textContent = entry.hint;
       text.appendChild(hint);
     }
 
+    if (isSlider(entry)) {
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(entry.min);
+      input.max = String(entry.max);
+      input.step = String(entry.step ?? 1);
+      input.setAttribute('aria-label', entry.label);
+      const value = document.createElement('span');
+      value.className = 'value';
+      const readout = (): void => {
+        value.textContent = `${entry.get()}${entry.unit ?? ''}`;
+      };
+      input.addEventListener('input', () => {
+        entry.set(Number(input.value));
+        readout(); // re-read: set() may clamp
+      });
+      row.append(text, input, value);
+      list.appendChild(row);
+      syncs.push(() => {
+        input.value = String(entry.get());
+        readout();
+      });
+      continue;
+    }
+
+    const toggle = entry;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'settings-switch';
@@ -143,7 +198,7 @@ export function createSettingsPane(
 
     row.append(text, btn);
     list.appendChild(row);
-    switches.push({ btn, toggle });
+    syncs.push(() => btn.setAttribute('aria-checked', String(toggle.get())));
   }
 
   card.append(head, list);
@@ -151,9 +206,7 @@ export function createSettingsPane(
   parent.appendChild(el);
 
   const syncAll = (): void => {
-    for (const { btn, toggle } of switches) {
-      btn.setAttribute('aria-checked', String(toggle.get()));
-    }
+    for (const sync of syncs) sync();
   };
   // role="switch" requires aria-checked from the start, not only after
   // the first open.

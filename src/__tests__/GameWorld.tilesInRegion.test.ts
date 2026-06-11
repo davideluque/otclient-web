@@ -15,9 +15,11 @@ function seed(world: GameWorld, tile: MapTile): void {
 }
 
 function mkTile(x: number, y: number, z: number, itemIds: number[]): MapTile {
+  const items = itemIds.map((id) => ({ id }));
   return {
     x, y, z,
-    items: itemIds.map((id) => ({ id })),
+    things: items.map((item) => ({ kind: 'item' as const, item })),
+    items,
     creatures: [],
   };
 }

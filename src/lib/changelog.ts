@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-11', text: 'Dead creatures actually die now — they turn into their corpse instead of standing around with an empty health bar.' },
   { date: '2026-06-11', text: 'Spell buttons are bigger (thumb-sized) and the icons now fill the whole circle — tell us if the full-bleed look works.' },
   { date: '2026-06-11', text: 'The minimap moved to the left side under the health bar, and the 💬 chat bubble is gone (it sat on top of the spell buttons — chat lives in menu → Chat).' },
   { date: '2026-06-11', text: 'The spell buttons now fan out in a quarter-circle around the ⚔ attack button in the bottom-right corner (MOBA-style) — easier to reach with your thumb than the old vertical column.' },

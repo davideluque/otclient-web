@@ -42,11 +42,26 @@ export interface MapCreature {
   speed: number;
 }
 
+/** One entry in a tile's wire-ordered stack. */
+export type MapThing =
+  | { kind: 'item'; item: MapTileItem }
+  | { kind: 'creature'; creature: MapCreature };
+
 export interface MapTile {
   x: number;
   y: number;
   z: number;
+  /**
+   * The stack in SERVER order — ground, top items, creatures, down
+   * items (otserv Tile::__getIndexOfThing). Wire stack positions in
+   * 0x6B/0x6C/0x6D index into this array directly; mutate it only
+   * through GameWorld's stack helpers, which keep the views below in
+   * sync.
+   */
+  things: MapThing[];
+  /** Derived view of things — items in stack order. Do not mutate. */
   items: MapTileItem[];
+  /** Derived view of things — creatures in stack order. Do not mutate. */
   creatures: MapCreature[];
 }
 

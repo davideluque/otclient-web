@@ -143,16 +143,25 @@ describe('GameWorld tile operations', () => {
   }
 
   function seedTile(w: GameWorld, x: number, y: number, z: number, itemIds: number[]): void {
+    const items = itemIds.map((id) => ({ id }));
     // @ts-expect-error driving private state for the test
     w.tiles.set(`${x}:${y}:${z}`, {
-      x, y, z, items: itemIds.map((id) => ({ id })), creatures: [],
+      x, y, z,
+      things: items.map((item) => ({ kind: 'item' as const, item })),
+      items,
+      creatures: [],
     });
   }
 
-  it('0x6A adds an item to an existing tile', () => {
+  it('0x6A adds an item to an existing tile (down item, after the ground)', () => {
     const w = world();
     const d = dispatcherFor(w);
     seedTile(w, 100, 200, 7, [PLAIN_ID]);
+    // Classify the seeded item as ground so the add (a regular down
+    // item) inserts AFTER it — the server's downItems.insert(begin).
+    w.setDatIndex(new Map([
+      [PLAIN_ID, { id: PLAIN_ID, attrs: new Map([[DatAttr.Ground, true]]) } as never],
+    ]));
 
     const out = new OutputPacket();
     out.addU8(0x6a);
@@ -189,6 +198,60 @@ describe('GameWorld tile operations', () => {
     expect(w.getCreature(777)?.name).toBe('Rat');
     expect(w.getCreature(777)?.x).toBe(100);
     expect(w.getTile(100, 200, 7)?.creatures).toHaveLength(1);
+  });
+
+  it('death sequence: splash add, creature remove, corpse add — creature actually disappears', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    seedTile(w, 100, 200, 7, [PLAIN_ID]);
+    w.setDatIndex(new Map([
+      [PLAIN_ID, { id: PLAIN_ID, attrs: new Map([[DatAttr.Ground, true]]) } as never],
+    ]));
+
+    // The rat walks in: wire stack is [ground(0), rat(1)].
+    const add = new OutputPacket();
+    add.addU8(0x6a);
+    add.addU16(100); add.addU16(200); add.addU8(7);
+    add.addU16(0x61);
+    add.addU32(0);
+    add.addU32(777);
+    add.addString('Rat');
+    add.addU8(80);
+    add.addU8(2);
+    add.addU8(21);
+    add.addU8(0); add.addU8(0); add.addU8(0); add.addU8(0);
+    add.addU8(0); add.addU8(0);
+    add.addU16(180);
+    add.addU8(0); add.addU8(0);
+    d.dispatch(new InputPacket(add.toArrayBuffer()));
+
+    // It dies. otserv: blood splash (down item — lands AFTER the
+    // creature in wire order), then the creature is removed at ITS
+    // stack position, then the corpse appears.
+    const splash = new OutputPacket();
+    splash.addU8(0x6a);
+    splash.addU16(100); splash.addU16(200); splash.addU8(7);
+    splash.addU16(STACKABLE_ID); splash.addU8(5); // fluid-marked id, blood
+    d.dispatch(new InputPacket(splash.toArrayBuffer()));
+
+    // Wire stack now [ground(0), rat(1), splash(2)] — the old split
+    // model resolved stackpos 1 to the splash and the rat lingered.
+    const remove = new OutputPacket();
+    remove.addU8(0x6c);
+    remove.addU16(100); remove.addU16(200); remove.addU8(7);
+    remove.addU8(1);
+    d.dispatch(new InputPacket(remove.toArrayBuffer()));
+
+    const corpse = new OutputPacket();
+    corpse.addU8(0x6a);
+    corpse.addU16(100); corpse.addU16(200); corpse.addU8(7);
+    corpse.addU16(PLAIN_ID + 50);
+    d.dispatch(new InputPacket(corpse.toArrayBuffer()));
+
+    expect(w.getCreature(777)).toBeUndefined();
+    const tile = w.getTile(100, 200, 7);
+    expect(tile?.creatures).toHaveLength(0);
+    expect(tile?.items.map((i) => i.id)).toEqual([PLAIN_ID, PLAIN_ID + 50, STACKABLE_ID]);
   });
 
   it('0x6B with the 0x63 marker turns a creature', () => {

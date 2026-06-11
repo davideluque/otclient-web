@@ -354,9 +354,14 @@ export function bindRenderer(
         const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
         const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
         const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
-        // Creature-carried lights (the player's glow, torches in hand).
+        // Creature-carried lights (the player's glow, torches in hand)
+        // — only ones whose bubble can reach the visible region (light
+        // intensity caps at 7 tiles), matching the tile-light gather.
+        const MAX_LIGHT_REACH = 7;
         const extraLights: LightSource[] = world.getAllCreatures()
-          .filter((c) => c.z === world.playerZ && c.lightLevel > 0)
+          .filter((c) => c.z === world.playerZ && c.lightLevel > 0
+            && c.x >= x1 - MAX_LIGHT_REACH && c.x <= x2 + MAX_LIGHT_REACH
+            && c.y >= y1 - MAX_LIGHT_REACH && c.y <= y2 + MAX_LIGHT_REACH)
           .map((c) => ({
             x: c.x, y: c.y,
             intensity: c.lightLevel,

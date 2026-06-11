@@ -31,18 +31,39 @@ export interface LightingOptions {
 const BRIGHTNESS_KEY = 'jamera.brightness';
 export const DEFAULT_BRIGHTNESS = 25;
 
+// In-memory cache: loadBrightness is on the render path (per repaint),
+// and localStorage.getItem is synchronous blocking I/O.
+let brightnessCache: number | null = null;
+
 export function loadBrightness(): number {
+  if (brightnessCache !== null) return brightnessCache;
   try {
-    const raw = Number(localStorage.getItem(BRIGHTNESS_KEY));
-    if (Number.isFinite(raw) && raw >= 0 && raw <= 100) return raw;
+    const stored = localStorage.getItem(BRIGHTNESS_KEY);
+    // getItem → null for new users; Number(null) is 0, which would
+    // silently default everyone to full darkness instead of DEFAULT.
+    if (stored !== null) {
+      const raw = Number(stored);
+      if (Number.isFinite(raw) && raw >= 0 && raw <= 100) {
+        brightnessCache = raw;
+        return raw;
+      }
+    }
   } catch { /* storage blocked */ }
+  brightnessCache = DEFAULT_BRIGHTNESS;
   return DEFAULT_BRIGHTNESS;
 }
 
 export function saveBrightness(pct: number): void {
+  const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+  brightnessCache = clamped;
   try {
-    localStorage.setItem(BRIGHTNESS_KEY, String(Math.max(0, Math.min(100, Math.round(pct)))));
-  } catch { /* storage blocked — session-only */ }
+    localStorage.setItem(BRIGHTNESS_KEY, String(clamped));
+  } catch { /* storage blocked — session-only via the cache */ }
+}
+
+/** Test hook: drop the in-memory cache so loadBrightness re-reads storage. */
+export function resetBrightnessCache(): void {
+  brightnessCache = null;
 }
 
 /**

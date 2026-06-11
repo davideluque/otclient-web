@@ -147,11 +147,10 @@ export class GameWorld {
   private handleCreatureLight(packet: InputPacket): void {
     const ev = this.protocol.creature.parseLight(packet);
     const wc = this.creatures.get(ev.creatureId);
-    if (wc) {
-      wc.lightLevel = ev.lightLevel;
-      wc.lightColor = ev.lightColor;
-      this.creatureRevision++;
-    }
+    if (!wc) return; // unknown creature — nothing on screen changes
+    wc.lightLevel = ev.lightLevel;
+    wc.lightColor = ev.lightColor;
+    this.creatureRevision++;
     this.onChange?.();
   }
 

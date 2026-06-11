@@ -69,10 +69,14 @@ export function initTelemetry(proxyUrl: string): void {
   } catch {
     return; // unparseable proxy url — telemetry just stays off
   }
-  // crypto over Math.random: the id is only a log-grouping key, but
-  // CodeQL flags Math.random for anything named "session" — and the
-  // crypto API is free here anyway.
-  sessionId = crypto.randomUUID().slice(0, 8);
+  // crypto over Math.random (CodeQL flags Math.random for anything
+  // session-named). crypto.randomUUID only exists in SECURE contexts
+  // (https/localhost) — the game is played over plain http on the
+  // tailnet IP, where calling it throws and, from module top-level,
+  // blacks the whole page. getRandomValues works everywhere.
+  sessionId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().slice(0, 8)
+    : Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, '0')).join('');
 
   timer = setInterval(flush, FLUSH_INTERVAL_MS);
   window.addEventListener('pagehide', flush);

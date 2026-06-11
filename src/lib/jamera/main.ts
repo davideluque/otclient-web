@@ -54,7 +54,14 @@ const autoLogin = import.meta.env.DEV && params.get('autologin') !== '0'
 // sink (same host/port as the game bridge) for offline aggregation.
 // ?telemetry=0 opts out; production builds never stream.
 if (import.meta.env.DEV && params.get('telemetry') !== '0' && proxyUrl) {
-  initTelemetry(proxyUrl);
+  // Diagnostics must never take the game down: a throwing init (e.g. a
+  // secure-context-only API on plain http) would kill the whole module
+  // graph from top level — exactly the failure telemetry exists to see.
+  try {
+    initTelemetry(proxyUrl);
+  } catch (e) {
+    console.warn('[telemetry] init failed, continuing without:', e instanceof Error ? e.message : e);
+  }
 }
 
 mountLoginScreen(root, {

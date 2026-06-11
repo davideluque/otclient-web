@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCombatModes } from '../lib/combatModes';
+import type { CombatModesState } from '../lib/combatModes';
 import { bindCombatModes } from '../lib/jamera/combatModesBinding';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import type { GameClient } from '../lib/net/common/GameClient';
@@ -27,6 +28,18 @@ describe('createCombatModes', () => {
     btn('secure').click();
     expect(onChange).toHaveBeenCalledTimes(4);
     expect(modes.state).toEqual({ fightMode: 1, chase: true, secure: false });
+    modes.destroy();
+  });
+
+  it('sanitizes invalid runtime state before rendering', () => {
+    const modes = createCombatModes({
+      initial: { fightMode: 0, chase: 'yes', secure: 'no' } as unknown as Partial<CombatModesState>,
+      onChange: vi.fn(),
+    });
+    expect(modes.state).toEqual({ fightMode: 2, chase: false, secure: true });
+
+    modes.setState({ fightMode: 99, chase: true, secure: false } as unknown as Partial<CombatModesState>);
+    expect(modes.state).toEqual({ fightMode: 2, chase: true, secure: false });
     modes.destroy();
   });
 });
@@ -56,5 +69,16 @@ describe('bindCombatModes', () => {
     const second = makeClient();
     bindCombatModes(second.client);
     expect(second.sent[0]).toEqual([0xa0, 3, 0, 1]);
+  });
+
+  it('falls back to safe defaults when persisted combat modes are invalid', () => {
+    localStorage.setItem('jamera.combatModes', JSON.stringify({ fightMode: 0, chase: 'yes', secure: 'no' }));
+    const { client, sent } = makeClient();
+
+    const binding = bindCombatModes(client);
+
+    expect(binding.modes.state).toEqual({ fightMode: 2, chase: false, secure: true });
+    expect(sent[0]).toEqual([0xa0, 2, 0, 1]);
+    binding.destroy();
   });
 });

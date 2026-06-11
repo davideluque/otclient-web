@@ -13,7 +13,7 @@ export interface ChatUIOptions {
   /**
    * Renders a ✕ button at the right of the tab strip and invokes this
    * when it's pressed. The host owns what "close" means (the jamera
-   * binding hides the panel behind its 💬 toggle); without the option
+   * binding hides the panel; menu → Chat reopens); without the option
    * the button isn't rendered.
    */
   onClose?: () => void;

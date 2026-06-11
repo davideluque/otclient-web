@@ -19,21 +19,21 @@ describe('createSpellBar (arc layout)', () => {
     const btns = [...bar.el.querySelectorAll<HTMLButtonElement>('button')];
     expect(btns).toHaveLength(3);
 
-    // anchorCenter 32 + R 104 − half-button 28, rounded.
-    expect(btns[0].style.right).toBe('108px'); // straight left
+    // anchorCenter 36 + R 112 − half-button 32, rounded.
+    expect(btns[0].style.right).toBe('116px'); // straight left
     expect(btns[0].style.bottom).toBe('4px');
-    expect(btns[1].style.right).toBe('78px'); // 45° midpoint
-    expect(btns[1].style.bottom).toBe('78px');
+    expect(btns[1].style.right).toBe('83px'); // 45° midpoint
+    expect(btns[1].style.bottom).toBe('83px');
     expect(btns[2].style.right).toBe('4px'); // straight above
-    expect(btns[2].style.bottom).toBe('108px');
+    expect(btns[2].style.bottom).toBe('116px');
     bar.destroy();
   });
 
   it('puts a single slot at the 45° midpoint', () => {
     const bar = createSpellBar({ spells: spells.slice(0, 1), onCast: vi.fn() });
     const btn = bar.el.querySelector('button') as HTMLButtonElement;
-    expect(btn.style.right).toBe('78px');
-    expect(btn.style.bottom).toBe('78px');
+    expect(btn.style.right).toBe('83px');
+    expect(btn.style.bottom).toBe('83px');
     bar.destroy();
   });
 

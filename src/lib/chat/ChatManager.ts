@@ -17,19 +17,23 @@ export interface SpeechBubble {
 
 const SPEECH_BUBBLE_DURATION_MS = 5000;
 const MAX_MESSAGES_PER_CHANNEL = 200;
+const DEFAULT_CHANNELS = [
+  { id: ChannelId.Default, name: 'Default' },
+  { id: ChannelId.GameChat, name: 'Game Chat' },
+  { id: ChannelId.Trade, name: 'Trade' },
+  { id: ChannelId.Help, name: 'Help' },
+] as const;
 
 export class ChatManager {
   private channels = new Map<number, Channel>();
   private _activeChannelId: number;
   private _speechBubbles: SpeechBubble[] = [];
-  private listeners = new Set<(msg: ChatMessage) => void>();
+  private messageListeners = new Set<(msg: ChatMessage) => void>();
 
   constructor() {
-    // Default channels
-    this.addChannel(ChannelId.Default, 'Default');
-    this.addChannel(ChannelId.GameChat, 'Game Chat');
-    this.addChannel(ChannelId.Trade, 'Trade');
-    this.addChannel(ChannelId.Help, 'Help');
+    for (const channel of DEFAULT_CHANNELS) {
+      this.addChannel(channel.id, channel.name);
+    }
     this._activeChannelId = ChannelId.Default;
   }
 
@@ -79,47 +83,30 @@ export class ChatManager {
    * with more than one. Returns an unsubscribe.
    */
   subscribe(listener: (msg: ChatMessage) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    this.messageListeners.add(listener);
+    return () => this.messageListeners.delete(listener);
   }
 
-  /**
-   * Process an incoming chat message and route it to the correct channel.
-   */
   handleMessage(msg: ChatMessage): void {
-    const channelId = this.routeMessage(msg);
-    const channel = this.channels.get(channelId);
+    const channel = this.channels.get(this.channelIdForMessage(msg));
 
     if (channel) {
-      channel.messages.push(msg);
-      if (channel.messages.length > MAX_MESSAGES_PER_CHANNEL) {
-        channel.messages.shift();
-      }
+      this.appendMessage(channel, msg);
     }
 
-    // Create speech bubble for local messages
-    if (msg.position && this.isLocalSpeech(msg.messageType)) {
-      this._speechBubbles.push({
-        senderName: msg.senderName,
-        text: msg.text,
-        x: msg.position.x,
-        y: msg.position.y,
-        z: msg.position.z,
-        expiresAt: Date.now() + SPEECH_BUBBLE_DURATION_MS,
-      });
+    if (msg.position && this.hasSpeechBubbleMessageType(msg.messageType)) {
+      this.addSpeechBubble(msg, msg.position);
     }
 
-    for (const listener of this.listeners) listener(msg);
+    for (const listener of this.messageListeners) listener(msg);
   }
 
-  /**
-   * Remove expired speech bubbles. Call each frame.
-   */
+  /** Remove expired speech bubbles. Call each frame. */
   cleanupBubbles(now: number): void {
     this._speechBubbles = this._speechBubbles.filter(b => b.expiresAt > now);
   }
 
-  private routeMessage(msg: ChatMessage): number {
+  private channelIdForMessage(msg: ChatMessage): number {
     if (msg.channelId !== undefined && this.channels.has(msg.channelId)) {
       return msg.channelId;
     }
@@ -127,7 +114,7 @@ export class ChatManager {
     switch (msg.messageType) {
       case MessageType.PrivateFrom:
       case MessageType.PrivateRed:
-        return ChannelId.Default; // Private messages go to default
+        return ChannelId.Default;
       case MessageType.Channel:
       case MessageType.ChannelRed:
       case MessageType.ChannelOrange:
@@ -138,7 +125,25 @@ export class ChatManager {
     }
   }
 
-  private isLocalSpeech(type: number): boolean {
+  private appendMessage(channel: Channel, msg: ChatMessage): void {
+    channel.messages.push(msg);
+    if (channel.messages.length > MAX_MESSAGES_PER_CHANNEL) {
+      channel.messages.shift();
+    }
+  }
+
+  private addSpeechBubble(msg: ChatMessage, position: NonNullable<ChatMessage['position']>): void {
+    this._speechBubbles.push({
+      senderName: msg.senderName,
+      text: msg.text,
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      expiresAt: msg.timestamp + SPEECH_BUBBLE_DURATION_MS,
+    });
+  }
+
+  private hasSpeechBubbleMessageType(type: number): boolean {
     return (
       type === MessageType.Say ||
       type === MessageType.Whisper ||

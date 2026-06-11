@@ -33,6 +33,14 @@ const FIGHT_ICONS: Record<1 | 2 | 3, { icon: string; title: string }> = {
 
 const STYLE_ID = 'combat-modes-style';
 
+function normalizeFightMode(value: unknown): 1 | 2 | 3 {
+  return value === 1 || value === 2 || value === 3 ? value : 2;
+}
+
+function normalizeBool(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 function ensureStyles(): void {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
@@ -57,9 +65,9 @@ function ensureStyles(): void {
 export function createCombatModes(opts: CombatModesOptions, parent: HTMLElement = document.body): CombatModesHandle {
   ensureStyles();
   const state: CombatModesState = {
-    fightMode: opts.initial?.fightMode ?? 2,
-    chase: opts.initial?.chase ?? false,
-    secure: opts.initial?.secure ?? true,
+    fightMode: normalizeFightMode(opts.initial?.fightMode),
+    chase: normalizeBool(opts.initial?.chase, false),
+    secure: normalizeBool(opts.initial?.secure, true),
   };
 
   const el = document.createElement('div');
@@ -114,7 +122,10 @@ export function createCombatModes(opts: CombatModesOptions, parent: HTMLElement 
     el,
     get state() { return { ...state }; },
     setState: (next) => {
-      Object.assign(state, next);
+      if (!next || typeof next !== 'object') return;
+      if ('fightMode' in next) state.fightMode = normalizeFightMode(next.fightMode);
+      if ('chase' in next) state.chase = normalizeBool(next.chase, state.chase);
+      if ('secure' in next) state.secure = normalizeBool(next.secure, state.secure);
       render();
     },
     setVisible: (visible) => { el.style.display = visible ? 'flex' : 'none'; },

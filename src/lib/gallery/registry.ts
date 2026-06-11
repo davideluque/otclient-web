@@ -107,11 +107,13 @@ export const ENTRIES: GalleryEntry[] = [
   {
     name: 'Spell bar',
     description:
-      'Cast buttons with cooldown sweeps (bottom-right), faced with the '
-      + 'tibia.com spell library images (emoji fallback for spells '
-      + 'without one). In-game the slots come from the spell registry '
-      + '(configure via menu → Hotkeys); presses during cooldown are '
-      + 'swallowed and buttons can be disabled (e.g. not enough mana).',
+      'Cast buttons fanned along a quarter-circle hugging the '
+      + 'bottom-right corner (MOBA-style): slot 1 sits left of the big '
+      + 'corner anchor (the ⚔ auto-attack toggle in game), the last '
+      + 'slot straight above it. Faces are the tibia.com spell library '
+      + 'images (emoji fallback); cooldown presses are swallowed and '
+      + 'buttons can be disabled (e.g. not enough mana). Configure '
+      + 'slots via menu → Hotkeys.',
     mount({ knobs, log }) {
       const bar = createSpellBar({
         spells: [
@@ -121,6 +123,13 @@ export const ENTRIES: GalleryEntry[] = [
         ],
         onCast: (id) => log(`cast: ${id}`),
       });
+      // The in-game ⚔ anchor, so the gallery shows the full corner shape.
+      const anchor = document.createElement('button');
+      anchor.type = 'button';
+      anchor.className = 'anchor';
+      anchor.textContent = '⚔';
+      anchor.addEventListener('click', () => log('anchor (auto-attack) tapped'));
+      bar.el.prepend(anchor);
       knobs.button('Trigger exori cooldown externally', () => bar.triggerCooldown('exori'));
       knobs.toggle('exura enabled', true, (on) => bar.setEnabled('exura', on));
       knobs.toggle('Visible', true, (on) => bar.setVisible(on));

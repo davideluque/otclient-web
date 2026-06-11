@@ -68,19 +68,14 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     onCast: (id) => send(protocol.chat.buildSay(id)),
   });
 
-  // The auto-attack toggle rides the same bar as a fourth circle. The
-  // spell-bar API treats it as a zero-cooldown "spell"; engaged state is
-  // shown by disabling/enabling… a dedicated toggle visual can come with
-  // a gallery pass. For now the circle text flips ⚔/✋ via the DOM.
+  // The auto-attack toggle is the bar's corner anchor — the big button
+  // the spell slots fan around (the MOBA basic-attack position). The
+  // circle text flips ⚔/✋ via the DOM.
   const attackBtn = document.createElement('button');
   attackBtn.type = 'button';
+  attackBtn.className = 'anchor';
   attackBtn.textContent = '⚔';
-  attackBtn.style.cssText = [
-    'width:56px', 'height:56px', 'border-radius:50%',
-    'background:rgba(22,22,22,0.9)', 'color:#e0e0e0',
-    'border:2px solid #555', 'font-size:1.3rem',
-    'cursor:pointer', 'touch-action:manipulation',
-  ].join(';');
+  attackBtn.style.borderColor = '#555';
   bar.el.prepend(attackBtn);
 
   function nearestCreatureId(): number {

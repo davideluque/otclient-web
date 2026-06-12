@@ -20,7 +20,7 @@ export function registerWireSkips(dispatcher: PacketDispatcher, protocol: GamePr
   const parseItem = (p: InputPacket): void => { protocol.map.parseItem(p); };
   const readString = (p: InputPacket): void => { p.getString(); };
   const skipBytes = (n: number) => (p: InputPacket): void => { p.skip(n); };
-  const consumeOpcodeOnly = (p: InputPacket): void => { void p; };
+  const consumeOpcodeOnly = (): void => { /* opcode only */ };
 
   // GM permission block (32 bytes) sent right after LoginInfo for GM
   // accounts. We don't render a GM UI.

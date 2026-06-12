@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { GameWorld, directionFromDelta } from '../lib/GameWorld';
+import { GameWorld } from '../lib/GameWorld';
+import { directionFromStepDelta } from '../lib/player';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { InputPacket } from '../lib/net/common/InputPacket';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
@@ -13,25 +14,25 @@ import type { MapCreature, MapTile } from '../lib/net/common/types';
  * direction").
  */
 
-describe('directionFromDelta', () => {
+describe('directionFromStepDelta', () => {
   it('maps cardinal steps to wire directions', () => {
-    expect(directionFromDelta(0, -1, 9)).toBe(0); // north
-    expect(directionFromDelta(1, 0, 9)).toBe(1);  // east
-    expect(directionFromDelta(0, 1, 9)).toBe(2);  // south
-    expect(directionFromDelta(-1, 0, 9)).toBe(3); // west
+    expect(directionFromStepDelta(0, -1, 9)).toBe(0); // north
+    expect(directionFromStepDelta(1, 0, 9)).toBe(1);  // east
+    expect(directionFromStepDelta(0, 1, 9)).toBe(2);  // south
+    expect(directionFromStepDelta(-1, 0, 9)).toBe(3); // west
   });
 
   it('horizontal component wins on diagonals (Tibia faces east/west)', () => {
-    expect(directionFromDelta(1, -1, 9)).toBe(1);
-    expect(directionFromDelta(-1, 1, 9)).toBe(3);
+    expect(directionFromStepDelta(1, -1, 9)).toBe(1);
+    expect(directionFromStepDelta(-1, 1, 9)).toBe(3);
   });
 
   it('keeps the previous facing on zero delta and teleports', () => {
-    expect(directionFromDelta(0, 0, 2)).toBe(2);
+    expect(directionFromStepDelta(0, 0, 2)).toBe(2);
     // Fallbacks deliberately differ from the delta's direction: a broken
     // teleport guard would fall through and return the delta facing.
-    expect(directionFromDelta(5, 0, 2)).toBe(2);
-    expect(directionFromDelta(0, -12, 2)).toBe(2);
+    expect(directionFromStepDelta(5, 0, 2)).toBe(2);
+    expect(directionFromStepDelta(0, -12, 2)).toBe(2);
   });
 });
 

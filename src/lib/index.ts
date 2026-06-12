@@ -40,11 +40,11 @@ export {
 export type { ViewRect } from './viewport';
 
 // Player & movement
-export { createPlayer, getCreatureSpriteId, buildCreatureIndex } from './player';
+export { createPlayer, directionFromStepDelta, getCreatureSpriteId, buildCreatureIndex } from './player';
 export type { PlayerState, Outfit } from './player';
 export { Direction } from './player';
 
-export { screenToTile, directionTo, stepInDirection } from './input';
+export { screenToTile, stepInDirection } from './input';
 export type { TileCoord } from './input';
 
 export { findPath, isTileWalkable } from './pathfinding';

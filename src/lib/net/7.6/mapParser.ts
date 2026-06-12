@@ -42,11 +42,7 @@ function getVisibleFloors(playerZ: number): number[] {
  * descriptions (opcodes 0x65–0x68) do not carry this prefix.
  */
 export function parsePosition(packet: InputPacket): { x: number; y: number; z: number } {
-  return {
-    x: packet.getU16(),
-    y: packet.getU16(),
-    z: packet.getU8(),
-  };
+  return packet.getPosition();
 }
 
 /**

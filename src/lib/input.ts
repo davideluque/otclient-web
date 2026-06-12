@@ -25,28 +25,6 @@ export function screenToTile(
 }
 
 /**
- * Compute the direction from one tile to another.
- * Returns the primary cardinal direction (no diagonals).
- * If tiles are the same, returns null.
- */
-export function directionTo(
-  fromX: number, fromY: number,
-  toX: number, toY: number,
-): Direction | null {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-
-  if (dx === 0 && dy === 0) return null;
-
-  // Use the axis with the greater absolute delta
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx > 0 ? Direction.East : Direction.West;
-  } else {
-    return dy > 0 ? Direction.South : Direction.North;
-  }
-}
-
-/**
  * Compute a simple step: move one tile in the given direction.
  */
 export function stepInDirection(

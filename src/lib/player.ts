@@ -9,6 +9,19 @@ export const Direction = {
 
 export type Direction = (typeof Direction)[keyof typeof Direction];
 
+/**
+ * Tibia movement updates carry positions, not facing. Adjacent diagonal
+ * steps face east/west, while teleports keep the previous direction.
+ */
+export function directionFromStepDelta<T extends number>(dx: number, dy: number, fallback: T): Direction | T {
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) return fallback;
+  if (dx > 0) return Direction.East;
+  if (dx < 0) return Direction.West;
+  if (dy > 0) return Direction.South;
+  if (dy < 0) return Direction.North;
+  return fallback;
+}
+
 export interface Outfit {
   lookType: number;
   headColor: number;

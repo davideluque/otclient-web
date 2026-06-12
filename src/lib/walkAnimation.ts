@@ -1,5 +1,5 @@
 import type { PlayerState } from './player';
-import { Direction } from './player';
+import { directionFromStepDelta } from './player';
 import type { PathNode } from './pathfinding';
 import { TILE_SIZE } from '../constants';
 import type { Pixel } from './types';
@@ -46,8 +46,7 @@ export function startWalk(
   if (path.length === 0) return null;
 
   const first = path[0];
-  const dir = computeDirection(player.x, player.y, first.x, first.y);
-  if (dir !== null) player.direction = dir;
+  player.direction = directionFromStepDelta(first.x - player.x, first.y - player.y, player.direction);
 
   return {
     path: path.slice(1),
@@ -113,8 +112,7 @@ export function updateWalk(
       // step's phase and the gait would skip a beat.
       player.animationPhase = walk.walkPhase;
 
-      const dir = computeDirection(player.x, player.y, next.x, next.y);
-      if (dir !== null) player.direction = dir;
+      player.direction = directionFromStepDelta(next.x - player.x, next.y - player.y, player.direction);
     } else {
       walk.active = false;
       player.animationPhase = 0;
@@ -131,17 +129,4 @@ export function updateWalk(
     offsetX: dx * walk.progress * TILE_SIZE,
     offsetY: dy * walk.progress * TILE_SIZE,
   };
-}
-
-function computeDirection(
-  fromX: number, fromY: number,
-  toX: number, toY: number,
-): Direction | null {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  if (dx === 0 && dy === 0) return null;
-  if (dx > 0) return Direction.East;
-  if (dx < 0) return Direction.West;
-  if (dy > 0) return Direction.South;
-  return Direction.North;
 }

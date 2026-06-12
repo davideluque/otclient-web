@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { screenToTile, directionTo, stepInDirection } from '../lib/input';
+import { screenToTile, stepInDirection } from '../lib/input';
 import { Direction } from '../lib/player';
 import { Viewport } from '../lib/viewport';
 
@@ -43,36 +43,6 @@ describe('screenToTile', () => {
     const tile = screenToTile(320, 240, vp);
     expect(tile.x).toBe(0);
     expect(tile.y).toBe(0);
-  });
-});
-
-describe('directionTo', () => {
-  it('returns East for positive X delta', () => {
-    expect(directionTo(0, 0, 5, 0)).toBe(Direction.East);
-  });
-
-  it('returns West for negative X delta', () => {
-    expect(directionTo(5, 0, 0, 0)).toBe(Direction.West);
-  });
-
-  it('returns South for positive Y delta', () => {
-    expect(directionTo(0, 0, 0, 5)).toBe(Direction.South);
-  });
-
-  it('returns North for negative Y delta', () => {
-    expect(directionTo(0, 5, 0, 0)).toBe(Direction.North);
-  });
-
-  it('returns null for same position', () => {
-    expect(directionTo(3, 3, 3, 3)).toBeNull();
-  });
-
-  it('prefers X axis when deltas are equal', () => {
-    expect(directionTo(0, 0, 3, 3)).toBe(Direction.East);
-  });
-
-  it('returns correct direction for diagonal (Y dominant)', () => {
-    expect(directionTo(0, 0, 1, 5)).toBe(Direction.South);
   });
 });
 

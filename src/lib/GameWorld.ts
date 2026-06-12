@@ -4,23 +4,7 @@ import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
 import type { ResolvedTile } from './tileMap';
 import type { ThingType } from './dat';
 import { DatAttr } from './dat';
-
-/**
- * 7.6 sends no facing with movement — neither the 0x65–0x68 self-step
- * confirmations nor 0x6D CreatureMove carry a direction byte. The
- * original client derives it from the step delta; same here. The
- * horizontal component wins on diagonal steps (Tibia faces east/west
- * when moving diagonally), and anything farther than one tile is a
- * teleport, which keeps the previous facing.
- */
-export function directionFromDelta(dx: number, dy: number, fallback: number): number {
-  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) return fallback;
-  if (dx > 0) return 1; // east
-  if (dx < 0) return 3; // west
-  if (dy > 0) return 2; // south
-  if (dy < 0) return 0; // north
-  return fallback;
-}
+import { directionFromStepDelta } from './player';
 
 export interface WorldCreature {
   id: number;
@@ -525,7 +509,7 @@ export class GameWorld {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
     if (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ) this.selfSteps++;
-    const facing = directionFromDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
+    const facing = directionFromStepDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
     if (fromTile && toTile) {
@@ -693,7 +677,7 @@ export class GameWorld {
         return;
       }
       const creature = entry.creature;
-      creature.direction = directionFromDelta(
+      creature.direction = directionFromStepDelta(
         event.toX - event.fromX, event.toY - event.fromY, creature.direction,
       );
       const wc = this.creatures.get(creature.id);

@@ -7,6 +7,7 @@ import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import type { GameClient } from '../lib/net/common/GameClient';
 import type { Application } from 'pixi.js';
 import type { GameWorld } from '../lib/GameWorld';
+import type { MapTile } from '../lib/net/common/types';
 
 const app = { screen: { width: 800, height: 600 } } as Application;
 const world = { playerX: 100, playerY: 200, playerZ: 7 } as GameWorld;
@@ -56,14 +57,22 @@ describe('long-press pointer tracking', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  function mount() {
+  function mount(tile?: MapTile) {
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
     document.body.appendChild(canvas);
+    const defaultTile: MapTile = {
+      x: 100,
+      y: 200,
+      z: 7,
+      things: [{ kind: 'item', item: { id: 1987 } }],
+      items: [{ id: 1987 }],
+      creatures: [],
+    };
     const liveApp = { canvas, screen: { width: 800, height: 600 } } as unknown as Application;
     const liveWorld = {
       playerX: 100, playerY: 200, playerZ: 7, playerCreatureId: 1,
-      getTile: () => ({ items: [{ id: 1987 }], creatures: [] }),
+      getTile: () => tile ?? defaultTile,
     } as unknown as GameWorld;
     const sent: number[][] = [];
     const client = {
@@ -121,6 +130,42 @@ describe('long-press pointer tracking', () => {
     touch('pointerup', 1, 400, 300);
     vi.advanceTimersByTime(600);
     expect(sent).toHaveLength(0);
+    handle.destroy();
+  });
+
+  it('uses the full wire stack position when creatures split item views', () => {
+    const ground = { id: 100 };
+    const corpse = { id: 1987 };
+    const creature = {
+      id: 77,
+      name: 'Rat',
+      x: 100,
+      y: 200,
+      z: 7,
+      direction: 2,
+      health: 100,
+      outfit: { lookType: 21, head: 0, body: 0, legs: 0, feet: 0 },
+      lightLevel: 0,
+      lightColor: 0,
+      speed: 220,
+    };
+    const tile: MapTile = {
+      x: 100,
+      y: 200,
+      z: 7,
+      things: [
+        { kind: 'item', item: ground },
+        { kind: 'creature', creature },
+        { kind: 'item', item: corpse },
+      ],
+      items: [ground, corpse],
+      creatures: [creature],
+    };
+    const { canvas, handle, sent } = mount(tile);
+    canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 400, clientY: 300, bubbles: true }));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 2, 0]);
     handle.destroy();
   });
 });

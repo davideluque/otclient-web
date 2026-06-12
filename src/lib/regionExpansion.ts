@@ -22,41 +22,35 @@ export function needsExpansion(
 ): OtbmRegion | null {
   if (!bounds) return null;
 
-  // Check each edge: is the visible rect within padding of the loaded bounds?
-  if (visible.x1 <= bounds.minX + paddingTiles) {
-    return {
-      centerX: bounds.minX - EXPANSION_RADIUS,
-      centerY: Math.floor((visible.y1 + visible.y2) / 2),
-      radius: EXPANSION_RADIUS,
-      z,
-    };
+  const visibleCenterX = midpoint(visible.x1, visible.x2);
+  const visibleCenterY = midpoint(visible.y1, visible.y2);
+  const nearWestEdge = visible.x1 <= bounds.minX + paddingTiles;
+  const nearEastEdge = visible.x2 >= bounds.maxX - paddingTiles;
+  const nearNorthEdge = visible.y1 <= bounds.minY + paddingTiles;
+  const nearSouthEdge = visible.y2 >= bounds.maxY - paddingTiles;
+
+  if (nearWestEdge) {
+    return expansionRegion(bounds.minX - EXPANSION_RADIUS, visibleCenterY, z);
   }
-  if (visible.x2 >= bounds.maxX - paddingTiles) {
-    return {
-      centerX: bounds.maxX + EXPANSION_RADIUS,
-      centerY: Math.floor((visible.y1 + visible.y2) / 2),
-      radius: EXPANSION_RADIUS,
-      z,
-    };
+  if (nearEastEdge) {
+    return expansionRegion(bounds.maxX + EXPANSION_RADIUS, visibleCenterY, z);
   }
-  if (visible.y1 <= bounds.minY + paddingTiles) {
-    return {
-      centerX: Math.floor((visible.x1 + visible.x2) / 2),
-      centerY: bounds.minY - EXPANSION_RADIUS,
-      radius: EXPANSION_RADIUS,
-      z,
-    };
+  if (nearNorthEdge) {
+    return expansionRegion(visibleCenterX, bounds.minY - EXPANSION_RADIUS, z);
   }
-  if (visible.y2 >= bounds.maxY - paddingTiles) {
-    return {
-      centerX: Math.floor((visible.x1 + visible.x2) / 2),
-      centerY: bounds.maxY + EXPANSION_RADIUS,
-      radius: EXPANSION_RADIUS,
-      z,
-    };
+  if (nearSouthEdge) {
+    return expansionRegion(visibleCenterX, bounds.maxY + EXPANSION_RADIUS, z);
   }
 
   return null;
+}
+
+function midpoint(a: number, b: number): number {
+  return Math.floor((a + b) / 2);
+}
+
+function expansionRegion(centerX: number, centerY: number, z: number): OtbmRegion {
+  return { centerX, centerY, radius: EXPANSION_RADIUS, z };
 }
 
 const MIN_EXPANSION_RADIUS = 100;

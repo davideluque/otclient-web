@@ -17,10 +17,9 @@ import { TILE_SIZE } from '../../constants';
  *    grates, doors, levers. (Stairs and holes don't need this — walking
  *    onto them floor-changes server-side already.)
  *
- * Targeting: the top item of the tapped tile (last in the tile's item
- * list), stackpos counted in the same order the tile model stores. The
- * server resolves the thing by position+stackpos; a slightly-off stack
- * index degrades to describing/using a neighbor on the same tile.
+ * Targeting: the top item of the tapped tile. The server resolves the
+ * thing by position+stackpos, and that stackpos indexes the full
+ * wire-ordered tile.things array (including creatures).
  */
 export interface InteractionsHandle {
   destroy(): void;
@@ -96,9 +95,13 @@ export function bindInteractions(
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
 
-    const topStackIndex = tile.items.length - 1;
-    const topStackItem = tile.items[topStackIndex];
-    return { position, spriteId: topStackItem.id, stackPos: topStackIndex };
+    for (let stackPos = tile.things.length - 1; stackPos >= 0; stackPos--) {
+      const thing = tile.things[stackPos];
+      if (thing.kind === 'item') {
+        return { position, spriteId: thing.item.id, stackPos };
+      }
+    }
+    return null;
   }
 
   function send(packet: { toUint8Array(): Uint8Array }): void {

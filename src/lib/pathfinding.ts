@@ -13,10 +13,10 @@ interface OpenPathNode extends PathNode {
 }
 
 const NEIGHBORS = [
-  { dx: 0, dy: -1 },
-  { dx: 1, dy: 0 },
-  { dx: 0, dy: 1 },
-  { dx: -1, dy: 0 },
+  { dx: 0, dy: -1 }, // North
+  { dx: 1, dy: 0 },  // East
+  { dx: 0, dy: 1 },  // South
+  { dx: -1, dy: 0 }, // West
 ];
 
 const MAX_PATH_LENGTH = 128;

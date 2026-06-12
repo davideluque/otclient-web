@@ -228,6 +228,8 @@ export function parseCommand(
     return protocol.chat.buildYell(text.slice(6));
   }
 
+  // Any other slash input is an unrecognised command — drop it rather than
+  // leak intended-private text to the public channel.
   if (text.startsWith('/')) {
     return null;
   }

@@ -8,8 +8,9 @@ const RGBA_BYTES_PER_PIXEL = 4;
 export const SPRITE_PIXELS = SPRITE_SIZE * SPRITE_SIZE;
 export const SPRITE_DATA_SIZE = SPRITE_PIXELS * RGBA_BYTES_PER_PIXEL;
 
+// RGB transparency color preceding each sprite's data — unused, we use alpha.
 const COLOR_KEY_BYTES = 3;
-const SPRITE_HEADER_BYTES = COLOR_KEY_BYTES + 2;
+const SPRITE_HEADER_BYTES = COLOR_KEY_BYTES + 2; // color key + u16 data length
 const OPAQUE_ALPHA = 255;
 
 export interface SprFile {
@@ -54,6 +55,8 @@ export function decodeSprite(spr: SprFile, spriteId: number): Uint8Array | null 
   const dataLength = view.getUint16(offset + COLOR_KEY_BYTES, true);
   const dataStart = offset + SPRITE_HEADER_BYTES;
 
+  // Zero-initialized — the RLE decoder relies on skipped runs staying
+  // transparent (alpha 0).
   const rgba = new Uint8Array(SPRITE_DATA_SIZE);
   decodeSpriteRle(view, dataStart, dataStart + dataLength, rgba);
 

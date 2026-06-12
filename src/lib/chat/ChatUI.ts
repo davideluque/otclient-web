@@ -216,25 +216,22 @@ export function parseCommand(
   }
 
   if (text.startsWith('/whisper ')) {
-    const rest = text.slice(9).replace(/^\s+/, '');
-    const match = rest.match(/^(\S+)\s+(.+)$/);
-    if (match) {
-      return protocol.chat.buildPrivateMessage(match[1], match[2]);
+    const whisperText = text.slice(9).trimStart();
+    const privateMessage = parseRecipientAndMessage(whisperText);
+    if (privateMessage) {
+      return protocol.chat.buildPrivateMessage(privateMessage.recipientName, privateMessage.message);
     }
-    return protocol.chat.buildWhisper(rest);
+    return protocol.chat.buildWhisper(whisperText);
   }
 
   if (text.startsWith('/yell ')) {
     return protocol.chat.buildYell(text.slice(6));
   }
 
-  // Any other slash input is an unrecognised command — drop it rather than
-  // leak intended-private text to the public channel.
   if (text.startsWith('/')) {
     return null;
   }
 
-  // Default: send to active channel or as Say
   if (activeChannelId === ChannelId.Default) {
     return protocol.chat.buildSay(text);
   }
@@ -242,9 +239,15 @@ export function parseCommand(
 }
 
 function parsePrivateOrNull(rest: string, protocol: GameProtocol): OutputPacket | null {
-  const match = rest.replace(/^\s+/, '').match(/^(\S+)\s+(.+)$/);
+  const privateMessage = parseRecipientAndMessage(rest);
+  if (!privateMessage) return null;
+  return protocol.chat.buildPrivateMessage(privateMessage.recipientName, privateMessage.message);
+}
+
+function parseRecipientAndMessage(text: string): { recipientName: string; message: string } | null {
+  const match = text.trimStart().match(/^(\S+)\s+(.+)$/);
   if (!match) return null;
-  return protocol.chat.buildPrivateMessage(match[1], match[2]);
+  return { recipientName: match[1], message: match[2] };
 }
 
 function makeSpan(className: string, text: string): HTMLSpanElement {

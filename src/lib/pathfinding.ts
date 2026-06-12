@@ -7,6 +7,11 @@ export interface PathNode {
   y: number;
 }
 
+interface OpenPathNode extends PathNode {
+  g: number;
+  f: number;
+}
+
 const NEIGHBORS = [
   { dx: 0, dy: -1 }, // North
   { dx: 1, dy: 0 },  // East
@@ -16,7 +21,7 @@ const NEIGHBORS = [
 
 const MAX_PATH_LENGTH = 128;
 
-function heuristic(ax: number, ay: number, bx: number, by: number): number {
+function manhattanDistance(ax: number, ay: number, bx: number, by: number): number {
   return Math.abs(ax - bx) + Math.abs(ay - by);
 }
 
@@ -72,7 +77,7 @@ export function findPath(
 
   if (!isTileWalkable(goalX, goalY, z, tileMap, datIndex)) return null;
 
-  const openSet = new Map<string, { x: number; y: number; g: number; f: number }>();
+  const openSet = new Map<string, OpenPathNode>();
   const cameFrom = new Map<string, string>();
   const gScore = new Map<string, number>();
 
@@ -83,24 +88,13 @@ export function findPath(
   openSet.set(startKey, {
     x: startX, y: startY,
     g: 0,
-    f: heuristic(startX, startY, goalX, goalY),
+    f: manhattanDistance(startX, startY, goalX, goalY),
   });
 
   while (openSet.size > 0) {
-    // Find node with lowest f in open set
-    let bestKey = '';
-    let bestF = Infinity;
-    for (const [key, node] of openSet) {
-      if (node.f < bestF) {
-        bestF = node.f;
-        bestKey = key;
-      }
-    }
+    const [currentKey, current] = takeLowestCostNode(openSet);
 
-    const current = openSet.get(bestKey)!;
-    openSet.delete(bestKey);
-
-    if (bestKey === goalKey) {
+    if (currentKey === goalKey) {
       return reconstructPath(cameFrom, goalKey, startKey);
     }
 
@@ -125,17 +119,36 @@ export function findPath(
       if (prevG !== undefined && tentativeG >= prevG) continue;
 
       gScore.set(neighborKey, tentativeG);
-      cameFrom.set(neighborKey, bestKey);
+      cameFrom.set(neighborKey, currentKey);
 
       openSet.set(neighborKey, {
         x: nx, y: ny,
         g: tentativeG,
-        f: tentativeG + heuristic(nx, ny, goalX, goalY),
+        f: tentativeG + manhattanDistance(nx, ny, goalX, goalY),
       });
     }
   }
 
-  return null; // No path found
+  return null;
+}
+
+function takeLowestCostNode(openSet: Map<string, OpenPathNode>): [string, OpenPathNode] {
+  let bestKey = '';
+  let bestNode: OpenPathNode | null = null;
+
+  for (const [key, node] of openSet) {
+    if (!bestNode || node.f < bestNode.f) {
+      bestKey = key;
+      bestNode = node;
+    }
+  }
+
+  if (!bestNode) {
+    throw new Error('cannot take a path node from an empty open set');
+  }
+
+  openSet.delete(bestKey);
+  return [bestKey, bestNode];
 }
 
 function reconstructPath(

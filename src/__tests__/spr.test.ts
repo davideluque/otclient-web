@@ -192,6 +192,27 @@ describe('parseSpr', () => {
     expect(s3[1]).toBe(255); // green
   });
 
+  it('returns null when the declared data length runs past the buffer', () => {
+    const spr = parseSpr(buildSpr([[{ transparent: 0, pixels: [[255, 0, 0]] }]]));
+    // Corrupt the sprite's u16 data length to point far beyond the file.
+    const offset = spr.offsets[0];
+    new DataView(spr.buffer).setUint16(offset + 3, 0xffff, true);
+    expect(decodeSprite(spr, 1)).toBeNull();
+  });
+
+  it('survives a colored run length that overruns the sprite data', () => {
+    const spr = parseSpr(buildSpr([[{ transparent: 0, pixels: [[255, 0, 0]] }]]));
+    // Corrupt the colored run count: claims 500 pixels, data holds one.
+    const offset = spr.offsets[0];
+    new DataView(spr.buffer).setUint16(offset + 5 + 2, 500, true);
+    const rgba = decodeSprite(spr, 1)!;
+    expect(rgba).not.toBeNull();
+    // The one real pixel decodes; the decoder stops at the data boundary.
+    expect(rgba[0]).toBe(255);
+    expect(rgba[3]).toBe(255);
+    expect(rgba[7]).toBe(0);
+  });
+
   it('releases the original SPR buffer', () => {
     const spr = parseSpr(buildSpr([[{ transparent: 0, pixels: [[255, 0, 0]] }]]));
     expect(spr.buffer.byteLength).toBeGreaterThan(0);

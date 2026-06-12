@@ -54,11 +54,13 @@ export function decodeSprite(spr: SprFile, spriteId: number): Uint8Array | null 
 
   const dataLength = view.getUint16(offset + COLOR_KEY_BYTES, true);
   const dataStart = offset + SPRITE_HEADER_BYTES;
+  const dataEnd = dataStart + dataLength;
+  if (dataEnd > spr.buffer.byteLength) return null;
 
   // Zero-initialized — the RLE decoder relies on skipped runs staying
   // transparent (alpha 0).
   const rgba = new Uint8Array(SPRITE_DATA_SIZE);
-  decodeSpriteRle(view, dataStart, dataStart + dataLength, rgba);
+  decodeSpriteRle(view, dataStart, dataEnd, rgba);
 
   return rgba;
 }
@@ -72,16 +74,20 @@ function decodeSpriteRle(
   let dataOffset = dataStart;
   let pixelIndex = 0;
 
-  while (dataOffset < dataEnd && pixelIndex < SPRITE_PIXELS) {
+  // Run lengths come from the file; the dataEnd guards keep a malformed
+  // sprite from reading past its slice instead of throwing a RangeError.
+  while (dataOffset + 2 <= dataEnd && pixelIndex < SPRITE_PIXELS) {
     const transparentRunLength = view.getUint16(dataOffset, true);
     dataOffset += 2;
     pixelIndex += transparentRunLength;
     if (pixelIndex >= SPRITE_PIXELS) break;
 
+    if (dataOffset + 2 > dataEnd) break;
     const coloredRunLength = view.getUint16(dataOffset, true);
     dataOffset += 2;
 
     for (let i = 0; i < coloredRunLength && pixelIndex < SPRITE_PIXELS; i++) {
+      if (dataOffset + RGB_BYTES_PER_PIXEL > dataEnd) return;
       const rgbaOffset = pixelIndex * RGBA_BYTES_PER_PIXEL;
       rgba[rgbaOffset] = view.getUint8(dataOffset);
       rgba[rgbaOffset + 1] = view.getUint8(dataOffset + 1);

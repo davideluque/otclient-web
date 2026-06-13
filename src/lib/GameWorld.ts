@@ -504,11 +504,15 @@ export class GameWorld {
    * The server never sends CreatureMove for the player's own steps — the
    * 0x65–0x68 row updates ARE the confirmation. Relocate the player's
    * creature (registry + tile lists) whenever the player position moves.
+   * Floor-change frames count their own confirmation; their embedded
+   * row-resync slices are camera realignment, not additional walked steps.
    */
   private syncSelfCreature(oldX: number, oldY: number, oldZ: number): void {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
-    if (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ) this.selfSteps++;
+    if (!this.snapSelfSync && (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ)) {
+      this.selfSteps++;
+    }
     const facing = directionFromStepDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
@@ -649,6 +653,10 @@ export class GameWorld {
     this.playerX = oldX - dz; // up: +1, down: -1 (covered offset)
     this.playerY = oldY - dz;
     this.playerZ = newZ;
+    // The floor-change frame is one confirmed self step. The trailing
+    // row updates only resync the shifted viewport, so syncSelfCreature
+    // suppresses their counter increments while snapSelfSync is true.
+    this.selfSteps++;
     // The transition's trailing 0x65–0x68 resync slices arrive in this
     // same synchronous dispatch — none of them are steps to glide.
     this.snapSelfSync = true;

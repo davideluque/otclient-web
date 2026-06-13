@@ -8,6 +8,7 @@ import {
 } from '../lib/jamera/renderer';
 import { GameWorld } from '../lib/GameWorld';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
+import { InputPacket } from '../lib/net/common/InputPacket';
 
 describe('playbackPosAt (playout buffer)', () => {
   const walk: PlaybackSample[] = [
@@ -70,35 +71,45 @@ describe('nextStepEma', () => {
 });
 
 describe('floor-change resync slices do not record a glide origin', () => {
-  it('snapSelfSync suppresses the origin and a microtask re-arms it', async () => {
+  it('floor changes count once and their resync slices do not count as extra steps', async () => {
     const world = new GameWorld(new GameProtocol());
     world.playerCreatureId = 7;
-    world.playerX = 50; world.playerY = 60; world.playerZ = 7;
+    world.playerX = 50; world.playerY = 60; world.playerZ = 6;
     // @ts-expect-error private registry
     world.creatures.set(7, {
-      id: 7, name: 'me', x: 50, y: 60, z: 7,
+      id: 7, name: 'me', x: 50, y: 60, z: 6,
       direction: 2, health: 100, speed: 220,
       outfit: { lookType: 128, head: 0, body: 0, legs: 0, feet: 0 },
     });
-    // @ts-expect-error private flag
-    world.snapSelfSync = true;
-    queueMicrotask(() => {
-      // @ts-expect-error private flag
-      world.snapSelfSync = false;
-    });
 
-    world.playerX = 49;
+    // Above-ground 6 -> 5 has no floor-block payload, so an empty packet is enough.
     // @ts-expect-error private method
-    world.syncSelfCreature(50, 60, 7);
+    world.handleFloorChange(new InputPacket(new ArrayBuffer(0)), -1);
+    expect(world.selfSteps).toBe(1);
+    expect(world.playerX).toBe(51);
+    expect(world.playerY).toBe(61);
+    expect(world.playerZ).toBe(5);
     expect(world.getCreature(7)?.fromX).toBeUndefined();
-    expect(world.selfSteps).toBe(1); // the step still counts for the pacer
+
+    // The server appends west+north row resync slices after an upward floor change.
+    world.playerX = 50;
+    // @ts-expect-error private method
+    world.syncSelfCreature(51, 61, 5);
+    expect(world.getCreature(7)?.fromX).toBeUndefined();
+    expect(world.selfSteps).toBe(1);
+
+    world.playerY = 60;
+    // @ts-expect-error private method
+    world.syncSelfCreature(50, 61, 5);
+    expect(world.getCreature(7)?.fromX).toBeUndefined();
+    expect(world.selfSteps).toBe(1);
 
     await Promise.resolve();
 
     world.playerY = 59;
     // @ts-expect-error private method
-    world.syncSelfCreature(49, 60, 7);
-    expect(world.getCreature(7)?.fromX).toBe(49);
+    world.syncSelfCreature(50, 60, 5);
+    expect(world.getCreature(7)?.fromX).toBe(50);
     expect(world.selfSteps).toBe(2);
   });
 });

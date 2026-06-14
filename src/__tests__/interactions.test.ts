@@ -168,6 +168,40 @@ describe('long-press pointer tracking', () => {
     expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 2, 0]);
     handle.destroy();
   });
+
+  it('looks at a creature instead of the ground underneath it', () => {
+    const ground = { id: 100 };
+    const creature = {
+      id: 77,
+      name: 'Rat',
+      x: 100,
+      y: 200,
+      z: 7,
+      direction: 2,
+      health: 100,
+      outfit: { lookType: 21, head: 0, body: 0, legs: 0, feet: 0 },
+      lightLevel: 0,
+      lightColor: 0,
+      speed: 220,
+    };
+    const tile: MapTile = {
+      x: 100,
+      y: 200,
+      z: 7,
+      things: [
+        { kind: 'item', item: ground },
+        { kind: 'creature', creature },
+      ],
+      items: [ground],
+      creatures: [creature],
+    };
+    const { canvas, handle, sent } = mount(tile);
+    canvas.dispatchEvent(new MouseEvent('contextmenu', { button: 2, clientX: 400, clientY: 300, bubbles: true }));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x8c, 100, 0, 200, 0, 7, 77, 0, 1]);
+    handle.destroy();
+  });
 });
 
 describe('toCanvasSpace', () => {

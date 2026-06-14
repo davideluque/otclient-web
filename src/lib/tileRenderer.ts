@@ -1,5 +1,13 @@
 import { Container, Sprite, Texture, BufferImageSource, Rectangle } from 'pixi.js';
 import type { ResolvedTile } from './tileMap';
+import type { DatFile, ThingType, FrameGroup } from './dat';
+import { DatAttr } from './dat';
+import { SPRITE_SIZE } from './spr';
+import type { AtlasPages, SpriteLocation } from './atlas';
+import { ATLAS_SIZE } from './atlas';
+import type { PlayerState } from './player';
+import { extractSpritePixels, tintOutfitSprite } from './outfitTint';
+import { TILE_SIZE } from '../constants';
 
 /**
  * Anything that can yield `ResolvedTile`s in a rectangular region.
@@ -11,14 +19,6 @@ export interface TileSource {
     x1: number, y1: number, x2: number, y2: number, z: number,
   ): Iterable<ResolvedTile>;
 }
-import type { DatFile, ThingType, FrameGroup } from './dat';
-import { DatAttr } from './dat';
-import { SPRITE_SIZE } from './spr';
-import type { AtlasPages, SpriteLocation } from './atlas';
-import { ATLAS_SIZE } from './atlas';
-import type { PlayerState } from './player';
-import { extractSpritePixels, tintOutfitSprite } from './outfitTint';
-import { TILE_SIZE } from '../constants';
 
 /**
  * Flat index into FrameGroup.spriteIds for a specific frame. Matches the

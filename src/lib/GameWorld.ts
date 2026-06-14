@@ -207,6 +207,23 @@ export class GameWorld {
     return removed.kind === 'creature' ? removed.creature : undefined;
   }
 
+  private rememberCreatureOnTile(creature: MapCreature, tile: Pick<MapTile, 'x' | 'y' | 'z'>): void {
+    const known = this.creatures.get(creature.id);
+    this.creatures.set(creature.id, {
+      id: creature.id,
+      name: creature.name || known?.name || '',
+      x: tile.x,
+      y: tile.y,
+      z: tile.z,
+      direction: creature.direction,
+      health: creature.health,
+      speed: creature.speed,
+      outfit: creature.outfit,
+      lightLevel: creature.lightLevel,
+      lightColor: creature.lightColor,
+    });
+  }
+
   registerHandlers(dispatcher: PacketDispatcher): void {
     const op = this.protocol.serverOpcodes;
     dispatcher.on(op.MapDescription, (p) => this.handleMapDescription(p));
@@ -300,27 +317,7 @@ export class GameWorld {
     this.tileRevision++;
     if (tile.creatures.length > 0) this.creatureRevision++;
 
-    // Register any creatures on this tile. KNOWN-form creatures (0x62)
-    // carry no name on the wire — the server expects the client to
-    // remember it. Floor changes re-describe the player as KNOWN (going
-    // down there isn't even a 0x6D), so clobbering the stored name here
-    // is exactly the "my name disappears when I go down" bug.
-    for (const c of tile.creatures) {
-      const known = this.creatures.get(c.id);
-      this.creatures.set(c.id, {
-        id: c.id,
-        name: c.name || known?.name || '',
-        x: tile.x,
-        y: tile.y,
-        z: tile.z,
-        direction: c.direction,
-        health: c.health,
-        speed: c.speed,
-        outfit: c.outfit,
-        lightLevel: c.lightLevel,
-        lightColor: c.lightColor,
-      });
-    }
+    for (const creature of tile.creatures) this.rememberCreatureOnTile(creature, tile);
   }
 
 
@@ -364,19 +361,7 @@ export class GameWorld {
       const creature = this.protocol.map.parseCreature(packet, peek === 0x61);
       this.insertCreature(tile, creature);
       this.creatureRevision++;
-      // KNOWN form carries no name — preserve the remembered one.
-      const known = this.creatures.get(creature.id);
-      this.creatures.set(creature.id, {
-        id: creature.id,
-        name: creature.name || known?.name || '',
-        x: pos.x, y: pos.y, z: pos.z,
-        direction: creature.direction,
-        health: creature.health,
-        speed: creature.speed,
-        outfit: creature.outfit,
-        lightLevel: creature.lightLevel,
-        lightColor: creature.lightColor,
-      });
+      this.rememberCreatureOnTile(creature, pos);
     } else {
       // Insert by the server's stack priority (top items by topOrder,
       // down items at the front of the down section) so later wire

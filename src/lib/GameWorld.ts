@@ -84,11 +84,12 @@ export class GameWorld {
   worldLight = { level: 250, color: 0xd7 };
 
   /**
-   * While true, syncSelfCreature records no glide origin. Set by
-   * handleFloorChange and cleared in a microtask: the 0x65–0x68 resync
-   * slices embedded in (and trailing) a floor-change message dispatch
-   * synchronously in the same task, so exactly the transition's syncs
-   * snap and the first real step afterwards glides again.
+   * While true, syncSelfCreature records no glide origin or walk
+   * confirmation. Set by handleFloorChange and cleared in a microtask:
+   * the 0x65–0x68 resync slices embedded in (and trailing) a floor-change
+   * message dispatch synchronously in the same task, so exactly the
+   * transition's syncs snap and the first real step afterwards glides
+   * again.
    */
   private snapSelfSync = false;
 
@@ -508,7 +509,10 @@ export class GameWorld {
   private syncSelfCreature(oldX: number, oldY: number, oldZ: number): void {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
-    if (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ) this.selfSteps++;
+    if (!this.snapSelfSync
+      && (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ)) {
+      this.selfSteps++;
+    }
     const facing = directionFromStepDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
@@ -649,8 +653,10 @@ export class GameWorld {
     this.playerX = oldX - dz; // up: +1, down: -1 (covered offset)
     this.playerY = oldY - dz;
     this.playerZ = newZ;
+    this.selfSteps++;
     // The transition's trailing 0x65–0x68 resync slices arrive in this
-    // same synchronous dispatch — none of them are steps to glide.
+    // same synchronous dispatch — none of them are steps to count or
+    // glide. The floor-change frame above is the single confirmation.
     this.snapSelfSync = true;
     queueMicrotask(() => { this.snapSelfSync = false; });
     const selfC = this.creatures.get(this.playerCreatureId);

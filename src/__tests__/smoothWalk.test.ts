@@ -6,8 +6,22 @@ import {
   playbackPosAt,
   type PlaybackSample,
 } from '../lib/jamera/renderer';
-import { GameWorld } from '../lib/GameWorld';
+import { GameWorld, type WorldCreature } from '../lib/GameWorld';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
+import { InputPacket } from '../lib/net/common/InputPacket';
+
+function seedSelf(world: GameWorld): void {
+  world.playerCreatureId = 7;
+  world.playerX = 50; world.playerY = 60; world.playerZ = 7;
+  const self: WorldCreature = {
+    id: 7, name: 'me', x: 50, y: 60, z: 7,
+    direction: 2, health: 100, speed: 220,
+    outfit: { lookType: 128, head: 0, body: 0, legs: 0, feet: 0 },
+    lightLevel: 0, lightColor: 0,
+  };
+  // @ts-expect-error private registry
+  world.creatures.set(7, self);
+}
 
 describe('playbackPosAt (playout buffer)', () => {
   const walk: PlaybackSample[] = [
@@ -70,35 +84,34 @@ describe('nextStepEma', () => {
 });
 
 describe('floor-change resync slices do not record a glide origin', () => {
-  it('snapSelfSync suppresses the origin and a microtask re-arms it', async () => {
+  it('counts the floor change once, not its trailing resync slices', async () => {
     const world = new GameWorld(new GameProtocol());
-    world.playerCreatureId = 7;
-    world.playerX = 50; world.playerY = 60; world.playerZ = 7;
-    // @ts-expect-error private registry
-    world.creatures.set(7, {
-      id: 7, name: 'me', x: 50, y: 60, z: 7,
-      direction: 2, health: 100, speed: 220,
-      outfit: { lookType: 128, head: 0, body: 0, legs: 0, feet: 0 },
-    });
-    // @ts-expect-error private flag
-    world.snapSelfSync = true;
-    queueMicrotask(() => {
-      // @ts-expect-error private flag
-      world.snapSelfSync = false;
-    });
+    seedSelf(world);
 
-    world.playerX = 49;
+    // z 7 -> 6 carries no new floor block payload, so an empty packet is
+    // enough to exercise the floor-change accounting.
     // @ts-expect-error private method
-    world.syncSelfCreature(50, 60, 7);
+    world.handleFloorChange(new InputPacket(new ArrayBuffer(0)), -1);
+    expect(world.selfSteps).toBe(1);
+
+    world.playerX = 50;
+    // @ts-expect-error private method
+    world.syncSelfCreature(51, 61, 6);
     expect(world.getCreature(7)?.fromX).toBeUndefined();
-    expect(world.selfSteps).toBe(1); // the step still counts for the pacer
+    expect(world.selfSteps).toBe(1);
+
+    world.playerY = 60;
+    // @ts-expect-error private method
+    world.syncSelfCreature(50, 61, 6);
+    expect(world.getCreature(7)?.fromX).toBeUndefined();
+    expect(world.selfSteps).toBe(1);
 
     await Promise.resolve();
 
     world.playerY = 59;
     // @ts-expect-error private method
-    world.syncSelfCreature(49, 60, 7);
-    expect(world.getCreature(7)?.fromX).toBe(49);
+    world.syncSelfCreature(50, 60, 6);
+    expect(world.getCreature(7)?.fromX).toBe(50);
     expect(world.selfSteps).toBe(2);
   });
 });

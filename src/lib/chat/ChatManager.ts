@@ -19,6 +19,8 @@ export interface SpeechBubble {
   expiresAt: number;
 }
 
+type SpeechPosition = NonNullable<ChatMessage['position']>;
+
 // OTClient statictext durations: per-character with a floor, doubled
 // for yells so long-range shouting stays readable.
 const SPEECH_MS_PER_CHAR = 60;
@@ -141,31 +143,17 @@ export class ChatManager {
     }
   }
 
-  private addSpeechBubble(msg: ChatMessage, position: NonNullable<ChatMessage['position']>): void {
-    let duration = Math.max(SPEECH_MIN_DURATION_MS, msg.text.length * SPEECH_MS_PER_CHAR);
-    if (msg.messageType === MessageType.Yell || msg.messageType === MessageType.MonsterYell) {
-      duration *= 2;
-    }
-    // Same speaker, same kind, still on screen → stack the new line
-    // under the existing text (classic Tibia pushes the says-text up).
-    const existing = this._speechBubbles.find(
-      (b) => b.senderName === msg.senderName
-        && b.messageType === msg.messageType
-        && b.expiresAt > msg.timestamp,
-    );
+  private addSpeechBubble(msg: ChatMessage, position: SpeechPosition): void {
+    const duration = this.speechBubbleDurationMs(msg);
+    const existing = this.activeBubbleFor(msg);
+
     if (existing) {
-      // Cap the stack (OTClient keeps 10): spam must not grow the PIXI
-      // text texture unboundedly. Oldest lines fall off the top.
-      const lines = `${existing.text}\n${msg.text}`.split('\n');
-      existing.text = lines.slice(-MAX_SPEECH_LINES).join('\n');
-      existing.x = position.x;
-      existing.y = position.y;
-      existing.z = position.z;
-      // Never shorten: a quick "hi" after a long text must not cut the
-      // long text's remaining display time.
-      existing.expiresAt = Math.max(existing.expiresAt, msg.timestamp + duration);
+      this.appendLineToBubble(existing, msg.text);
+      this.moveBubbleTo(existing, position);
+      this.extendBubbleLifetime(existing, msg.timestamp + duration);
       return;
     }
+
     this._speechBubbles.push({
       senderName: msg.senderName,
       text: msg.text,
@@ -175,6 +163,37 @@ export class ChatManager {
       z: position.z,
       expiresAt: msg.timestamp + duration,
     });
+  }
+
+  private speechBubbleDurationMs(msg: ChatMessage): number {
+    const baseDuration = Math.max(SPEECH_MIN_DURATION_MS, msg.text.length * SPEECH_MS_PER_CHAR);
+    return this.isYellMessage(msg.messageType) ? baseDuration * 2 : baseDuration;
+  }
+
+  private activeBubbleFor(msg: ChatMessage): SpeechBubble | undefined {
+    return this._speechBubbles.find(
+      (bubble) => bubble.senderName === msg.senderName
+        && bubble.messageType === msg.messageType
+        && bubble.expiresAt > msg.timestamp,
+    );
+  }
+
+  private appendLineToBubble(bubble: SpeechBubble, line: string): void {
+    bubble.text = `${bubble.text}\n${line}`.split('\n').slice(-MAX_SPEECH_LINES).join('\n');
+  }
+
+  private moveBubbleTo(bubble: SpeechBubble, position: SpeechPosition): void {
+    bubble.x = position.x;
+    bubble.y = position.y;
+    bubble.z = position.z;
+  }
+
+  private extendBubbleLifetime(bubble: SpeechBubble, expiresAt: number): void {
+    bubble.expiresAt = Math.max(bubble.expiresAt, expiresAt);
+  }
+
+  private isYellMessage(type: number): boolean {
+    return type === MessageType.Yell || type === MessageType.MonsterYell;
   }
 
   private hasSpeechBubbleMessageType(type: number): boolean {

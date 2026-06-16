@@ -32,5 +32,10 @@
   "dependencies": {
     "pixi.js": "^8.19.0",
     "ws": "^8.21.0"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "ws": "$ws",
+    "brace-expansion": "5.0.6"
   }
 }

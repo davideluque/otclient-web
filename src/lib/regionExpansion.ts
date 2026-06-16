@@ -79,8 +79,16 @@ const MIN_EXPANSION_RADIUS = 100;
 const MAX_EXPANSION_RADIUS = 500;
 
 /**
- * Centers on the nearest loaded edge so taps just outside a large explored
- * map grow outward instead of re-parsing mostly loaded tiles.
+ * Anticipatory expansion: if a walk destination is near or outside the
+ * loaded bounds, return a region covering both the destination and the
+ * gap from current bounds.
+ *
+ * Centered on the midpoint between the destination and its nearest point
+ * on the bounds rectangle. Measuring from the nearest edge (not the bounds
+ * center) matters on large explored maps: a tap just past the east edge
+ * should grow the map eastward, not produce a region centered deep inside
+ * already-loaded tiles. One bigger expansion is cheaper than several
+ * iterative ones, so the radius keeps a generous +50 buffer.
  */
 export function expansionRegionForDestination(
   bounds: Bounds | null,
@@ -130,10 +138,13 @@ function expansionRadiusBetween(edgePoint: Point, destination: Point): number {
     Math.abs(destination.x - edgePoint.x),
     Math.abs(destination.y - edgePoint.y),
   ) / 2;
+  // +50 buffer so one parse overshoots the gap rather than needing several.
   return clamp(Math.floor(halfDist) + 50, MIN_EXPANSION_RADIUS, MAX_EXPANSION_RADIUS);
 }
 
 function warnIfRegionMissesDestination(region: OtbmRegion, destination: Point): void {
+  // Diagnostic for the iterative-expansion case: the destination is so far
+  // out that even MAX_EXPANSION_RADIUS can't reach it in one parse.
   if (import.meta.env.DEV && (
     Math.abs(destination.x - region.centerX) > region.radius ||
     Math.abs(destination.y - region.centerY) > region.radius

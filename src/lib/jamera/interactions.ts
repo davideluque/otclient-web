@@ -17,9 +17,10 @@ import { TILE_SIZE } from '../../constants';
  *    grates, doors, levers. (Stairs and holes don't need this — walking
  *    onto them floor-changes server-side already.)
  *
- * Targeting: the top item of the tapped tile. The server resolves the
- * thing by position+stackpos, and that stackpos indexes the full
- * wire-ordered tile.things array (including creatures).
+ * Targeting: look resolves the top thing of the tapped tile, while use
+ * resolves the top item. The server resolves the thing by position+stackpos,
+ * and that stackpos indexes the full wire-ordered tile.things array
+ * (including creatures).
  */
 export interface InteractionsHandle {
   destroy(): void;
@@ -28,9 +29,9 @@ export interface InteractionsHandle {
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
 
-interface TileStackItem {
+interface TileStackTarget {
   readonly position: WirePosition;
-  readonly spriteId: number;
+  readonly thingId: number;
   readonly stackPos: number;
 }
 
@@ -91,14 +92,33 @@ export function bindInteractions(
     return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
   }
 
-  function topStackItemAtTile(position: WirePosition): TileStackItem | null {
+  function topStackThingAtTile(position: WirePosition): TileStackTarget | null {
+    const tile = world.getTile(position.x, position.y, position.z);
+    if (!tile || tile.things.length === 0) return null;
+
+    const stackPos = tile.things.length - 1;
+    const thing = tile.things[stackPos];
+    // stackPos is the resolver the server actually uses for look; the
+    // thingId is an advisory sprite/clientId that 7.6 LookAt ignores
+    // (the server returns getTopThing()). For a creature there is no
+    // sprite id, so the runtime id is sent purely as a placeholder — it
+    // is never validated, and is masked to U16 since a 32-bit creature id
+    // would not round-trip the field.
+    return {
+      position,
+      thingId: thing.kind === 'item' ? thing.item.id : (thing.creature.id & 0xffff),
+      stackPos,
+    };
+  }
+
+  function topStackItemAtTile(position: WirePosition): TileStackTarget | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
 
     for (let stackPos = tile.things.length - 1; stackPos >= 0; stackPos--) {
       const thing = tile.things[stackPos];
       if (thing.kind === 'item') {
-        return { position, spriteId: thing.item.id, stackPos };
+        return { position, thingId: thing.item.id, stackPos };
       }
     }
     return null;
@@ -113,15 +133,15 @@ export function bindInteractions(
   }
 
   function look(clientX: number, clientY: number): void {
-    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
+    const target = topStackThingAtTile(worldTileAtPointer(clientX, clientY));
     if (!target) return;
-    send(protocol.actions.buildLookAt(target.position, target.spriteId, target.stackPos));
+    send(protocol.actions.buildLookAt(target.position, target.thingId, target.stackPos));
   }
 
   function use(clientX: number, clientY: number): void {
     const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
     if (!target) return;
-    send(protocol.actions.buildUseItem(target.position, target.spriteId, target.stackPos));
+    send(protocol.actions.buildUseItem(target.position, target.thingId, target.stackPos));
   }
 
   // Tap/click-to-walk: A* over the known window, sent as one 0x64

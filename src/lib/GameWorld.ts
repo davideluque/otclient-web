@@ -21,12 +21,19 @@ interface TileSliceBounds {
   y2: number;
 }
 
-const PLAYER_STEP_DELTA: Record<CardinalMove, { dx: number; dy: number }> = {
+const PLAYER_STEP_DELTA = {
   north: { dx: 0, dy: -1 },
   east: { dx: 1, dy: 0 },
   south: { dx: 0, dy: 1 },
   west: { dx: -1, dy: 0 },
-};
+} as const;
+
+// The client sees an 18×14 tile window around the player: 8 west + self +
+// 9 east, 6 north + self + 7 south. These offsets bound every map slice.
+const VIEWPORT_WEST = 8;
+const VIEWPORT_EAST = 9;
+const VIEWPORT_NORTH = 6;
+const VIEWPORT_SOUTH = 7;
 
 function isAdjacentStep(from: TilePosition, to: TilePosition): boolean {
   return from.z === to.z
@@ -503,10 +510,10 @@ export class GameWorld {
     this.playerZ = pos.z;
 
     // 18x14 visible area around the player, across all visible floors.
-    const startX = this.playerX - 8;
-    const startY = this.playerY - 6;
-    const endX = this.playerX + 9;
-    const endY = this.playerY + 7;
+    const startX = this.playerX - VIEWPORT_WEST;
+    const startY = this.playerY - VIEWPORT_NORTH;
+    const endX = this.playerX + VIEWPORT_EAST;
+    const endY = this.playerY + VIEWPORT_SOUTH;
 
     const tiles = this.protocol.map.parseDescription(packet, startX, startY, endX, endY, this.playerZ);
     for (const tile of tiles) this.setTile(tile);
@@ -578,31 +585,31 @@ export class GameWorld {
     switch (direction) {
       case 'north':
         return {
-          x1: this.playerX - 8,
-          y1: this.playerY - 6,
-          x2: this.playerX + 9,
-          y2: this.playerY - 6,
+          x1: this.playerX - VIEWPORT_WEST,
+          y1: this.playerY - VIEWPORT_NORTH,
+          x2: this.playerX + VIEWPORT_EAST,
+          y2: this.playerY - VIEWPORT_NORTH,
         };
       case 'east':
         return {
-          x1: this.playerX + 9,
-          y1: this.playerY - 6,
-          x2: this.playerX + 9,
-          y2: this.playerY + 7,
+          x1: this.playerX + VIEWPORT_EAST,
+          y1: this.playerY - VIEWPORT_NORTH,
+          x2: this.playerX + VIEWPORT_EAST,
+          y2: this.playerY + VIEWPORT_SOUTH,
         };
       case 'south':
         return {
-          x1: this.playerX - 8,
-          y1: this.playerY + 7,
-          x2: this.playerX + 9,
-          y2: this.playerY + 7,
+          x1: this.playerX - VIEWPORT_WEST,
+          y1: this.playerY + VIEWPORT_SOUTH,
+          x2: this.playerX + VIEWPORT_EAST,
+          y2: this.playerY + VIEWPORT_SOUTH,
         };
       case 'west':
         return {
-          x1: this.playerX - 8,
-          y1: this.playerY - 6,
-          x2: this.playerX - 8,
-          y2: this.playerY + 7,
+          x1: this.playerX - VIEWPORT_WEST,
+          y1: this.playerY - VIEWPORT_NORTH,
+          x2: this.playerX - VIEWPORT_WEST,
+          y2: this.playerY + VIEWPORT_SOUTH,
         };
     }
   }

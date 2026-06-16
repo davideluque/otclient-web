@@ -102,10 +102,11 @@ export function bindInteractions(
     // thingId is an advisory sprite/clientId that 7.6 LookAt ignores
     // (the server returns getTopThing()). For a creature there is no
     // sprite id, so the runtime id is sent purely as a placeholder — it
-    // is never validated, and a wide id would not round-trip the U16.
+    // is never validated, and is masked to U16 since a 32-bit creature id
+    // would not round-trip the field.
     return {
       position,
-      thingId: thing.kind === 'item' ? thing.item.id : thing.creature.id,
+      thingId: thing.kind === 'item' ? thing.item.id : (thing.creature.id & 0xffff),
       stackPos,
     };
   }

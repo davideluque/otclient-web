@@ -508,7 +508,12 @@ export class GameWorld {
   private syncSelfCreature(oldX: number, oldY: number, oldZ: number): void {
     const self = this.creatures.get(this.playerCreatureId);
     if (!self) return;
-    if (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ) this.selfSteps++;
+    if (
+      !this.snapSelfSync
+      && (this.playerX !== oldX || this.playerY !== oldY || this.playerZ !== oldZ)
+    ) {
+      this.selfSteps++;
+    }
     const facing = directionFromStepDelta(this.playerX - oldX, this.playerY - oldY, self.direction);
     const fromTile = this.getTile(oldX, oldY, oldZ);
     const toTile = this.getTile(this.playerX, this.playerY, this.playerZ);
@@ -654,7 +659,11 @@ export class GameWorld {
     this.snapSelfSync = true;
     queueMicrotask(() => { this.snapSelfSync = false; });
     const selfC = this.creatures.get(this.playerCreatureId);
-    if (selfC) { selfC.fromX = undefined; selfC.fromY = undefined; }
+    if (selfC) {
+      this.selfSteps++;
+      selfC.fromX = undefined;
+      selfC.fromY = undefined;
+    }
     this.tileRevision++;
     this.onChange?.();
   }

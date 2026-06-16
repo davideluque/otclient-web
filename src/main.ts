@@ -41,7 +41,7 @@ import type { SprFile } from './lib/spr';
 import type { OtbFile } from './lib/otb';
 import type { OtbmFile, OtbmRegion, Position } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
-import { needsExpansion, needsExpansionForDestination } from './lib/regionExpansion';
+import { expansionRegionForDestination, expansionRegionForViewportEdge } from './lib/regionExpansion';
 import { TILE_SIZE } from './constants';
 
 // --- File loading UI ---
@@ -507,7 +507,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (pendingExpansion) return;
 
     const currentBounds = tileMap.getBounds(renderZ);
-    const region = needsExpansion(currentBounds, visible, renderZ, 30);
+    const region = expansionRegionForViewportEdge(currentBounds, visible, renderZ, 30);
     if (!region) return;
 
     const ek = expansionKey(currentBounds, region);
@@ -811,7 +811,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
       // exhaustedDirections from viewport expansion to avoid repeated
       // expensive OTBM parses for taps in areas with no data.
       const currentBounds = tileMap.getBounds(renderZ);
-      const destRegion = needsExpansionForDestination(
+      const destRegion = expansionRegionForDestination(
         currentBounds, tile.x, tile.y, renderZ, 30,
       );
       if (destRegion) {

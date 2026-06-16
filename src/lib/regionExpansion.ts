@@ -3,18 +3,19 @@ import type { Bounds } from './tileMap';
 import type { OtbmRegion } from './otbm';
 
 const EXPANSION_RADIUS = 100;
+const VIEWPORT_EDGE_PRIORITY = ['west', 'east', 'north', 'south'] as const;
+type ViewportEdge = typeof VIEWPORT_EDGE_PRIORITY[number];
+
+interface Point {
+  x: number;
+  y: number;
+}
 
 /**
- * Check if the viewport is close enough to the loaded map edge that we
- * should parse more OTBM data. Returns the region to load, or null.
- *
- * The math: if any edge of the visible rect is within `paddingTiles` of
- * the corresponding edge of `bounds`, we place a new region centered
- * `EXPANSION_RADIUS` tiles ahead of the camera in that direction.
- * Only the *first* offending edge is acted on per call — the next
- * render cycle will catch the others if needed.
+ * Picks one viewport-edge expansion per call. The next render cycle can
+ * request another edge after this region has merged into the loaded map.
  */
-export function needsExpansion(
+export function expansionRegionForViewportEdge(
   bounds: Bounds | null,
   visible: ViewRect,
   z: number,
@@ -22,27 +23,48 @@ export function needsExpansion(
 ): OtbmRegion | null {
   if (!bounds) return null;
 
+  const edge = firstViewportEdgeNearBounds(bounds, visible, paddingTiles);
+  if (!edge) return null;
+
+  return expansionRegionBeyondEdge(edge, bounds, visible, z);
+}
+
+function firstViewportEdgeNearBounds(
+  bounds: Bounds,
+  visible: ViewRect,
+  paddingTiles: number,
+): ViewportEdge | null {
+  return VIEWPORT_EDGE_PRIORITY.find((edge) => viewportNearEdge(edge, bounds, visible, paddingTiles)) ?? null;
+}
+
+function viewportNearEdge(
+  edge: ViewportEdge,
+  bounds: Bounds,
+  visible: ViewRect,
+  paddingTiles: number,
+): boolean {
+  switch (edge) {
+    case 'west': return visible.x1 <= bounds.minX + paddingTiles;
+    case 'east': return visible.x2 >= bounds.maxX - paddingTiles;
+    case 'north': return visible.y1 <= bounds.minY + paddingTiles;
+    case 'south': return visible.y2 >= bounds.maxY - paddingTiles;
+  }
+}
+
+function expansionRegionBeyondEdge(edge: ViewportEdge, bounds: Bounds, visible: ViewRect, z: number): OtbmRegion {
   const visibleCenterX = midpoint(visible.x1, visible.x2);
   const visibleCenterY = midpoint(visible.y1, visible.y2);
-  const nearWestEdge = visible.x1 <= bounds.minX + paddingTiles;
-  const nearEastEdge = visible.x2 >= bounds.maxX - paddingTiles;
-  const nearNorthEdge = visible.y1 <= bounds.minY + paddingTiles;
-  const nearSouthEdge = visible.y2 >= bounds.maxY - paddingTiles;
 
-  if (nearWestEdge) {
-    return expansionRegion(bounds.minX - EXPANSION_RADIUS, visibleCenterY, z);
+  switch (edge) {
+    case 'west':
+      return expansionRegion(bounds.minX - EXPANSION_RADIUS, visibleCenterY, z);
+    case 'east':
+      return expansionRegion(bounds.maxX + EXPANSION_RADIUS, visibleCenterY, z);
+    case 'north':
+      return expansionRegion(visibleCenterX, bounds.minY - EXPANSION_RADIUS, z);
+    case 'south':
+      return expansionRegion(visibleCenterX, bounds.maxY + EXPANSION_RADIUS, z);
   }
-  if (nearEastEdge) {
-    return expansionRegion(bounds.maxX + EXPANSION_RADIUS, visibleCenterY, z);
-  }
-  if (nearNorthEdge) {
-    return expansionRegion(visibleCenterX, bounds.minY - EXPANSION_RADIUS, z);
-  }
-  if (nearSouthEdge) {
-    return expansionRegion(visibleCenterX, bounds.maxY + EXPANSION_RADIUS, z);
-  }
-
-  return null;
 }
 
 function midpoint(a: number, b: number): number {
@@ -57,56 +79,71 @@ const MIN_EXPANSION_RADIUS = 100;
 const MAX_EXPANSION_RADIUS = 500;
 
 /**
- * Anticipatory expansion: check if a walk destination is near or outside
- * the loaded map bounds. If so, return a region that covers both the
- * destination and the gap from current bounds.
- *
- * The region is centered on the midpoint between the destination and its
- * nearest point on the bounds rectangle, with radius clamped to
- * [MIN, MAX]. Measuring from the nearest edge (not the bounds center)
- * matters on large explored maps: a tap just past the east edge should
- * grow the map eastward, not produce a region centered deep inside
- * already-loaded tiles. One bigger expansion is still cheaper than
- * several iterative ones, so the radius keeps a generous +50 buffer.
+ * Centers on the nearest loaded edge so taps just outside a large explored
+ * map grow outward instead of re-parsing mostly loaded tiles.
  */
-export function needsExpansionForDestination(
+export function expansionRegionForDestination(
   bounds: Bounds | null,
-  destX: number,
-  destY: number,
+  destinationX: number,
+  destinationY: number,
   z: number,
   paddingTiles: number,
 ): OtbmRegion | null {
   if (!bounds) return null;
+  if (destinationInsideSafeBounds(bounds, destinationX, destinationY, paddingTiles)) return null;
 
-  const nearLeft = destX <= bounds.minX + paddingTiles;
-  const nearRight = destX >= bounds.maxX - paddingTiles;
-  const nearTop = destY <= bounds.minY + paddingTiles;
-  const nearBottom = destY >= bounds.maxY - paddingTiles;
+  const destination = { x: destinationX, y: destinationY };
+  const edgePoint = nearestPointInBounds(bounds, destination);
+  const center = midpointBetween(edgePoint, destination);
+  const radius = expansionRadiusBetween(edgePoint, destination);
 
-  if (!nearLeft && !nearRight && !nearTop && !nearBottom) return null;
+  const region = { centerX: center.x, centerY: center.y, radius, z };
+  warnIfRegionMissesDestination(region, destination);
+  return region;
+}
 
-  // Nearest point on the bounds rectangle to the destination — the spot
-  // the expansion should grow outward from.
-  const edgeX = Math.min(Math.max(destX, bounds.minX), bounds.maxX);
-  const edgeY = Math.min(Math.max(destY, bounds.minY), bounds.maxY);
+function destinationInsideSafeBounds(bounds: Bounds, destX: number, destY: number, paddingTiles: number): boolean {
+  return (
+    destX > bounds.minX + paddingTiles &&
+    destX < bounds.maxX - paddingTiles &&
+    destY > bounds.minY + paddingTiles &&
+    destY < bounds.maxY - paddingTiles
+  );
+}
 
-  const midX = Math.floor((edgeX + destX) / 2);
-  const midY = Math.floor((edgeY + destY) / 2);
+function nearestPointInBounds(bounds: Bounds, point: Point): Point {
+  return {
+    x: clamp(point.x, bounds.minX, bounds.maxX),
+    y: clamp(point.y, bounds.minY, bounds.maxY),
+  };
+}
+
+function midpointBetween(a: Point, b: Point): Point {
+  return {
+    x: midpoint(a.x, b.x),
+    y: midpoint(a.y, b.y),
+  };
+}
+
+function expansionRadiusBetween(edgePoint: Point, destination: Point): number {
   const halfDist = Math.max(
-    Math.abs(destX - edgeX),
-    Math.abs(destY - edgeY),
+    Math.abs(destination.x - edgePoint.x),
+    Math.abs(destination.y - edgePoint.y),
   ) / 2;
-  const radius = Math.min(MAX_EXPANSION_RADIUS, Math.max(MIN_EXPANSION_RADIUS, Math.floor(halfDist) + 50));
+  return clamp(Math.floor(halfDist) + 50, MIN_EXPANSION_RADIUS, MAX_EXPANSION_RADIUS);
+}
 
-  const region = { centerX: midX, centerY: midY, radius, z };
+function warnIfRegionMissesDestination(region: OtbmRegion, destination: Point): void {
   if (import.meta.env.DEV && (
-    Math.abs(destX - midX) > radius || Math.abs(destY - midY) > radius
+    Math.abs(destination.x - region.centerX) > region.radius ||
+    Math.abs(destination.y - region.centerY) > region.radius
   )) {
-    // Diagnostic for the iterative-expansion case: the destination is so
-    // far out that even MAX_EXPANSION_RADIUS can't reach it in one parse.
     console.warn(
-      `regionExpansion: computed region (center ${midX},${midY} r${radius}) does not contain destination (${destX},${destY})`,
+      `regionExpansion: computed region (center ${region.centerX},${region.centerY} r${region.radius}) does not contain destination (${destination.x},${destination.y})`,
     );
   }
-  return region;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

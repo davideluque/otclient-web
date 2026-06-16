@@ -1,10 +1,45 @@
 import type { InputPacket } from './net/common/InputPacket';
 import type { PacketDispatcher } from './net/common/PacketDispatcher';
 import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
-import type { ResolvedTile } from './tileMap';
+import { TileMap, type ResolvedTile } from './tileMap';
 import type { ThingType } from './dat';
 import { DatAttr } from './dat';
 import { directionFromStepDelta } from './player';
+
+type CardinalMove = 'north' | 'east' | 'south' | 'west';
+
+interface TilePosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface TileSliceBounds {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+const PLAYER_STEP_DELTA = {
+  north: { dx: 0, dy: -1 },
+  east: { dx: 1, dy: 0 },
+  south: { dx: 0, dy: 1 },
+  west: { dx: -1, dy: 0 },
+} as const;
+
+// The client sees an 18×14 tile window around the player: 8 west + self +
+// 9 east, 6 north + self + 7 south. These offsets bound every map slice.
+const VIEWPORT_WEST = 8;
+const VIEWPORT_EAST = 9;
+const VIEWPORT_NORTH = 6;
+const VIEWPORT_SOUTH = 7;
+
+function isAdjacentStep(from: TilePosition, to: TilePosition): boolean {
+  return from.z === to.z
+    && Math.abs(to.x - from.x) <= 1
+    && Math.abs(to.y - from.y) <= 1;
+}
 
 export interface WorldCreature {
   id: number;
@@ -210,10 +245,10 @@ export class GameWorld {
   registerHandlers(dispatcher: PacketDispatcher): void {
     const op = this.protocol.serverOpcodes;
     dispatcher.on(op.MapDescription, (p) => this.handleMapDescription(p));
-    dispatcher.on(op.MoveNorth, (p) => this.handleMoveNorth(p));
-    dispatcher.on(op.MoveEast, (p) => this.handleMoveEast(p));
-    dispatcher.on(op.MoveSouth, (p) => this.handleMoveSouth(p));
-    dispatcher.on(op.MoveWest, (p) => this.handleMoveWest(p));
+    dispatcher.on(op.MoveNorth, (p) => this.handlePlayerMove(p, 'north'));
+    dispatcher.on(op.MoveEast, (p) => this.handlePlayerMove(p, 'east'));
+    dispatcher.on(op.MoveSouth, (p) => this.handlePlayerMove(p, 'south'));
+    dispatcher.on(op.MoveWest, (p) => this.handlePlayerMove(p, 'west'));
     dispatcher.on(op.CreatureMove, (p) => this.handleCreatureMove(p));
     dispatcher.on(op.SelfAppear, (p) => this.handleSelfAppear(p));
     dispatcher.on(op.TileUpdate, (p) => this.handleTileUpdate(p));
@@ -250,7 +285,7 @@ export class GameWorld {
   }
 
   getTile(x: number, y: number, z: number): MapTile | undefined {
-    return this.tiles.get(`${x}:${y}:${z}`);
+    return this.tiles.get(TileMap.key(x, y, z));
   }
 
   getCreature(id: number): WorldCreature | undefined {
@@ -279,7 +314,7 @@ export class GameWorld {
     // for 2.5D overlap (trees, wall tops) to layer correctly.
     for (let y = y1; y <= y2; y++) {
       for (let x = x1; x <= x2; x++) {
-        const tile = this.tiles.get(`${x}:${y}:${z}`);
+        const tile = this.tiles.get(TileMap.key(x, y, z));
         if (!tile) continue;
         yield {
           x: tile.x,
@@ -296,33 +331,30 @@ export class GameWorld {
   }
 
   private setTile(tile: MapTile): void {
-    this.tiles.set(`${tile.x}:${tile.y}:${tile.z}`, tile);
+    this.tiles.set(TileMap.key(tile.x, tile.y, tile.z), tile);
     this.tileRevision++;
     if (tile.creatures.length > 0) this.creatureRevision++;
 
-    // Register any creatures on this tile. KNOWN-form creatures (0x62)
-    // carry no name on the wire — the server expects the client to
-    // remember it. Floor changes re-describe the player as KNOWN (going
-    // down there isn't even a 0x6D), so clobbering the stored name here
-    // is exactly the "my name disappears when I go down" bug.
-    for (const c of tile.creatures) {
-      const known = this.creatures.get(c.id);
-      this.creatures.set(c.id, {
-        id: c.id,
-        name: c.name || known?.name || '',
-        x: tile.x,
-        y: tile.y,
-        z: tile.z,
-        direction: c.direction,
-        health: c.health,
-        speed: c.speed,
-        outfit: c.outfit,
-        lightLevel: c.lightLevel,
-        lightColor: c.lightColor,
-      });
-    }
+    for (const creature of tile.creatures) this.rememberCreatureAt(creature, tile);
   }
 
+  private rememberCreatureAt(creature: MapCreature, position: TilePosition): void {
+    const known = this.creatures.get(creature.id);
+    this.creatures.set(creature.id, {
+      id: creature.id,
+      // KNOWN-form creatures (0x62) omit names; keep the name learned from the UNKNOWN form.
+      name: creature.name || known?.name || '',
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      direction: creature.direction,
+      health: creature.health,
+      speed: creature.speed,
+      outfit: creature.outfit,
+      lightLevel: creature.lightLevel,
+      lightColor: creature.lightColor,
+    });
+  }
 
   /**
    * 0x69 — replace one tile's full contents. An empty-marker payload
@@ -332,7 +364,7 @@ export class GameWorld {
     const pos = this.protocol.map.parsePosition(packet);
     if ((packet.peekU16() & 0xff00) === 0xff00) {
       packet.getU16();
-      this.tiles.delete(`${pos.x}:${pos.y}:${pos.z}`);
+      this.tiles.delete(TileMap.key(pos.x, pos.y, pos.z));
       this.tileRevision++;
       this.onChange?.();
       return;
@@ -353,7 +385,7 @@ export class GameWorld {
     let tile = this.getTile(pos.x, pos.y, pos.z);
     if (!tile) {
       tile = { x: pos.x, y: pos.y, z: pos.z, things: [], items: [], creatures: [] };
-      this.tiles.set(`${pos.x}:${pos.y}:${pos.z}`, tile);
+      this.tiles.set(TileMap.key(pos.x, pos.y, pos.z), tile);
     }
 
     const peek = packet.peekU16();
@@ -364,19 +396,7 @@ export class GameWorld {
       const creature = this.protocol.map.parseCreature(packet, peek === 0x61);
       this.insertCreature(tile, creature);
       this.creatureRevision++;
-      // KNOWN form carries no name — preserve the remembered one.
-      const known = this.creatures.get(creature.id);
-      this.creatures.set(creature.id, {
-        id: creature.id,
-        name: creature.name || known?.name || '',
-        x: pos.x, y: pos.y, z: pos.z,
-        direction: creature.direction,
-        health: creature.health,
-        speed: creature.speed,
-        outfit: creature.outfit,
-        lightLevel: creature.lightLevel,
-        lightColor: creature.lightColor,
-      });
+      this.rememberCreatureAt(creature, pos);
     } else {
       // Insert by the server's stack priority (top items by topOrder,
       // down items at the front of the down section) so later wire
@@ -490,10 +510,10 @@ export class GameWorld {
     this.playerZ = pos.z;
 
     // 18x14 visible area around the player, across all visible floors.
-    const startX = this.playerX - 8;
-    const startY = this.playerY - 6;
-    const endX = this.playerX + 9;
-    const endY = this.playerY + 7;
+    const startX = this.playerX - VIEWPORT_WEST;
+    const startY = this.playerY - VIEWPORT_NORTH;
+    const endX = this.playerX + VIEWPORT_EAST;
+    const endY = this.playerY + VIEWPORT_SOUTH;
 
     const tiles = this.protocol.map.parseDescription(packet, startX, startY, endX, endY, this.playerZ);
     for (const tile of tiles) this.setTile(tile);
@@ -530,9 +550,10 @@ export class GameWorld {
     // Interpolation origin only for true single-tile steps on the same
     // floor — floor changes (including their same-z resync slices, see
     // snapSelfSync) and teleports must snap, not glide.
-    const isStep = !this.snapSelfSync
-      && oldZ === this.playerZ
-      && Math.abs(this.playerX - oldX) <= 1 && Math.abs(this.playerY - oldY) <= 1;
+    const isStep = !this.snapSelfSync && isAdjacentStep(
+      { x: oldX, y: oldY, z: oldZ },
+      { x: this.playerX, y: this.playerY, z: this.playerZ },
+    );
     self.fromX = isStep ? oldX : undefined;
     self.fromY = isStep ? oldY : undefined;
     self.x = this.playerX;
@@ -543,64 +564,59 @@ export class GameWorld {
     this.creatureRevision++;
   }
 
-  private handleMoveNorth(packet: InputPacket): void {
-    const oldX = this.playerX;
-    const oldY = this.playerY;
-    this.playerY--;
+  private handlePlayerMove(packet: InputPacket, direction: CardinalMove): void {
+    const previousPosition = this.playerPosition();
+    const delta = PLAYER_STEP_DELTA[direction];
+    this.playerX += delta.dx;
+    this.playerY += delta.dy;
+
+    const bounds = this.visibleSliceAfterPlayerMove(direction);
     const tiles = this.protocol.map.parseDescription(
       packet,
-      this.playerX - 8, this.playerY - 6,
-      this.playerX + 9, this.playerY - 6,
+      bounds.x1, bounds.y1,
+      bounds.x2, bounds.y2,
       this.playerZ,
     );
     for (const tile of tiles) this.setTile(tile);
-    this.syncSelfCreature(oldX, oldY, this.playerZ);
+    this.syncSelfCreature(previousPosition.x, previousPosition.y, previousPosition.z);
     this.onChange?.();
   }
 
-  private handleMoveEast(packet: InputPacket): void {
-    const oldX = this.playerX;
-    const oldY = this.playerY;
-    this.playerX++;
-    const tiles = this.protocol.map.parseDescription(
-      packet,
-      this.playerX + 9, this.playerY - 6,
-      this.playerX + 9, this.playerY + 7,
-      this.playerZ,
-    );
-    for (const tile of tiles) this.setTile(tile);
-    this.syncSelfCreature(oldX, oldY, this.playerZ);
-    this.onChange?.();
+  private playerPosition(): TilePosition {
+    return { x: this.playerX, y: this.playerY, z: this.playerZ };
   }
 
-  private handleMoveSouth(packet: InputPacket): void {
-    const oldX = this.playerX;
-    const oldY = this.playerY;
-    this.playerY++;
-    const tiles = this.protocol.map.parseDescription(
-      packet,
-      this.playerX - 8, this.playerY + 7,
-      this.playerX + 9, this.playerY + 7,
-      this.playerZ,
-    );
-    for (const tile of tiles) this.setTile(tile);
-    this.syncSelfCreature(oldX, oldY, this.playerZ);
-    this.onChange?.();
-  }
-
-  private handleMoveWest(packet: InputPacket): void {
-    const oldX = this.playerX;
-    const oldY = this.playerY;
-    this.playerX--;
-    const tiles = this.protocol.map.parseDescription(
-      packet,
-      this.playerX - 8, this.playerY - 6,
-      this.playerX - 8, this.playerY + 7,
-      this.playerZ,
-    );
-    for (const tile of tiles) this.setTile(tile);
-    this.syncSelfCreature(oldX, oldY, this.playerZ);
-    this.onChange?.();
+  private visibleSliceAfterPlayerMove(direction: CardinalMove): TileSliceBounds {
+    switch (direction) {
+      case 'north':
+        return {
+          x1: this.playerX - VIEWPORT_WEST,
+          y1: this.playerY - VIEWPORT_NORTH,
+          x2: this.playerX + VIEWPORT_EAST,
+          y2: this.playerY - VIEWPORT_NORTH,
+        };
+      case 'east':
+        return {
+          x1: this.playerX + VIEWPORT_EAST,
+          y1: this.playerY - VIEWPORT_NORTH,
+          x2: this.playerX + VIEWPORT_EAST,
+          y2: this.playerY + VIEWPORT_SOUTH,
+        };
+      case 'south':
+        return {
+          x1: this.playerX - VIEWPORT_WEST,
+          y1: this.playerY + VIEWPORT_SOUTH,
+          x2: this.playerX + VIEWPORT_EAST,
+          y2: this.playerY + VIEWPORT_SOUTH,
+        };
+      case 'west':
+        return {
+          x1: this.playerX - VIEWPORT_WEST,
+          y1: this.playerY - VIEWPORT_NORTH,
+          x2: this.playerX - VIEWPORT_WEST,
+          y2: this.playerY + VIEWPORT_SOUTH,
+        };
+    }
   }
 
   /**
@@ -691,8 +707,10 @@ export class GameWorld {
       );
       const wc = this.creatures.get(creature.id);
       if (wc) {
-        const isStep = event.fromZ === event.toZ
-          && Math.abs(event.toX - event.fromX) <= 1 && Math.abs(event.toY - event.fromY) <= 1;
+        const isStep = isAdjacentStep(
+          { x: event.fromX, y: event.fromY, z: event.fromZ },
+          { x: event.toX, y: event.toY, z: event.toZ },
+        );
         wc.fromX = isStep ? event.fromX : undefined;
         wc.fromY = isStep ? event.fromY : undefined;
         wc.x = event.toX;

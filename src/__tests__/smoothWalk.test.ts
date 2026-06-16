@@ -69,8 +69,8 @@ describe('nextStepEma', () => {
   });
 });
 
-describe('floor-change resync slices do not record a glide origin', () => {
-  it('snapSelfSync suppresses the origin and a microtask re-arms it', async () => {
+describe('floor-change resync slices do not record walk confirmations', () => {
+  it('snapSelfSync suppresses the origin and self-step count until a microtask re-arms it', async () => {
     const world = new GameWorld(new GameProtocol());
     world.playerCreatureId = 7;
     world.playerX = 50; world.playerY = 60; world.playerZ = 7;
@@ -91,7 +91,7 @@ describe('floor-change resync slices do not record a glide origin', () => {
     // @ts-expect-error private method
     world.syncSelfCreature(50, 60, 7);
     expect(world.getCreature(7)?.fromX).toBeUndefined();
-    expect(world.selfSteps).toBe(1); // the step still counts for the pacer
+    expect(world.selfSteps).toBe(0);
 
     await Promise.resolve();
 
@@ -99,6 +99,6 @@ describe('floor-change resync slices do not record a glide origin', () => {
     // @ts-expect-error private method
     world.syncSelfCreature(49, 60, 7);
     expect(world.getCreature(7)?.fromX).toBe(49);
-    expect(world.selfSteps).toBe(2);
+    expect(world.selfSteps).toBe(1);
   });
 });

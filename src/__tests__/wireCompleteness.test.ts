@@ -381,6 +381,24 @@ describe('GameWorld floor changes', () => {
     w.playerX = x; w.playerY = y; w.playerZ = z;
   }
 
+  function seedSelf(w: GameWorld): void {
+    w.playerCreatureId = 7;
+    // @ts-expect-error driving private registry for the test
+    w.creatures.set(7, {
+      id: 7,
+      name: 'me',
+      x: w.playerX,
+      y: w.playerY,
+      z: w.playerZ,
+      direction: 2,
+      health: 100,
+      speed: 220,
+      outfit: { lookType: 128, head: 0, body: 0, legs: 0, feet: 0 },
+      lightLevel: 0,
+      lightColor: 0,
+    });
+  }
+
   /** Emit skip markers covering exactly `cells` empty tile slots. */
   function emptyCells(out: OutputPacket, cells: number): void {
     while (cells > 0) {
@@ -451,6 +469,28 @@ describe('GameWorld floor changes', () => {
     d.dispatch(new InputPacket(out.toArrayBuffer()));
 
     expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 5]);
+  });
+
+  it('counts the floor-change frame as one self-step, not two row-resync steps', () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    setPos(w, 100, 200, 8);
+    seedSelf(w);
+
+    const out = new OutputPacket();
+    out.addU8(0xbe);
+    emptyCells(out, 18 * 14 * 6);
+    // Surfacing embeds west+north viewport resync slices. These move the
+    // camera anchor back to the final x/y, but are not extra player steps.
+    out.addU8(0x68);
+    emptyCells(out, 14 * 8);
+    out.addU8(0x65);
+    emptyCells(out, 18 * 8);
+
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 7]);
+    expect(w.selfSteps).toBe(1);
   });
 });
 

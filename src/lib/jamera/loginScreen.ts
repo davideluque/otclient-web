@@ -78,6 +78,10 @@ type LoginAccount =
   | { ok: true; account: number }
   | { ok: false; message: string };
 
+// The wire format serialises the account as a U32. Anything that's not a
+// positive integer in [1, 2^32-1] silently truncates (fractions, values
+// > 2^32) or wraps when serialised, landing the user on a different account
+// than they typed with no obvious error — so validate at the form boundary.
 export function parseLoginAccount(raw: string): LoginAccount {
   const account = Number(raw);
   if (!Number.isInteger(account) || account <= 0 || account > MAX_U32_ACCOUNT) {
@@ -98,9 +102,15 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   const ui = createLoginScreenUi();
   root.appendChild(ui.container);
 
+  // Handlers close over `client`, but `client` takes `events` at
+  // construction. Build events empty, hand it over, then populate — the
+  // client stores the reference and reads `events.onX?.(…)` at call time.
   const events: GameClientEvents = {};
   const client = new GameClient(proxyUrl, events, protocol);
 
+  // One-shot auto-pilot flag, disarmed when the pick fires AND on every
+  // failure path (login error, drop to disconnected, malformed config) so a
+  // stale auto-pick can never hijack a later manual login.
   let autoPickCharacter = opts.autoLogin !== undefined;
   let lastState: GameClientState = 'disconnected';
   const disarmAutoCharacterPick = (): void => {
@@ -127,20 +137,34 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
         }
         await client.selectCharacter(char);
       } catch (err) {
+        // Re-enable selection after a failed attempt so the player can retry
+        // without a full re-login; the next state transition re-applies the
+        // state-driven disabling anyway.
         showError(ui, (err as Error).message);
         setCharacterSelectionDisabled(ui, false);
       }
     });
+    // Disarm on the FIRST list response either way — an empty list must not
+    // leave the auto-pilot lurking for a later manual login. (clickFirst… is
+    // a no-op when there's no button, i.e. an empty character list.)
     if (autoPickCharacter) {
       disarmAutoCharacterPick();
       clickFirstCharacterButton(ui);
     }
   };
+  // No onDisconnect handler needed: GameClient calls setState('disconnected')
+  // immediately before onDisconnect, so onStateChange already surfaces it.
 
   ui.form.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearError(ui);
 
+    // Defense-in-depth against re-submission once a login is in flight. The
+    // form is also disabled for any non-disconnected state, but a programmatic
+    // form.dispatchEvent('submit') bypasses the disabled button. A second
+    // login would open a fresh WebSocket on top of the existing loginConn
+    // without closing the old one, and the old socket's onclose would later
+    // null shared state out from under the new session.
     if (client.getState() !== 'disconnected') return;
 
     const parsedAccount = parseLoginAccount(ui.accountInput.value);
@@ -162,6 +186,8 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   if (opts.autoLogin) {
     ui.accountInput.value = String(opts.autoLogin.account);
     ui.passwordInput.value = opts.autoLogin.password;
+    // Through the real submit path so validation, error display, and the
+    // in-flight guard all behave exactly as a manual login would.
     ui.form.dispatchEvent(new Event('submit', { cancelable: true }));
   }
 
@@ -214,11 +240,21 @@ function applyClientStateToLoginScreen(ui: UiHandles, state: GameClientState): v
   ui.statusEl.textContent = STATE_LABELS[state];
   ui.statusEl.classList.toggle('error', state === 'disconnected');
 
+  // Hide the overlay only once in_game so the PIXI canvas below shows; its
+  // solid background would otherwise cover the canvas mid-paint. Any other
+  // state (a kick → disconnected, retry → character_list) re-shows it.
   ui.container.hidden = state === 'in_game';
 
+  // Disable the login form past `disconnected`: a second submit on
+  // character_list would open a fresh loginConn over the existing one (see
+  // the submit guard), and there's nothing to re-submit once listed.
   setLoginFormDisabled(ui, state !== 'disconnected');
+  // Disable character buttons once a selection is in flight so a double-click
+  // can't kick off overlapping selectCharacter calls that race transitions.
   setCharacterSelectionDisabled(ui, state === 'entering_game' || state === 'in_game');
 
+  // Hide the stale list when dropping back to pre-character states — keeping
+  // it visible would suggest selection is still possible.
   if (state === 'disconnected' || state === 'logging_in') {
     ui.characterListEl.hidden = true;
   }

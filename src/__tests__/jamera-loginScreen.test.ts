@@ -1,7 +1,22 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mountLoginScreen } from '../lib/jamera/loginScreen';
+import { mountLoginScreen, parseLoginAccount } from '../lib/jamera/loginScreen';
 import { GameClient } from '../lib/net/common/GameClient';
+
+describe('parseLoginAccount', () => {
+  it('accepts positive U32 account numbers', () => {
+    expect(parseLoginAccount('1')).toEqual({ ok: true, account: 1 });
+    expect(parseLoginAccount('4294967295')).toEqual({ ok: true, account: 4294967295 });
+  });
+
+  it('rejects values that cannot round-trip through the login packet account field', () => {
+    for (const raw of ['0', '-1', '1.5', '4294967296', 'not a number']) {
+      const parsed = parseLoginAccount(raw);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.message).toContain('4294967295');
+    }
+  });
+});
 
 /**
  * These tests exercise the login screen as a black box — they don't open

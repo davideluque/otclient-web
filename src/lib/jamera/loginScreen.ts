@@ -71,7 +71,23 @@ export interface MountedScreen {
 }
 
 const DEFAULT_PROXY_URL = 'ws://localhost:8090';
-const DEFAULT_CLIENT_VERSION = 761; // jamera demands 761
+const DEFAULT_CLIENT_VERSION = 761;
+const MAX_U32_ACCOUNT = 0xffffffff;
+
+type LoginAccount =
+  | { ok: true; account: number }
+  | { ok: false; message: string };
+
+export function parseLoginAccount(raw: string): LoginAccount {
+  const account = Number(raw);
+  if (!Number.isInteger(account) || account <= 0 || account > MAX_U32_ACCOUNT) {
+    return {
+      ok: false,
+      message: `Account must be a positive integer between 1 and ${MAX_U32_ACCOUNT}.`,
+    };
+  }
+  return { ok: true, account };
+}
 
 export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): MountedScreen {
   const proxyUrl = opts.proxyUrl ?? DEFAULT_PROXY_URL;
@@ -79,32 +95,27 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
 
   const protocol = new GameProtocol({ clientVersion });
 
-  const ui = createDom();
+  const ui = createLoginScreenUi();
   root.appendChild(ui.container);
 
-  // Event handlers close over `client`, but `client` itself takes `events`
-  // at construction time. Build events as an empty object, hand it to the
-  // client, then populate the handlers — GameClient stores the reference
-  // and reads `events.onX?.(…)` at call time.
   const events: GameClientEvents = {};
   const client = new GameClient(proxyUrl, events, protocol);
 
-  // One-shot auto-pilot flag; cleared when the pick fires — and on any
-  // failure: a login error (bad dev password must not loop) or a drop
-  // back to disconnected (proxy offline kills the connection without an
-  // onLoginError), so a later manual login is never hijacked by a stale
-  // auto-pick.
   let autoPickCharacter = opts.autoLogin !== undefined;
   let lastState: GameClientState = 'disconnected';
+  const disarmAutoCharacterPick = (): void => {
+    autoPickCharacter = false;
+  };
+
   events.onStateChange = (state) => {
-    updateState(ui, state);
-    if (state === 'disconnected') autoPickCharacter = false;
+    applyClientStateToLoginScreen(ui, state);
+    if (state === 'disconnected') disarmAutoCharacterPick();
     if (state === 'in_game') opts.onEnterGame?.(client);
     if (lastState === 'in_game' && state !== 'in_game') opts.onLeaveGame?.();
     lastState = state;
   };
   events.onLoginError = (msg) => {
-    autoPickCharacter = false;
+    disarmAutoCharacterPick();
     showError(ui, msg);
   };
   events.onCharacterList = (characters, premiumDays, motd) => {
@@ -117,53 +128,33 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
         await client.selectCharacter(char);
       } catch (err) {
         showError(ui, (err as Error).message);
-        enableCharacterButtons(ui);
+        setCharacterSelectionDisabled(ui, false);
       }
     });
-    // Disarm on the FIRST list response either way — an empty list must
-    // not leave the auto-pilot lurking for a later manual login.
     if (autoPickCharacter) {
-      autoPickCharacter = false;
-      if (characters.length > 0) ui.characterListEl.querySelector('button')?.click();
+      disarmAutoCharacterPick();
+      clickFirstCharacterButton(ui);
     }
   };
-  // Disconnect is already surfaced by `onStateChange` → `updateState`
-  // (GameClient calls setState('disconnected') immediately before
-  // triggering onDisconnect), so no extra handler needed here.
 
   ui.form.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearError(ui);
 
-    // Defense-in-depth against re-submission once a login is in flight.
-    // The UI also disables the form (see updateState) for any non-
-    // `disconnected` state, but a programmatic form.dispatchEvent('submit')
-    // bypasses the disabled button. If we let a second login through,
-    // GameClient.login would open a fresh WebSocket on top of the existing
-    // loginConn without closing the old one, and the old socket's onclose
-    // would later null shared state out from under the new session.
     if (client.getState() !== 'disconnected') return;
 
-    const account = Number(ui.accountInput.value);
-    const password = ui.passwordInput.value;
-    // The wire format serialises the account number as a U32. Anything
-    // that's not a positive integer in [1, 4_294_967_295] either silently
-    // truncates (fractions, values > 2^32) or wraps around when serialised,
-    // which would land the user on a different account than the one they
-    // typed — without raising any obvious error. Validate at the form
-    // boundary so the wire only ever sees in-range values.
-    const ACCOUNT_MAX = 0xffffffff; // 2^32 - 1
-    if (!Number.isInteger(account) || account <= 0 || account > ACCOUNT_MAX) {
-      // A malformed auto-login config dies here without any state change
-      // or error event — disarm so it can't hijack a later manual login.
-      autoPickCharacter = false;
-      showError(ui, `Account must be a positive integer between 1 and ${ACCOUNT_MAX}.`);
+    const parsedAccount = parseLoginAccount(ui.accountInput.value);
+    if (!parsedAccount.ok) {
+      disarmAutoCharacterPick();
+      showError(ui, parsedAccount.message);
       return;
     }
+
+    const password = ui.passwordInput.value;
     try {
-      await client.login(account, password);
+      await client.login(parsedAccount.account, password);
     } catch (err) {
-      autoPickCharacter = false;
+      disarmAutoCharacterPick();
       showError(ui, (err as Error).message);
     }
   });
@@ -171,8 +162,6 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   if (opts.autoLogin) {
     ui.accountInput.value = String(opts.autoLogin.account);
     ui.passwordInput.value = opts.autoLogin.password;
-    // Through the real submit path so validation, error display, and the
-    // in-flight guard all behave exactly as a manual login would.
     ui.form.dispatchEvent(new Event('submit', { cancelable: true }));
   }
 
@@ -185,8 +174,6 @@ export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): Mo
   };
 }
 
-// ─── DOM helpers ───────────────────────────────────────────────────────────
-
 interface UiHandles {
   container: HTMLElement;
   form: HTMLFormElement;
@@ -198,7 +185,7 @@ interface UiHandles {
   characterListEl: HTMLElement;
 }
 
-function createDom(): UiHandles {
+function createLoginScreenUi(): UiHandles {
   const container = document.createElement('div');
   container.className = 'jamera-login';
   container.innerHTML = templateHtml;
@@ -223,54 +210,34 @@ const STATE_LABELS: Record<GameClientState, string> = {
   in_game: 'In game.',
 };
 
-function updateState(ui: UiHandles, state: GameClientState): void {
+function applyClientStateToLoginScreen(ui: UiHandles, state: GameClientState): void {
   ui.statusEl.textContent = STATE_LABELS[state];
   ui.statusEl.classList.toggle('error', state === 'disconnected');
 
-  // Hide the login overlay once we're actually `in_game` so the PIXI
-  // canvas below becomes visible. Without this the overlay's solid
-  // background covers the canvas even while the renderer is painting.
-  // Any other state re-shows it (e.g., `disconnected` after a kick, or
-  // `character_list` on retry).
   ui.container.hidden = state === 'in_game';
 
-  // Disable the account/password form for every state past `disconnected`.
-  // Leaving it enabled on `character_list` would let a second submit
-  // open a fresh `loginConn` WebSocket on top of the existing one (the
-  // old socket's `onclose` would then null out the new session's state),
-  // and there's nothing for the user to re-submit after `character_list`
-  // — they pick a character from the list, they don't re-log-in.
-  const formDisabled = state !== 'disconnected';
-  ui.accountInput.disabled = formDisabled;
-  ui.passwordInput.disabled = formDisabled;
-  ui.loginButton.disabled = formDisabled;
+  setLoginFormDisabled(ui, state !== 'disconnected');
+  setCharacterSelectionDisabled(ui, state === 'entering_game' || state === 'in_game');
 
-  // Disable character-selection buttons once a selection is in flight so
-  // a double-click (or two different characters clicked in quick
-  // succession) can't kick off overlapping `selectCharacter` calls that
-  // race state transitions and disconnect handlers.
-  const selectionInFlight = state === 'entering_game' || state === 'in_game';
-  for (const btn of ui.characterListEl.querySelectorAll('button')) {
-    (btn as HTMLButtonElement).disabled = selectionInFlight;
-  }
-
-  // Hide the stale character list when we drop back to the pre-character
-  // states — keeping it visible would suggest selection is still possible.
   if (state === 'disconnected' || state === 'logging_in') {
     ui.characterListEl.hidden = true;
   }
 }
 
-/**
- * Re-enable character selection after a failed attempt (waitForReady
- * rejection or selectCharacter error) so the player can retry without a
- * full re-login. State-driven disabling in updateState still applies on
- * the next transition.
- */
-function enableCharacterButtons(ui: UiHandles): void {
+function setLoginFormDisabled(ui: UiHandles, disabled: boolean): void {
+  ui.accountInput.disabled = disabled;
+  ui.passwordInput.disabled = disabled;
+  ui.loginButton.disabled = disabled;
+}
+
+function setCharacterSelectionDisabled(ui: UiHandles, disabled: boolean): void {
   for (const btn of ui.characterListEl.querySelectorAll('button')) {
-    (btn as HTMLButtonElement).disabled = false;
+    (btn as HTMLButtonElement).disabled = disabled;
   }
+}
+
+function clickFirstCharacterButton(ui: UiHandles): void {
+  ui.characterListEl.querySelector('button')?.click();
 }
 
 function showError(ui: UiHandles, message: string): void {
@@ -313,6 +280,5 @@ function renderCharacterList(
     ui.characterListEl.appendChild(premium);
   }
 
-  // Surface count for tests + a11y screen readers.
   ui.characterListEl.setAttribute('data-character-count', String(characters.length));
 }

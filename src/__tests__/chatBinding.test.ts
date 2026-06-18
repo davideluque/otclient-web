@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bindChat } from '../lib/jamera/chatBinding';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
+import { registerWireSkips } from '../lib/net/7.6/wireSkips';
 import { PacketDispatcher } from '../lib/net/common/PacketDispatcher';
 import { InputPacket } from '../lib/net/common/InputPacket';
 import { OutputPacket } from '../lib/net/common/OutputPacket';
@@ -51,6 +52,31 @@ describe('bindChat', () => {
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
     expect(document.querySelector('#chat-messages')!.textContent).toContain('Welcome to Jamera!');
+  });
+
+  it('keeps messages for channels opened by the server', () => {
+    const { client, dispatcher } = makeClient();
+    registerWireSkips(dispatcher, client.getProtocol());
+    const binding = bindChat(client);
+
+    const out = new OutputPacket();
+    out.addU8(0xac); // ChannelOpen
+    out.addU16(4);
+    out.addString('Server Events');
+    out.addU8(0xaa); // CreatureSpeak
+    out.addString('Jamera');
+    out.addU8(0x05); // Channel
+    out.addU16(4);
+    out.addString('Server restart in five minutes');
+    dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(binding.manager.getChannel(4)?.messages[0].text).toBe('Server restart in five minutes');
+    const serverEventsTab = [...document.querySelectorAll('#chat-tabs button')]
+      .find((button) => button.textContent === 'Server Events') as HTMLButtonElement | undefined;
+    expect(serverEventsTab).toBeDefined();
+
+    serverEventsTab!.click();
+    expect(document.querySelector('#chat-messages')!.textContent).toContain('Server restart in five minutes');
   });
 
   it('sends typed messages through the client', () => {

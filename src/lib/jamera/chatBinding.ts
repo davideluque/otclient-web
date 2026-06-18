@@ -7,9 +7,10 @@ import { MessageType } from '../net/common/types';
 /**
  * Wires the chat stack to a live game session: server speak packets
  * (0xAA) land in the ChatManager, server text messages (0xB4 — login
- * MOTD, status lines) land in the default channel as "Server", and the
- * input box sends through the client. Registered after registerWireSkips
- * so these handlers override the discard consumers per opcode.
+ * MOTD, status lines) land in the default channel as "Server", channel
+ * open/close packets keep tabs in sync, and the input box sends through
+ * the client. Registered after registerWireSkips so these handlers
+ * override the discard consumers per opcode.
  *
  * On coarse-pointer devices the panel starts collapsed — a 40vh chat
  * overlay on a phone would bury the joystick. Reopening goes through
@@ -63,6 +64,13 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
   dispatcher.on(op.CreatureSpeak, (p) => {
     manager.handleMessage(protocol.chat.parseSpeak(p));
   });
+  dispatcher.on(op.ChannelOpen, (p) => {
+    const channel = protocol.chat.parseChannelOpen(p);
+    manager.addChannel(channel.id, channel.name);
+  });
+  dispatcher.on(op.ChannelClose, (p) => {
+    manager.removeChannel(protocol.chat.parseChannelClose(p));
+  });
   dispatcher.on(op.TextMessage, (p) => {
     p.skip(1); // message class — styling can use it later
     manager.handleMessage({
@@ -87,6 +95,8 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
     fullView,
     destroy: () => {
       dispatcher.off(op.CreatureSpeak);
+      dispatcher.off(op.ChannelOpen);
+      dispatcher.off(op.ChannelClose);
       dispatcher.off(op.TextMessage);
       fullView.destroy();
       chatUi.destroy();

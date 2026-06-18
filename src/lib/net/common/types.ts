@@ -129,6 +129,11 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface ChatChannelInfo {
+  id: number;
+  name: string;
+}
+
 // Well-known chat constants matching OT 7.6 wire codes. These are
 // pragmatically shared across most OT versions; if a future version's wire
 // codes diverge, expose per-version values on `GameProtocol.chat` instead of
@@ -350,6 +355,8 @@ export interface MovementProtocol {
 
 export interface ChatProtocol {
   parseSpeak(packet: InputPacket): ChatMessage;
+  parseChannelOpen(packet: InputPacket): ChatChannelInfo;
+  parseChannelClose(packet: InputPacket): number;
   buildSay(text: string): OutputPacket;
   buildChannelMessage(channelId: number, text: string): OutputPacket;
   buildPrivateMessage(recipientName: string, text: string): OutputPacket;

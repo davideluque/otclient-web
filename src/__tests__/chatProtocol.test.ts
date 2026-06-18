@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseCreatureSpeak,
+  parseChannelOpen,
+  parseChannelClose,
   buildSayPacket,
   buildChannelMessagePacket,
   buildPrivateMessagePacket,
@@ -66,6 +68,26 @@ describe('parseCreatureSpeak', () => {
     expect(msg.messageType).toBe(MessageType.MonsterYell);
     expect(msg.text).toBe('GRRR!');
     expect(msg.position).toBeDefined();
+  });
+});
+
+describe('channel metadata packets', () => {
+  it('parses a server-opened channel', () => {
+    const out = new OutputPacket();
+    out.addU16(4);
+    out.addString('Game Chat');
+
+    expect(parseChannelOpen(new InputPacket(out.toArrayBuffer()))).toEqual({
+      id: 4,
+      name: 'Game Chat',
+    });
+  });
+
+  it('parses a server-closed channel id', () => {
+    const out = new OutputPacket();
+    out.addU16(4);
+
+    expect(parseChannelClose(new InputPacket(out.toArrayBuffer()))).toBe(4);
   });
 });
 

@@ -20,13 +20,13 @@
     "@types/ws": "^8.18.1",
     "eslint": "^10.5.0",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.10.3",
+    "happy-dom": "^20.10.6",
     "jsdom": "^29.1.1",
     "tsx": "^4.22.4",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.61.1",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8",
+    "vitest": "^4.1.9",
     "wrangler": "^4.103.0"
   },
   "dependencies": {

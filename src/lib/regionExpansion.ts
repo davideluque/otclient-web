@@ -2,7 +2,7 @@ import type { ViewRect } from './viewport';
 import type { Bounds } from './tileMap';
 import type { OtbmRegion } from './otbm';
 
-const EXPANSION_RADIUS = 100;
+const DEFAULT_EXPANSION_RADIUS = 100;
 const VIEWPORT_EDGE_PRIORITY = ['west', 'east', 'north', 'south'] as const;
 type ViewportEdge = typeof VIEWPORT_EDGE_PRIORITY[number];
 
@@ -57,13 +57,13 @@ function expansionRegionBeyondEdge(edge: ViewportEdge, bounds: Bounds, visible: 
 
   switch (edge) {
     case 'west':
-      return expansionRegion(bounds.minX - EXPANSION_RADIUS, visibleCenterY, z);
+      return expansionRegion(bounds.minX - DEFAULT_EXPANSION_RADIUS, visibleCenterY, z);
     case 'east':
-      return expansionRegion(bounds.maxX + EXPANSION_RADIUS, visibleCenterY, z);
+      return expansionRegion(bounds.maxX + DEFAULT_EXPANSION_RADIUS, visibleCenterY, z);
     case 'north':
-      return expansionRegion(visibleCenterX, bounds.minY - EXPANSION_RADIUS, z);
+      return expansionRegion(visibleCenterX, bounds.minY - DEFAULT_EXPANSION_RADIUS, z);
     case 'south':
-      return expansionRegion(visibleCenterX, bounds.maxY + EXPANSION_RADIUS, z);
+      return expansionRegion(visibleCenterX, bounds.maxY + DEFAULT_EXPANSION_RADIUS, z);
   }
 }
 
@@ -72,10 +72,9 @@ function midpoint(a: number, b: number): number {
 }
 
 function expansionRegion(centerX: number, centerY: number, z: number): OtbmRegion {
-  return { centerX, centerY, radius: EXPANSION_RADIUS, z };
+  return { centerX, centerY, radius: DEFAULT_EXPANSION_RADIUS, z };
 }
 
-const MIN_EXPANSION_RADIUS = 100;
 const MAX_EXPANSION_RADIUS = 500;
 
 /**
@@ -139,7 +138,7 @@ function expansionRadiusBetween(edgePoint: Point, destination: Point): number {
     Math.abs(destination.y - edgePoint.y),
   ) / 2;
   // +50 buffer so one parse overshoots the gap rather than needing several.
-  return clamp(Math.floor(halfDist) + 50, MIN_EXPANSION_RADIUS, MAX_EXPANSION_RADIUS);
+  return clamp(Math.floor(halfDist) + 50, DEFAULT_EXPANSION_RADIUS, MAX_EXPANSION_RADIUS);
 }
 
 function warnIfRegionMissesDestination(region: OtbmRegion, destination: Point): void {

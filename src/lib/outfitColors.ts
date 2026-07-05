@@ -38,7 +38,9 @@ export function outfitIndexToRgb(index: number): OutfitRGB {
 
   if (i % HSI_H_STEPS !== 0) {
     hue = (i % HSI_H_STEPS) * (1 / 18);
-    [saturation, intensity] = HSI_COLOR_BANDS[Math.floor(i / HSI_H_STEPS)];
+    // ?? keeps the old switch's default arm: a NaN index sails through the
+    // range clamp (NaN comparisons are false) and must not crash the lookup.
+    [saturation, intensity] = HSI_COLOR_BANDS[Math.floor(i / HSI_H_STEPS)] ?? [1, 1];
   } else {
     hue = 0;
     saturation = 0;

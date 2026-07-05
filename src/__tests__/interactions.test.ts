@@ -183,7 +183,7 @@ describe('long-press pointer tracking', () => {
     canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 400, clientY: 300, bubbles: true }));
 
     expect(sent).toHaveLength(1);
-    expect(sent[0].at(-1)).toBe(0);
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 0, 0]);
     handle.destroy();
   });
 

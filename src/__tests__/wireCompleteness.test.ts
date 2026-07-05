@@ -540,3 +540,58 @@ describe('GameWorld lighting packets', () => {
     expect(w.getCreature(777)?.lightColor).toBe(0xd1);
   });
 });
+
+describe('GameWorld CancelWalk (0xB5)', () => {
+  const protocol = new GameProtocol();
+
+  function seededWorld(): GameWorld {
+    const w = new GameWorld(protocol);
+    w.playerCreatureId = 7;
+    w.playerX = 100; w.playerY = 200; w.playerZ = 7;
+    // @ts-expect-error driving private registry for the test
+    w.creatures.set(7, {
+      id: 7, name: 'me', x: 100, y: 200, z: 7, direction: 2, health: 100,
+      speed: 220, outfit: { lookType: 128, head: 0, body: 0, legs: 0, feet: 0 },
+      lightLevel: 0, lightColor: 0,
+    });
+    return w;
+  }
+
+  it('overrides the wire skip: snaps the player facing and notifies onCancelWalk', () => {
+    const w = seededWorld();
+    const d = new PacketDispatcher();
+    registerWireSkips(d, protocol); // production order — skips first
+    w.registerHandlers(d);
+    const cancels: number[] = [];
+    w.onCancelWalk = (dir) => cancels.push(dir);
+    const c0 = w.creatureRevision;
+
+    const out = new OutputPacket();
+    out.addU8(0xb5);
+    out.addU8(3); // west
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(w.getCreature(7)?.direction).toBe(3);
+    expect(cancels).toEqual([3]);
+    expect(w.creatureRevision).toBeGreaterThan(c0);
+  });
+
+  it('consumes exactly one byte — packets batched behind it still parse', () => {
+    const w = seededWorld();
+    const d = new PacketDispatcher();
+    w.registerHandlers(d);
+    // @ts-expect-error driving private registry for the test
+    w.creatures.set(9, {
+      id: 9, name: 'Rat', x: 1, y: 1, z: 7, direction: 0, health: 80,
+      speed: 180, outfit: { lookType: 21, head: 0, body: 0, legs: 0, feet: 0 },
+    });
+
+    const out = new OutputPacket();
+    out.addU8(0xb5); out.addU8(1); // face east
+    out.addU8(0x8c); out.addU32(9); out.addU8(35); // health update in the same frame
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(w.getCreature(7)?.direction).toBe(1);
+    expect(w.getCreature(9)?.health).toBe(35);
+  });
+});

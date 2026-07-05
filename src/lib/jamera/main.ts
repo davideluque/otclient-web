@@ -179,6 +179,8 @@ mountLoginScreen(root, {
       renderThumb: (id) => jameraAtlas
         ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
         : null,
+      // Drop target: the tile under the player, read at selection time.
+      playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();

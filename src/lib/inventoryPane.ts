@@ -58,7 +58,7 @@ function ensureStyles(): void {
       display: flex; align-items: center; justify-content: center;
       color: #888; font-size: 0.6rem; text-align: center;
     }
-    .inventory-pane .slot.filled { border-color: #9a9a9a; color: #e0e0e0; }
+    .inventory-pane .slot.filled { border-color: #9a9a9a; color: #e0e0e0; cursor: pointer; }
     .inventory-pane .slot .count {
       position: absolute; right: 2px; bottom: 1px;
       font-size: 0.6rem; color: #fff; text-shadow: 0 1px 1px #000;
@@ -74,6 +74,11 @@ export interface InventoryPaneOptions {
    * behavior when the option is absent (gallery, pre-asset mounts).
    */
   renderThumb?: (itemId: number) => HTMLCanvasElement | null;
+  /**
+   * Tap on a filled slot. `wireSlot` is the 1-based creature.h value
+   * (1 head … 10 ammo); `count` is present when the slot holds a stack.
+   */
+  onSlotTap?: (wireSlot: number, itemId: number, count?: number) => void;
 }
 
 export function createInventoryPane(
@@ -85,7 +90,8 @@ export function createInventoryPane(
   const el = document.createElement('div');
   el.className = 'inventory-pane';
 
-  const slots = new Map<InventorySlotName, { cell: HTMLElement; label: HTMLElement; count: HTMLElement }>();
+  interface SlotState { cell: HTMLElement; label: HTMLElement; count: HTMLElement; itemId: number | null; itemCount?: number }
+  const slots = new Map<InventorySlotName, SlotState>();
   for (const name of INVENTORY_SLOTS) {
     const [col, row] = SLOT_GRID[name];
     const cell = document.createElement('div');
@@ -99,7 +105,12 @@ export function createInventoryPane(
     count.className = 'count';
     cell.append(label, count);
     el.appendChild(cell);
-    slots.set(name, { cell, label, count });
+    const state: SlotState = { cell, label, count, itemId: null };
+    const wireSlot = INVENTORY_SLOTS.indexOf(name) + 1;
+    cell.addEventListener('click', () => {
+      if (state.itemId !== null) opts.onSlotTap?.(wireSlot, state.itemId, state.itemCount);
+    });
+    slots.set(name, state);
   }
   parent.appendChild(el);
 
@@ -108,6 +119,8 @@ export function createInventoryPane(
     setSlot: (slot, itemId, count) => {
       const s = slots.get(slot);
       if (!s) return;
+      s.itemId = itemId;
+      s.itemCount = count;
       s.cell.querySelector('canvas')?.remove();
       if (itemId === null) {
         s.cell.classList.remove('filled');

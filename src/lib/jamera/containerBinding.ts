@@ -1,6 +1,9 @@
 import type { GameClient } from '../net/common/GameClient';
+import type { WirePosition } from '../net/common/types';
+import { containerSlotPosition, inventorySlotPosition, PLAYER_BACKPACK_SLOT } from '../net/common/virtualPosition';
 import { ContainerManager } from '../containers';
 import { createContainerPane, type ContainerPaneHandle, type ContainerPaneOptions } from '../containerPane';
+import { showActionSheet, type ActionSheetHandle, type ActionSheetAction } from '../actionSheet';
 
 export interface ContainerBindingHandle {
   readonly manager: ContainerManager;
@@ -9,14 +12,21 @@ export interface ContainerBindingHandle {
 
 export interface ContainerBindingOptions {
   renderThumb?: ContainerPaneOptions['renderThumb'];
+  /**
+   * Live player position, read when Drop is selected (the drop target
+   * is the tile under the player). Absent (tests, pre-world mounts)
+   * the sheet simply omits Drop.
+   */
+  playerPosition?: () => WirePosition;
 }
 
 /**
  * Routes the five server container packets (0x6E–0x72) into a
  * ContainerManager. Registered after registerWireSkips so these handlers
  * override the discard consumers per opcode. With a `parent`, a container
- * pane renders the manager and its taps send ✕ 0x87 / ⬆ 0x88 / look 0x8C;
- * without one the binding stays wire → state only (node-env tests).
+ * pane renders the manager: ✕ sends 0x87, ⬆ sends 0x88, and tapping an
+ * item opens a Loot / Look / Drop action sheet; without one the binding
+ * stays wire → state only (node-env tests).
  */
 export function bindContainers(
   client: GameClient,
@@ -30,6 +40,7 @@ export function bindContainers(
 
   let pane: ContainerPaneHandle | null = null;
   let unsubscribe: (() => void) | null = null;
+  let sheet: ActionSheetHandle | null = null;
   if (parent) {
     const send = (packet: Parameters<GameClient['send']>[0]): void => {
       try {
@@ -42,11 +53,37 @@ export function bindContainers(
       renderThumb: opts.renderThumb,
       onClose: (cid) => send(protocol.containers.buildClose(cid)),
       onUp: (cid) => send(protocol.containers.buildUp(cid)),
-      // 7.6 addresses a container slot through the virtual position
-      // x=0xFFFF, y=0x40|cid, z=slot (game.cpp internalGetThing); the
-      // 0xB4 "You see …" answer already lands in the chat channel.
-      onItemTap: (cid, slot, item) =>
-        send(protocol.actions.buildLookAt({ x: 0xffff, y: 0x40 | cid, z: slot }, item.id, slot)),
+      onItemTap: (cid, slot, item) => {
+        const from = containerSlotPosition(cid, slot);
+        const count = item.count ?? 1;
+        const actions: ActionSheetAction[] = [
+          {
+            // The move target is the backpack *equipment slot*: with a
+            // backpack equipped the server's queryDestination forwards
+            // the item into that backpack, which is what looting means.
+            label: 'Loot',
+            onSelect: () => send(protocol.actions.buildMoveThing(
+              from, item.id, slot, inventorySlotPosition(PLAYER_BACKPACK_SLOT), count,
+            )),
+          },
+          {
+            // The 0xB4 "You see …" answer already lands in the chat channel.
+            label: 'Look',
+            onSelect: () => send(protocol.actions.buildLookAt(from, item.id, slot)),
+          },
+        ];
+        const playerPosition = opts.playerPosition;
+        if (playerPosition) {
+          actions.push({
+            label: 'Drop',
+            onSelect: () => send(protocol.actions.buildMoveThing(
+              from, item.id, slot, playerPosition(), count,
+            )),
+          });
+        }
+        sheet?.close();
+        sheet = showActionSheet({ title: `#${item.id}`, actions, parent });
+      },
     });
     unsubscribe = manager.subscribe(() => pane?.update(manager.list));
   }
@@ -81,6 +118,7 @@ export function bindContainers(
       // The handle exposes `manager` — dropping the subscription keeps a
       // retained manager from pinning the destroyed pane's DOM.
       unsubscribe?.();
+      sheet?.close();
       pane?.destroy();
       manager.clear();
     },

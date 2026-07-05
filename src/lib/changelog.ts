@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-17', text: 'Dying shows a proper death screen with a Continue button instead of silently dumping you to the login form.' },
   { date: '2026-06-11', text: 'Speech looks like Tibia now: yellow "Name says:" text above your head (orange for monsters), spam-casting stacks the lines upward, and longer texts stay longer.' },
   { date: '2026-06-11', text: 'Night is dark again: the world follows the server\'s day/night light, torches and fire fields glow, and your character carries their own light.' },
   { date: '2026-06-11', text: 'Settings → Brightness: 0% follows the server\'s darkness fully (classic Tibia), 100% ignores it — pick what your eyes want.' },

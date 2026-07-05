@@ -79,6 +79,50 @@ describe('bindChat', () => {
     expect(document.querySelector('#chat-messages')!.textContent).toContain('Server restart in five minutes');
   });
 
+  it('fires onDeathMessage for a class 0x13 "You are dead." and still shows it in chat', () => {
+    const { client, dispatcher } = makeClient();
+    const onDeathMessage = vi.fn();
+    bindChat(client, document.body, { onDeathMessage });
+
+    const out = new OutputPacket();
+    out.addU8(0xb4);
+    out.addU8(0x13); // MSG_EVENT_ADVANCE — Jamera's death signal
+    out.addString('You are dead.');
+    dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(onDeathMessage).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('#chat-messages')!.textContent).toContain('You are dead.');
+  });
+
+  it('does not fire onDeathMessage for class 0x13 with different text', () => {
+    const { client, dispatcher } = makeClient();
+    const onDeathMessage = vi.fn();
+    bindChat(client, document.body, { onDeathMessage });
+
+    const out = new OutputPacket();
+    out.addU8(0xb4);
+    out.addU8(0x13);
+    out.addString('You advanced in sword fighting.');
+    dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(onDeathMessage).not.toHaveBeenCalled();
+    expect(document.querySelector('#chat-messages')!.textContent).toContain('You advanced in sword fighting.');
+  });
+
+  it('does not fire onDeathMessage for the same text in a different class', () => {
+    const { client, dispatcher } = makeClient();
+    const onDeathMessage = vi.fn();
+    bindChat(client, document.body, { onDeathMessage });
+
+    const out = new OutputPacket();
+    out.addU8(0xb4);
+    out.addU8(0x11);
+    out.addString('You are dead.');
+    dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
+
+    expect(onDeathMessage).not.toHaveBeenCalled();
+  });
+
   it('sends typed messages through the client', () => {
     const { client, sent } = makeClient();
     bindChat(client);

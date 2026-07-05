@@ -24,7 +24,26 @@ export interface ChatBindingHandle {
   destroy(): void;
 }
 
-export function bindChat(client: GameClient, parent: HTMLElement = document.body): ChatBindingHandle {
+export interface ChatBindingOptions {
+  /**
+   * Fired when the server's death announcement lands — a 0xB4 of class
+   * MSG_EVENT_ADVANCE with the exact text "You are dead." (game.cpp:3941).
+   * Jamera signals death this way because its ReloginWindow (0x28) call
+   * site is commented out server-side (player.cpp:3398). Hooked here
+   * instead of a second 0xB4 dispatcher handler: PacketDispatcher.on is
+   * last-write-wins, so a separate handler would silence chat.
+   */
+  onDeathMessage?: () => void;
+}
+
+/** 7.6 TextMessage class for advance/event lines (enums.h MSG_EVENT_ADVANCE). */
+const MSG_EVENT_ADVANCE = 0x13;
+
+export function bindChat(
+  client: GameClient,
+  parent: HTMLElement = document.body,
+  opts: ChatBindingOptions = {},
+): ChatBindingHandle {
   const protocol = client.getProtocol();
   const manager = new ChatManager();
 
@@ -72,11 +91,16 @@ export function bindChat(client: GameClient, parent: HTMLElement = document.body
     manager.removeChannel(protocol.chat.parseChannelClose(p));
   });
   dispatcher.on(op.TextMessage, (p) => {
-    p.skip(1); // message class — styling can use it later
+    const messageClass = p.getU8(); // styling can use it later
+    const text = p.getString();
+    if (messageClass === MSG_EVENT_ADVANCE && text === 'You are dead.') {
+      opts.onDeathMessage?.();
+    }
+    // The death line still flows to chat — it's part of the log too.
     manager.handleMessage({
       senderName: 'Server',
       messageType: MessageType.Say,
-      text: p.getString(),
+      text,
       timestamp: Date.now(),
     });
   });

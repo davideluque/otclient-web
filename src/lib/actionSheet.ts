@@ -66,7 +66,16 @@ export function showActionSheet(opts: ActionSheetOptions): ActionSheetHandle {
   sheet.className = 'action-sheet';
   backdrop.appendChild(sheet);
 
-  const close = (): void => backdrop.remove();
+  // Escape closes too — matching the other overlays. The sheet is
+  // one-shot, so the listener only lives while it is on screen.
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+  const close = (): void => {
+    document.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+  };
+  document.addEventListener('keydown', onKeyDown);
 
   if (opts.title) {
     const title = document.createElement('div');

@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-17', text: 'Dying shows a proper death screen with a Continue button instead of silently dumping you to the login form.' },
   { date: '2026-06-17', text: 'Opening a second bag no longer replaces the first window — containers open side by side.' },
   { date: '2026-06-17', text: 'Corpses and bags open now: double-tap a container to see its contents — tap an item to look at it, ⬆ goes back up, ✕ closes the window.' },
   { date: '2026-06-17', text: 'Walking into something impassable now stops instantly instead of stuttering against it.' },

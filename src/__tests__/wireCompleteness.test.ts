@@ -129,6 +129,26 @@ describe('registerWireSkips frame integrity', () => {
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
     expect(sentinelReached).toBe(true);
   });
+
+  it('a real ReloginWindow handler overrides the skip and the frame still parses fully', () => {
+    // The death-flow binding registers its own 0x28 handler after
+    // registerWireSkips (last-write-wins). Opcode-only payload: the
+    // trailing opcode in the same frame must still dispatch.
+    const dispatcher = new PacketDispatcher();
+    registerWireSkips(dispatcher, protocol);
+    let deathSignaled = false;
+    dispatcher.on(op.ReloginWindow, () => { deathSignaled = true; });
+    let sentinelReached = false;
+    dispatcher.on(SENTINEL, () => { sentinelReached = true; });
+
+    const out = new OutputPacket();
+    out.addU8(op.ReloginWindow);
+    out.addU8(SENTINEL);
+
+    dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
+    expect(deathSignaled).toBe(true);
+    expect(sentinelReached).toBe(true);
+  });
 });
 
 describe('GameWorld tile operations', () => {

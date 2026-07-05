@@ -10,6 +10,7 @@ import type {
   MovementProtocol,
   PlayerProtocol,
   ActionsProtocol,
+  EffectsProtocol,
 } from '../common/types';
 import {
   buildLoginPacket,
@@ -39,6 +40,12 @@ import {
   buildWhisperPacket,
   buildYellPacket,
 } from './chatProtocol';
+import {
+  parseMagicEffect,
+  parseAnimatedText,
+  parseDistanceShot,
+  parseCreatureSquare,
+} from './effectsProtocol';
 import { ServerOp, ClientOp } from './opcodes';
 
 /**
@@ -72,6 +79,7 @@ export class GameProtocol implements GameProtocolSpec {
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
+  readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
 
@@ -137,6 +145,13 @@ export class GameProtocol implements GameProtocolSpec {
       buildAddVip: buildAddVipPacket,
       buildRemoveVip: buildRemoveVipPacket,
       buildAttack: buildAttackPacket,
+    };
+
+    this.effects = {
+      parseMagicEffect,
+      parseAnimatedText,
+      parseDistanceShot,
+      parseCreatureSquare,
     };
 
     this.chat = {

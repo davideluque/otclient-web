@@ -140,8 +140,8 @@ describe('collectReferencedSpriteIds', () => {
     };
   }
 
-  // Items and creatures exercise the same invariant: every non-zero
-  // sprite ID in the dat lands in the set, regardless of map content.
+  // All four .dat categories exercise the same invariant: every
+  // non-zero sprite ID lands in the set, regardless of map content.
   it.each([
     {
       kind: 'items',
@@ -167,6 +167,30 @@ describe('collectReferencedSpriteIds', () => {
         effects: [], missiles: [],
       } satisfies DatFile,
       expected: new Set([50, 51, 52, 53, 99]),
+    },
+    {
+      kind: 'effects',
+      dat: {
+        signature: 0, itemCount: 100, creatureCount: 0, effectCount: 2, missileCount: 0,
+        items: [], creatures: [],
+        effects: [
+          thing(1, ThingCategory.Effect, [70, 71, 72]),
+          thing(2, ThingCategory.Effect, [0, 80]), // sprite 0 = blank, excluded
+        ],
+        missiles: [],
+      } satisfies DatFile,
+      expected: new Set([70, 71, 72, 80]),
+    },
+    {
+      kind: 'missiles',
+      dat: {
+        signature: 0, itemCount: 100, creatureCount: 0, effectCount: 0, missileCount: 1,
+        items: [], creatures: [], effects: [],
+        missiles: [
+          thing(1, ThingCategory.Missile, [90, 91]),
+        ],
+      } satisfies DatFile,
+      expected: new Set([90, 91]),
     },
   ])('collects every non-zero sprite ID from $kind', ({ dat, expected }) => {
     expect(collectReferencedSpriteIds(dat)).toEqual(expected);

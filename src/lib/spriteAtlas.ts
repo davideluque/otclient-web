@@ -18,9 +18,9 @@ import {
 
 /**
  * Build-once-per-page texture atlas the live renderer reads from. Parses
- * .dat + .spr, decodes every referenced item/creature sprite into atlas
- * pages, uploads them as PixiJS textures, and exposes a sprite-ID → Texture
- * getter. No rendering happens here.
+ * .dat + .spr, decodes every referenced sprite (items, creatures,
+ * effects, missiles) into atlas pages, uploads them as PixiJS textures,
+ * and exposes a sprite-ID → Texture getter. No rendering happens here.
  *
  * `.get()` memoises slices internally so callers can use it as a plain
  * lookup without worrying about per-call `Texture` / `Rectangle`
@@ -43,6 +43,19 @@ export interface SpriteAtlas {
   atlasPages: AtlasPages;
   /** lookType → creature ThingType, for rendering creatures/players. */
   creatureIndex: Map<number, ThingType>;
+  /** 1-based effect id (the 0x83 wire byte) → effect ThingType. */
+  effectIndex: Map<number, ThingType>;
+  /** 1-based missile id (the 0x85 wire byte) → missile ThingType. */
+  missileIndex: Map<number, ThingType>;
+}
+
+/** O(1) id → ThingType lookup, same shape as buildCreatureIndex. */
+function buildThingIndex(things: ThingType[]): Map<number, ThingType> {
+  const index = new Map<number, ThingType>();
+  for (const thing of things) {
+    index.set(thing.id, thing);
+  }
+  return index;
 }
 
 export function buildSpriteAtlas(datBuffer: ArrayBuffer, sprBuffer: ArrayBuffer): SpriteAtlas {
@@ -57,6 +70,8 @@ export function buildSpriteAtlas(datBuffer: ArrayBuffer, sprBuffer: ArrayBuffer)
   const layout = computeAtlasLayout(spr.spriteCount, referencedSpriteIds);
   const datIndex = buildDatIndex(dat);
   const creatureIndex = buildCreatureIndex(dat);
+  const effectIndex = buildThingIndex(dat.effects);
+  const missileIndex = buildThingIndex(dat.missiles);
   const textureCache = new Map<number, Texture | null>();
 
   return {
@@ -66,6 +81,8 @@ export function buildSpriteAtlas(datBuffer: ArrayBuffer, sprBuffer: ArrayBuffer)
     dat,
     atlasPages,
     creatureIndex,
+    effectIndex,
+    missileIndex,
     get(spriteId) {
       const cached = textureCache.get(spriteId);
       if (cached !== undefined) return cached;

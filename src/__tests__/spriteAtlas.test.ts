@@ -31,6 +31,21 @@ function buildDat(): ArrayBuffer {
   return new Uint8Array(bytes).buffer;
 }
 
+/** 1 item (sprite 1) + 1 effect (sprite 2) + 1 missile (sprite 3). */
+function buildDatWithEffects(): ArrayBuffer {
+  const bytes: number[] = [];
+  pushU32(bytes, 0xdeadbeef); // signature
+  pushU16(bytes, ITEM_ID_OFFSET);
+  pushU16(bytes, 0); // creatures
+  pushU16(bytes, 1); // effects
+  pushU16(bytes, 1); // missiles
+  for (const spriteId of [1, 2, 3]) {
+    bytes.push(DatAttr.Last);
+    bytes.push(...minimalFrameGroup(spriteId));
+  }
+  return new Uint8Array(bytes).buffer;
+}
+
 /** .spr with N single-red-pixel sprites. */
 function buildSpr(count: number): ArrayBuffer {
   const bytes: number[] = [];
@@ -75,6 +90,15 @@ describe('buildSpriteAtlas', () => {
     expect(tex).not.toBeNull();
     expect(tex?.frame.width).toBe(32);
     expect(tex?.frame.height).toBe(32);
+  });
+
+  it('indexes effects and missiles by their 1-based ids, with sprites in the atlas', () => {
+    const atlas = buildSpriteAtlas(buildDatWithEffects(), buildSpr(3));
+    expect(atlas.effectIndex.get(1)?.frameGroup.spriteIds).toEqual([2]);
+    expect(atlas.missileIndex.get(1)?.frameGroup.spriteIds).toEqual([3]);
+    // Their sprites are collected into the atlas, not just indexed.
+    expect(atlas.get(2)).not.toBeNull();
+    expect(atlas.get(3)).not.toBeNull();
   });
 
   it('returns null for unknown sprite IDs', () => {

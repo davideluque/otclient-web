@@ -21,7 +21,7 @@ import {
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
 import { buildMovePacket, buildAutoWalkPacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
-import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket, buildMoveThingPacket } from './actionsProtocol';
+import { buildLookAtPacket, buildUseItemPacket, buildUseItemWithPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket, buildMoveThingPacket } from './actionsProtocol';
 import {
   parseContainerOpen,
   parseContainerClose,
@@ -143,6 +143,7 @@ export class GameProtocol implements GameProtocolSpec {
     this.actions = {
       buildLookAt: buildLookAtPacket,
       buildUseItem: buildUseItemPacket,
+      buildUseItemWith: buildUseItemWithPacket,
       buildLogout: buildLogoutPacket,
       buildFightModes: buildFightModesPacket,
       buildAddVip: buildAddVipPacket,

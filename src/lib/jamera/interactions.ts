@@ -5,6 +5,7 @@ import type { GameWorld } from '../GameWorld';
 import type { ThingType } from '../dat';
 import { findWalkRoute } from './autowalk';
 import { TILE_SIZE } from '../../constants';
+import { font, radius, space, surface, zIndex } from '../ui/tokens';
 
 /**
  * World-interaction input on the game canvas:
@@ -21,9 +22,25 @@ import { TILE_SIZE } from '../../constants';
  * resolves the top item. The server resolves the thing by position+stackpos,
  * and that stackpos indexes the full wire-ordered tile.things array
  * (including creatures).
+ *
+ * USE WITH (0x83): armed from an action sheet (armUseWith). While armed
+ * the next tap/click resolves the tapped tile's top thing as the target
+ * and sends UseItemEx instead of walking/looking/using; a long-press,
+ * the hint's ✕, or cancelUseWith disarms without sending.
  */
 export interface InteractionsHandle {
+  /** Arm crosshair mode: the next canvas tap uses `from` on the tapped thing. */
+  armUseWith(from: ThingRef): void;
+  /** Disarm crosshair mode without sending anything. */
+  cancelUseWith(): void;
   destroy(): void;
+}
+
+/** A thing addressed the way the wire wants: position + sprite id + stackpos. */
+export interface ThingRef {
+  readonly position: WirePosition;
+  readonly thingId: number;
+  readonly stackPos: number;
 }
 
 export interface InteractionsOptions {
@@ -40,10 +57,28 @@ export interface InteractionsOptions {
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
 
-interface TileStackTarget {
-  readonly position: WirePosition;
-  readonly thingId: number;
-  readonly stackPos: number;
+const HINT_STYLE_ID = 'use-with-hint-style';
+
+function ensureHintStyles(): void {
+  if (document.getElementById(HINT_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = HINT_STYLE_ID;
+  style.textContent = `
+    .use-with-hint {
+      position: fixed; top: calc(${space.lg}px + env(safe-area-inset-top));
+      left: 50%; transform: translateX(-50%); z-index: ${zIndex.hud};
+      display: flex; align-items: center; gap: ${space.lg}px;
+      padding: ${space.lg}px ${space.xl}px;
+      background: ${surface.panelBg}; border: 1px solid ${surface.panelBorder};
+      border-radius: ${radius.lg}px; color: ${surface.textPrimary};
+      font-family: ${font.ui}; font-size: ${font.sizeMd}rem; user-select: none;
+    }
+    .use-with-hint button {
+      background: none; border: none; color: ${surface.textMuted};
+      font-size: ${font.sizeLg}rem; cursor: pointer; padding: 0 ${space.sm}px;
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 /**
@@ -104,7 +139,7 @@ export function bindInteractions(
     return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
   }
 
-  function topStackThingAtTile(position: WirePosition): TileStackTarget | null {
+  function topStackThingAtTile(position: WirePosition): ThingRef | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.things.length === 0) return null;
 
@@ -123,7 +158,7 @@ export function bindInteractions(
     };
   }
 
-  function topStackItemAtTile(position: WirePosition): TileStackTarget | null {
+  function topStackItemAtTile(position: WirePosition): ThingRef | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
 
@@ -174,6 +209,49 @@ export function bindInteractions(
     send(protocol.movement.buildAutoWalk(route));
   }
 
+  // Crosshair (use-with) mode: armed from an action sheet, consumed by
+  // the next tap/click. A miss (empty tile) still disarms — the tap was
+  // the player's one answer to "on what?".
+  let armedUseWith: ThingRef | null = null;
+  let hint: HTMLElement | null = null;
+
+  function cancelUseWith(): void {
+    armedUseWith = null;
+    canvas.style.cursor = '';
+    hint?.remove();
+    hint = null;
+  }
+
+  function armUseWith(from: ThingRef): void {
+    cancelUseWith();
+    armedUseWith = from;
+    canvas.style.cursor = 'crosshair';
+    ensureHintStyles();
+    hint = document.createElement('div');
+    hint.className = 'use-with-hint';
+    const label = document.createElement('span');
+    label.textContent = 'Tap a target…';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.setAttribute('aria-label', 'Cancel use with');
+    cancel.textContent = '✕';
+    cancel.addEventListener('click', cancelUseWith);
+    hint.append(label, cancel);
+    document.body.appendChild(hint);
+  }
+
+  function fireUseWith(clientX: number, clientY: number): void {
+    const from = armedUseWith;
+    cancelUseWith();
+    if (!from) return;
+    const target = topStackThingAtTile(worldTileAtPointer(clientX, clientY));
+    if (!target) return;
+    send(protocol.actions.buildUseItemWith(
+      from.position, from.thingId, from.stackPos,
+      target.position, target.thingId, target.stackPos,
+    ));
+  }
+
   // Desktop: left-click walks, right-click looks, double-click uses.
   // Touch taps walk via pointerup below; browsers also synthesize a
   // click after a tap, so non-mouse clicks are ignored here (browsers
@@ -183,6 +261,10 @@ export function bindInteractions(
     if (e.button !== 0) return;
     const pointerType = (e as PointerEvent).pointerType;
     if (pointerType && pointerType !== 'mouse') return;
+    if (armedUseWith) {
+      fireUseWith(e.clientX, e.clientY);
+      return;
+    }
     walkTo(e.clientX, e.clientY);
   };
   const onContextMenu = (e: MouseEvent): void => {
@@ -217,6 +299,11 @@ export function bindInteractions(
     pressTimer = setTimeout(() => {
       pressTimer = null;
       activePointerId = null;
+      // While armed, holding is the touch "never mind" — no look.
+      if (armedUseWith) {
+        cancelUseWith();
+        return;
+      }
       look(pressX, pressY);
     }, LONG_PRESS_MS);
   };
@@ -237,7 +324,9 @@ export function bindInteractions(
       Math.abs(e.clientX - pressX) <= MOVE_TOLERANCE_PX &&
       Math.abs(e.clientY - pressY) <= MOVE_TOLERANCE_PX;
     cancelPress(e);
-    if (wasTap) walkTo(e.clientX, e.clientY);
+    if (!wasTap) return;
+    if (armedUseWith) fireUseWith(e.clientX, e.clientY);
+    else walkTo(e.clientX, e.clientY);
   };
 
   canvas.addEventListener('click', onClick);
@@ -249,7 +338,10 @@ export function bindInteractions(
   canvas.addEventListener('pointercancel', cancelPress);
 
   return {
+    armUseWith,
+    cancelUseWith,
     destroy: () => {
+      cancelUseWith();
       cancelPress();
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('contextmenu', onContextMenu);

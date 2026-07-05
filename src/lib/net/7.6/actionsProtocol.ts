@@ -50,6 +50,32 @@ export function buildMoveThingPacket(
   return out;
 }
 
+/**
+ * 0x83 — use `from` on `to` (rope on a rope spot, shovel on a stone
+ * pile, rune on a creature's tile). Layout per the server's
+ * parseUseItemEx (protocol76.cpp:1182): both ends carry the full
+ * pos + spriteId + stackpos triple, and either may be a virtual
+ * container/inventory position (virtualPosition.ts).
+ */
+export function buildUseItemWithPacket(
+  from: WirePosition,
+  fromSpriteId: number,
+  fromStackPos: number,
+  to: WirePosition,
+  toSpriteId: number,
+  toStackPos: number,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.UseItemWith);
+  out.addPosition(from.x, from.y, from.z);
+  out.addU16(fromSpriteId);
+  out.addU8(fromStackPos);
+  out.addPosition(to.x, to.y, to.z);
+  out.addU16(toSpriteId);
+  out.addU8(toStackPos);
+  return out;
+}
+
 /** 0x14 — request a clean logout; the server saves and closes. */
 export function buildLogoutPacket(): OutputPacket {
   const out = new OutputPacket();

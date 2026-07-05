@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-05', text: 'Use with works: pick a rope, shovel, or rune from a bag or your inventory, choose "Use with…", then tap the target — rope spots, stone piles, and enemies.' },
   { date: '2026-06-17', text: 'Looting works: tap an item in a corpse or bag to loot it to your backpack, look at it, or drop it — and tap equipment to unequip it into your backpack.' },
   { date: '2026-06-17', text: 'Dying shows a proper death screen with a Continue button instead of silently dumping you to the login form.' },
   { date: '2026-06-17', text: 'Opening a second bag no longer replaces the first window — containers open side by side.' },

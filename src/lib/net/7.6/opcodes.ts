@@ -38,6 +38,7 @@ export const ClientOp = {
   // Actions
   ThrowItem: 0x78,
   UseItem: 0x82,
+  UseItemWith: 0x83,
   SetFightModes: 0xa0,
   AddVip: 0xdc,
   RemoveVip: 0xdd,

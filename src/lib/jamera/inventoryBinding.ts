@@ -1,12 +1,15 @@
 import { createInventoryPane, slotName, type InventoryPaneHandle, type InventoryPaneOptions } from '../inventoryPane';
 import type { GameClient } from '../net/common/GameClient';
+import { inventorySlotPosition, PLAYER_BACKPACK_SLOT } from '../net/common/virtualPosition';
+import { showActionSheet, type ActionSheetHandle } from '../actionSheet';
 
 /**
  * Feeds the inventory pane from live equipment packets, replacing #146's
  * discard consumers: 0x78 InventorySet (U8 slot + item) and 0x79
- * InventoryClear (U8 slot). The pane starts hidden behind a game-menu
- * entry, like the skill pane. Registered after registerWireSkips so
- * these handlers override per opcode.
+ * InventoryClear (U8 slot). Tapping a filled slot offers Unequip →
+ * backpack. The pane starts hidden behind a game-menu entry, like the
+ * skill pane. Registered after registerWireSkips so these handlers
+ * override per opcode.
  */
 export interface InventoryBindingHandle {
   /** Toggle pane visibility (wired to a game-menu entry). */
@@ -24,10 +27,41 @@ export function bindInventory(
   const dispatcher = client.getDispatcher();
 
   let pane: InventoryPaneHandle | null = null;
+  let sheet: ActionSheetHandle | null = null;
   let open = false;
   const ensurePane = (): InventoryPaneHandle => {
     if (!pane) {
-      pane = createInventoryPane(parent, paneOpts);
+      pane = createInventoryPane(parent, {
+        ...paneOpts,
+        onSlotTap: (wireSlot, itemId, count) => {
+          // Unequipping the backpack onto its own slot would be a
+          // from == to move the server drops — no sheet for that slot.
+          if (wireSlot === PLAYER_BACKPACK_SLOT) return;
+          sheet?.close();
+          sheet = showActionSheet({
+            title: `#${itemId}`,
+            parent,
+            actions: [{
+              // Targeting the backpack equipment slot puts the item
+              // inside the equipped backpack (queryDestination). The
+              // fromStackpos of an inventory thing is the slot number
+              // itself — the server's own encode mirror
+              // (Game::internalGetPosition) sets stackpos = pos.y.
+              label: 'Unequip → backpack',
+              onSelect: () => {
+                try {
+                  client.send(protocol.actions.buildMoveThing(
+                    inventorySlotPosition(wireSlot), itemId, wireSlot,
+                    inventorySlotPosition(PLAYER_BACKPACK_SLOT), count ?? 1,
+                  ));
+                } catch (e) {
+                  console.warn('[jamera] unequip send failed:', e instanceof Error ? e.message : e);
+                }
+              },
+            }],
+          });
+        },
+      });
       pane.setVisible(open);
     }
     return pane;
@@ -51,6 +85,7 @@ export function bindInventory(
     destroy: () => {
       dispatcher.off(op.InventorySet);
       dispatcher.off(op.InventoryClear);
+      sheet?.close();
       pane?.destroy();
     },
   };

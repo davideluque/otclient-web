@@ -303,6 +303,14 @@ export interface ActionsProtocol {
   buildRemoveVip(guid: number): OutputPacket;
   /** 0xA1 — set the attacked creature; id 0 stops attacking. */
   buildAttack(creatureId: number): OutputPacket;
+  /**
+   * ThrowItem — move a thing between map tiles, open containers, and
+   * equipment slots (see virtualPosition.ts for the carried-thing
+   * addressing). `count` is the amount moved for stackables, 1
+   * otherwise. The server silently drops the packet when `to` equals
+   * `from` byte-for-byte.
+   */
+  buildMoveThing(from: WirePosition, spriteId: number, fromStackPos: number, to: WirePosition, count: number): OutputPacket;
 }
 
 /** One open container window, as described by a 0x6E. */

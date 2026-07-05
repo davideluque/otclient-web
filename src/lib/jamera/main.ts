@@ -16,6 +16,7 @@ import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane'
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
+import { showDeathDialog } from '../deathDialog';
 import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
@@ -136,6 +137,23 @@ mountLoginScreen(root, {
     // these, the first unhandled opcode in a frame silently drops the
     // rest of it. GameWorld registers after and overrides per opcode.
     registerWireSkips(client.getDispatcher(), client.getProtocol());
+    // Death → dialog instead of a silent dump to the login form. Two
+    // signals: standard 7.6 servers send ReloginWindow (0x28,
+    // protocol76.cpp:2386), but Jamera's only call site is commented out
+    // (player.cpp:3398) — it sends a 0xB4 "You are dead." text message
+    // instead, hooked below via bindChat's onDeathMessage. The dialog is
+    // deliberately NOT in onLeaveGame's teardown: death drops the
+    // connection while it's showing and it must outlive the session.
+    const onDeath = (): void => {
+      showDeathDialog({
+        onContinue: () => {
+          // Usually the server already closed the connection by now;
+          // disconnect() covers a Continue tap that beats the close.
+          if (client.getState() !== 'disconnected') client.disconnect();
+        },
+      });
+    };
+    client.getDispatcher().on(client.getProtocol().serverOpcodes.ReloginWindow, onDeath);
     startPingLoop(client);
     loadAssetsForRendering();
     const world = bindGameWorld(client);
@@ -143,7 +161,7 @@ mountLoginScreen(root, {
     teardownCombat?.destroy();
     teardownCombat = bindCombat(client, world);
     teardownChat?.destroy();
-    teardownChat = bindChat(client);
+    teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane
@@ -161,6 +179,8 @@ mountLoginScreen(root, {
       renderThumb: (id) => jameraAtlas
         ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
         : null,
+      // Drop target: the tile under the player, read at selection time.
+      playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();

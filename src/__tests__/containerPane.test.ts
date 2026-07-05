@@ -110,12 +110,15 @@ describe('bindContainers with a pane', () => {
     expect(sent).toEqual([[0x88, 0]]);
   });
 
-  it('tapping an item sends 0x8C at the virtual container-slot position', () => {
+  it('tapping an item opens the action sheet; Look sends 0x8C at the virtual container-slot position', () => {
     const { client, dispatcher, sent } = makeClient();
     bindContainers(client, document.body);
     dispatcher.dispatch(openFrame(3, 'Bag', [{ id: BAG_ID }, { id: STACKABLE_ID, count: 12 }]));
 
     pane().querySelectorAll<HTMLButtonElement>('.cell.filled')[1].click();
+    expect(sent).toEqual([]); // nothing on the wire until an action is picked
+    [...document.querySelectorAll<HTMLButtonElement>('.action-sheet button')]
+      .find((b) => b.textContent === 'Look')!.click();
     // pos x=0xFFFF, y=0x40|cid (u16le), z=slot, then u16le itemId + slot.
     expect(sent).toEqual([[0x8c, 0xff, 0xff, 0x43, 0x00, 0x01, 0xd7, 0x0b, 0x01]]);
   });

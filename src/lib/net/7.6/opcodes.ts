@@ -36,6 +36,7 @@ export const ClientOp = {
   UpArrowContainer: 0x88,
 
   // Actions
+  ThrowItem: 0x78,
   UseItem: 0x82,
   SetFightModes: 0xa0,
   AddVip: 0xdc,

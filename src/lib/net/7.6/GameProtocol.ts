@@ -10,6 +10,7 @@ import type {
   MovementProtocol,
   PlayerProtocol,
   ActionsProtocol,
+  ContainersProtocol,
 } from '../common/types';
 import {
   buildLoginPacket,
@@ -21,6 +22,15 @@ import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCrea
 import { buildMovePacket, buildAutoWalkPacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket } from './actionsProtocol';
+import {
+  parseContainerOpen,
+  parseContainerClose,
+  parseContainerAddItem,
+  parseContainerUpdateItem,
+  parseContainerRemoveItem,
+  buildCloseContainerPacket,
+  buildUpContainerPacket,
+} from './containersProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -72,6 +82,7 @@ export class GameProtocol implements GameProtocolSpec {
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
+  readonly containers: ContainersProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
 
@@ -137,6 +148,16 @@ export class GameProtocol implements GameProtocolSpec {
       buildAddVip: buildAddVipPacket,
       buildRemoveVip: buildRemoveVipPacket,
       buildAttack: buildAttackPacket,
+    };
+
+    this.containers = {
+      parseOpen: parseContainerOpen,
+      parseClose: parseContainerClose,
+      parseAddItem: parseContainerAddItem,
+      parseUpdateItem: parseContainerUpdateItem,
+      parseRemoveItem: parseContainerRemoveItem,
+      buildClose: buildCloseContainerPacket,
+      buildUp: buildUpContainerPacket,
     };
 
     this.chat = {

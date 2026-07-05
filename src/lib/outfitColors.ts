@@ -7,6 +7,15 @@
 const HSI_H_STEPS = 19;
 const HSI_SI_VALUES = 7;
 const PALETTE_SIZE = HSI_H_STEPS * HSI_SI_VALUES; // 133 (valid indices 0–132)
+const HSI_COLOR_BANDS: ReadonlyArray<readonly [saturation: number, intensity: number]> = [
+  [0.25, 1],
+  [0.25, 0.75],
+  [0.5, 0.75],
+  [0.667, 0.75],
+  [1, 1],
+  [1, 0.75],
+  [1, 0.5],
+];
 
 export interface OutfitRGB {
   r: number;
@@ -29,16 +38,9 @@ export function outfitIndexToRgb(index: number): OutfitRGB {
 
   if (i % HSI_H_STEPS !== 0) {
     hue = (i % HSI_H_STEPS) * (1 / 18);
-    switch (Math.floor(i / HSI_H_STEPS)) {
-      case 0: saturation = 0.25; intensity = 1; break;
-      case 1: saturation = 0.25; intensity = 0.75; break;
-      case 2: saturation = 0.5; intensity = 0.75; break;
-      case 3: saturation = 0.667; intensity = 0.75; break;
-      case 4: saturation = 1; intensity = 1; break;
-      case 5: saturation = 1; intensity = 0.75; break;
-      case 6: saturation = 1; intensity = 0.5; break;
-      default: saturation = 1; intensity = 1; break;
-    }
+    // ?? keeps the old switch's default arm: a NaN index sails through the
+    // range clamp (NaN comparisons are false) and must not crash the lookup.
+    [saturation, intensity] = HSI_COLOR_BANDS[Math.floor(i / HSI_H_STEPS)] ?? [1, 1];
   } else {
     hue = 0;
     saturation = 0;

@@ -20,6 +20,7 @@ import { showDeathDialog } from '../deathDialog';
 import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
+import { bindContainers, type ContainerBindingHandle } from './containerBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindBattleList, type BattleBindingHandle } from './battleBinding';
 import { bindVip, type VipBindingHandle } from './vipBinding';
@@ -89,6 +90,8 @@ mountLoginScreen(root, {
     teardownStats = null;
     teardownInventory?.destroy();
     teardownInventory = null;
+    teardownContainers?.destroy();
+    teardownContainers = null;
     // The renderer too: its container and tinted-outfit textures belong
     // to the dead session (mountRenderer also bumps the epoch on the
     // next login, but freeing GPU resources shouldn't wait for one).
@@ -163,6 +166,15 @@ mountLoginScreen(root, {
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane
       // binds; slots re-render on every 0x78, so thumbnails appear as
+      // soon as the atlas exists.
+      renderThumb: (id) => jameraAtlas
+        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+        : null,
+    });
+    teardownContainers?.destroy();
+    teardownContainers = bindContainers(client, document.body, {
+      // Same lazy atlas read as the inventory pane above: windows
+      // re-render on every container packet, so thumbnails appear as
       // soon as the atlas exists.
       renderThumb: (id) => jameraAtlas
         ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
@@ -634,8 +646,14 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
     world,
     getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
   });
+  // GameWorld snaps the facing on 0xB5; the controller flushes its
+  // pipeline so a rejected step stops the walk instantly. The wire
+  // direction pins the suppression to the direction that actually hit
+  // the wall.
+  world.onCancelWalk = (dir) => walker.cancel(dir as Direction);
 
   teardownMovement = () => {
+    world.onCancelWalk = null;
     walker.destroy();
     joystickQuery.removeEventListener('change', applyJoystickVisibility);
     joystick.destroy();
@@ -653,6 +671,9 @@ let teardownStats: StatsBindingHandle | null = null;
 
 // Per-session inventory binding, replaced on re-login like the rest.
 let teardownInventory: InventoryBindingHandle | null = null;
+
+// Per-session container windows (wire state + pane), same lifecycle.
+let teardownContainers: ContainerBindingHandle | null = null;
 
 // Per-session canvas interactions (look/use), replaced with the renderer.
 let teardownInteractions: InteractionsHandle | null = null;

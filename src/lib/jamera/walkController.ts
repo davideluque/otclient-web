@@ -40,12 +40,28 @@ export interface WalkControllerOptions {
 
 export interface WalkControllerHandle {
   destroy(): void;
+  /**
+   * The server cancelled the walk (0xB5): flush the pipeline now instead
+   * of waiting out the step timeout, and briefly stop re-sending.
+   * `dir` is the facing from the packet — the direction that hit the
+   * wall; without it the suppression falls back to the last sent
+   * direction, which can be a newer lookahead the player already turned
+   * to (and must not be stalled).
+   */
+  cancel(dir?: Direction | null): void;
 }
 
 /** Executing + one server-queued lookahead. Never more. */
 const MAX_OUTSTANDING = 2;
 /** Minimum spacing between a send and its lookahead follow-up. */
 const PREQUEUE_AFTER_MS = 140;
+/**
+ * Send-quiet window after a server cancel. A joystick held into a wall
+ * would otherwise loop send→0xB5→send at tick cadence (the 800ms step
+ * timeout used to rate-limit that naturally). Lifted early when the held
+ * direction changes — turning away from the wall must feel instant.
+ */
+const CANCEL_SUPPRESS_MS = 250;
 
 export function createWalkController(opts: WalkControllerOptions): WalkControllerHandle {
   const stepTimeoutMs = opts.stepTimeoutMs ?? 800;
@@ -56,6 +72,9 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
   // value at which this send's confirmation has landed.
   let sent: Array<{ sentAt: number; expectedStep: number; deadline: number }> = [];
   let lastSentAt = 0;
+  let lastSentDir: Direction | null = null;
+  let suppressUntil = 0;
+  let suppressedDir: Direction | null = null;
 
   const tick = (): void => {
     const { client, world } = opts;
@@ -85,6 +104,10 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
 
     const dir = opts.getHeldDirection();
     if (dir === null) return;
+    if (now < suppressUntil) {
+      if (dir === suppressedDir) return;
+      suppressUntil = 0;
+    }
     if (sent.length >= MAX_OUTSTANDING) return;
     if (sent.length > 0 && now - lastSentAt < PREQUEUE_AFTER_MS) return;
 
@@ -105,11 +128,18 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
       deadline: now + stepTimeoutMs,
     });
     lastSentAt = now;
+    lastSentDir = dir;
   };
 
   const timer = setInterval(tick, tickMs);
 
   return {
     destroy: () => clearInterval(timer),
+    cancel: (dir?: Direction | null) => {
+      telemetry('walk-cancel', { outstanding: sent.length });
+      sent = [];
+      suppressedDir = dir ?? lastSentDir;
+      suppressUntil = performance.now() + CANCEL_SUPPRESS_MS;
+    },
   };
 }

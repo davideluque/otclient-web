@@ -170,6 +170,10 @@ mountLoginScreen(root, {
       renderThumb: (id) => jameraAtlas
         ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
         : null,
+      // Late-bound: interactions mount with the renderer (after the
+      // atlas), later than this binding — the optional chain no-ops in
+      // that brief window instead of arming a dead handle.
+      armUseWith: (from) => teardownInteractions?.armUseWith(from),
     });
     teardownContainers?.destroy();
     teardownContainers = bindContainers(client, document.body, {
@@ -181,6 +185,8 @@ mountLoginScreen(root, {
         : null,
       // Drop target: the tile under the player, read at selection time.
       playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
+      // Same late-bound interactions handle as the inventory pane above.
+      armUseWith: (from) => teardownInteractions?.armUseWith(from),
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();

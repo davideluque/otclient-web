@@ -1,7 +1,8 @@
 import { createInventoryPane, slotName, type InventoryPaneHandle, type InventoryPaneOptions } from '../inventoryPane';
 import type { GameClient } from '../net/common/GameClient';
 import { inventorySlotPosition, PLAYER_BACKPACK_SLOT } from '../net/common/virtualPosition';
-import { showActionSheet, type ActionSheetHandle } from '../actionSheet';
+import { showActionSheet, type ActionSheetHandle, type ActionSheetAction } from '../actionSheet';
+import type { ThingRef } from './interactions';
 
 /**
  * Feeds the inventory pane from live equipment packets, replacing #146's
@@ -17,11 +18,21 @@ export interface InventoryBindingHandle {
   destroy(): void;
 }
 
+export interface InventoryBindingOptions extends InventoryPaneOptions {
+  /**
+   * Arms the canvas crosshair mode (InteractionsHandle.armUseWith) with
+   * the tapped equipment slot as the 0x83 `from`. Absent (tests) the
+   * sheet omits Use with… — same convention as containerBinding.
+   */
+  armUseWith?: (from: ThingRef) => void;
+}
+
 export function bindInventory(
   client: GameClient,
   parent: HTMLElement = document.body,
-  paneOpts: InventoryPaneOptions = {},
+  opts: InventoryBindingOptions = {},
 ): InventoryBindingHandle {
+  const { armUseWith, ...paneOpts } = opts;
   const protocol = client.getProtocol();
   const op = protocol.serverOpcodes;
   const dispatcher = client.getDispatcher();
@@ -38,28 +49,34 @@ export function bindInventory(
           // from == to move the server drops — no sheet for that slot.
           if (wireSlot === PLAYER_BACKPACK_SLOT) return;
           sheet?.close();
-          sheet = showActionSheet({
-            title: `#${itemId}`,
-            parent,
-            actions: [{
-              // Targeting the backpack equipment slot puts the item
-              // inside the equipped backpack (queryDestination). The
-              // fromStackpos of an inventory thing is the slot number
-              // itself — the server's own encode mirror
-              // (Game::internalGetPosition) sets stackpos = pos.y.
-              label: 'Unequip → backpack',
-              onSelect: () => {
-                try {
-                  client.send(protocol.actions.buildMoveThing(
-                    inventorySlotPosition(wireSlot), itemId, wireSlot,
-                    inventorySlotPosition(PLAYER_BACKPACK_SLOT), count ?? 1,
-                  ));
-                } catch (e) {
-                  console.warn('[jamera] unequip send failed:', e instanceof Error ? e.message : e);
-                }
-              },
-            }],
-          });
+          const actions: ActionSheetAction[] = [{
+            // Targeting the backpack equipment slot puts the item
+            // inside the equipped backpack (queryDestination). The
+            // fromStackpos of an inventory thing is the slot number
+            // itself — the server's own encode mirror
+            // (Game::internalGetPosition) sets stackpos = pos.y.
+            label: 'Unequip → backpack',
+            onSelect: () => {
+              try {
+                client.send(protocol.actions.buildMoveThing(
+                  inventorySlotPosition(wireSlot), itemId, wireSlot,
+                  inventorySlotPosition(PLAYER_BACKPACK_SLOT), count ?? 1,
+                ));
+              } catch (e) {
+                console.warn('[jamera] unequip send failed:', e instanceof Error ? e.message : e);
+              }
+            },
+          }];
+          if (armUseWith) {
+            actions.push({
+              // Same stackpos-is-the-slot rule as the unequip move above.
+              label: 'Use with…',
+              onSelect: () => armUseWith({
+                position: inventorySlotPosition(wireSlot), thingId: itemId, stackPos: wireSlot,
+              }),
+            });
+          }
+          sheet = showActionSheet({ title: `#${itemId}`, parent, actions });
         },
       });
       pane.setVisible(open);

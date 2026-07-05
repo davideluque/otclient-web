@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-05', text: 'Use with works: pick a rope, shovel, or rune from a bag or your inventory, choose "Use with…", then tap the target — rope spots, stone piles, and enemies.' },
   { date: '2026-06-17', text: 'Damage numbers float up from hits and arrows/runes actually fly to their target.' },
   { date: '2026-06-17', text: 'Combat has visuals now: spell and hit effects play on the battlefield, and your attack target flashes a black square.' },
   { date: '2026-06-17', text: 'Looting works: tap an item in a corpse or bag to loot it to your backpack, look at it, or drop it — and tap equipment to unequip it into your backpack.' },

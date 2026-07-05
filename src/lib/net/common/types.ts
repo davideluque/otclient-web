@@ -311,6 +311,12 @@ export interface ActionsProtocol {
    * `from` byte-for-byte.
    */
   buildMoveThing(from: WirePosition, spriteId: number, fromStackPos: number, to: WirePosition, count: number): OutputPacket;
+  /**
+   * UseItemEx — use `from` on `to` (rope, shovel, runes). Both ends are
+   * full pos + spriteId + stackpos triples; either may be a virtual
+   * container/inventory position (virtualPosition.ts).
+   */
+  buildUseItemWith(from: WirePosition, fromSpriteId: number, fromStackPos: number, to: WirePosition, toSpriteId: number, toStackPos: number): OutputPacket;
 }
 
 /** One open container window, as described by a 0x6E. */

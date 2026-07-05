@@ -4,6 +4,7 @@ import { containerSlotPosition, inventorySlotPosition, PLAYER_BACKPACK_SLOT } fr
 import { ContainerManager } from '../containers';
 import { createContainerPane, type ContainerPaneHandle, type ContainerPaneOptions } from '../containerPane';
 import { showActionSheet, type ActionSheetHandle, type ActionSheetAction } from '../actionSheet';
+import type { ThingRef } from './interactions';
 
 export interface ContainerBindingHandle {
   readonly manager: ContainerManager;
@@ -18,6 +19,12 @@ export interface ContainerBindingOptions {
    * the sheet simply omits Drop.
    */
   playerPosition?: () => WirePosition;
+  /**
+   * Arms the canvas crosshair mode (InteractionsHandle.armUseWith) with
+   * the tapped item as the 0x83 `from`. Absent (tests) the sheet omits
+   * Use with… — same convention as playerPosition/Drop above.
+   */
+  armUseWith?: (from: ThingRef) => void;
 }
 
 /**
@@ -72,6 +79,15 @@ export function bindContainers(
             onSelect: () => send(protocol.actions.buildLookAt(from, item.id, slot)),
           },
         ];
+        const armUseWith = opts.armUseWith;
+        if (armUseWith) {
+          actions.push({
+            // Rope, shovel, rune: arm the crosshair — the next canvas
+            // tap picks the 0x83 target.
+            label: 'Use with…',
+            onSelect: () => armUseWith({ position: from, thingId: item.id, stackPos: slot }),
+          });
+        }
         const playerPosition = opts.playerPosition;
         if (playerPosition) {
           actions.push({

@@ -1,6 +1,9 @@
 import type { InputPacket } from './net/common/InputPacket';
 import type { PacketDispatcher } from './net/common/PacketDispatcher';
-import type { GameProtocol, MapTile, MapCreature } from './net/common/types';
+import type {
+  GameProtocol, MapTile, MapCreature,
+  MagicEffectEvent, AnimatedTextEvent, DistanceShotEvent, CreatureSquareEvent,
+} from './net/common/types';
 import { TileMap, type ResolvedTile } from './tileMap';
 import type { ThingType } from './dat';
 import { DatAttr } from './dat';
@@ -34,6 +37,15 @@ const VIEWPORT_WEST = 8;
 const VIEWPORT_EAST = 9;
 const VIEWPORT_NORTH = 6;
 const VIEWPORT_SOUTH = 7;
+
+// Transient-effect lifetimes, exported for the renderer (it prunes on
+// them via pruneEffects and animates within them). Magic effects get a
+// generous fixed window — the renderer drops each one earlier, when its
+// own .dat animation finishes.
+export const MAGIC_EFFECT_TTL_MS = 1000;
+export const ANIMATED_TEXT_TTL_MS = 1000;
+export const DISTANCE_SHOT_TTL_MS = 300;
+export const TARGET_SQUARE_TTL_MS = 1000;
 
 function isAdjacentStep(from: TilePosition, to: TilePosition): boolean {
   return from.z === to.z
@@ -124,6 +136,27 @@ export class GameWorld {
    * 0x82 always arrives right after login.
    */
   worldLight = { level: 250, color: 0xd7 };
+
+  // ── Transient combat effects ───────────────────────────────────────
+  // Render state, not world truth: each entry carries its
+  // performance.now() birth stamp and lives until the renderer prunes
+  // it (pruneEffects). Arrivals fire onChange so an idle renderer
+  // wakes, exactly like speech bubbles do.
+
+  /** Live 0x83 effects (spell hits, poofs) with their start stamps. */
+  magicEffects: Array<MagicEffectEvent & { startedAt: number }> = [];
+
+  /** Live 0x84 floating texts (damage/heal numbers, exp). */
+  animatedTexts: Array<AnimatedTextEvent & { startedAt: number }> = [];
+
+  /** Live 0x85 projectiles mid-flight. */
+  distanceShots: Array<DistanceShotEvent & { startedAt: number }> = [];
+
+  /**
+   * The 0x86 attack-target flash (one at a time — a new square replaces
+   * the previous one, matching the single-target combat model).
+   */
+  targetSquare: (CreatureSquareEvent & { until: number }) | null = null;
 
   /**
    * While true, syncSelfCreature records no glide origin. Set by
@@ -273,6 +306,10 @@ export class GameWorld {
     dispatcher.on(op.WorldLight, (p) => this.handleWorldLight(p));
     dispatcher.on(op.CreatureLight, (p) => this.handleCreatureLight(p));
     dispatcher.on(op.CancelWalk, (p) => this.handleCancelWalk(p));
+    dispatcher.on(op.MagicEffect, (p) => this.handleMagicEffect(p));
+    dispatcher.on(op.AnimatedText, (p) => this.handleAnimatedText(p));
+    dispatcher.on(op.DistanceShot, (p) => this.handleDistanceShot(p));
+    dispatcher.on(op.CreatureSquare, (p) => this.handleCreatureSquare(p));
   }
 
   /**
@@ -290,6 +327,55 @@ export class GameWorld {
     this.creatureRevision++;
     this.onChange?.();
     this.onCancelWalk?.(direction);
+  }
+
+  /** 0x83 — a magic effect plays at a position. */
+  private handleMagicEffect(packet: InputPacket): void {
+    const ev = this.protocol.effects.parseMagicEffect(packet);
+    this.magicEffects.push({ ...ev, startedAt: performance.now() });
+    this.onChange?.();
+  }
+
+  /** 0x84 — floating text (damage/heal numbers) at a position. */
+  private handleAnimatedText(packet: InputPacket): void {
+    const ev = this.protocol.effects.parseAnimatedText(packet);
+    this.animatedTexts.push({ ...ev, startedAt: performance.now() });
+    this.onChange?.();
+  }
+
+  /** 0x85 — a projectile flies between two positions. */
+  private handleDistanceShot(packet: InputPacket): void {
+    const ev = this.protocol.effects.parseDistanceShot(packet);
+    this.distanceShots.push({ ...ev, startedAt: performance.now() });
+    this.onChange?.();
+  }
+
+  /** 0x86 — flash a square around a creature (attack target). */
+  private handleCreatureSquare(packet: InputPacket): void {
+    const ev = this.protocol.effects.parseCreatureSquare(packet);
+    this.targetSquare = { ...ev, until: performance.now() + TARGET_SQUARE_TTL_MS };
+    this.onChange?.();
+  }
+
+  /**
+   * Drop effects whose lifetime has passed. The renderer calls this
+   * every frame — expiry is render-driven (like bubble cleanup), so no
+   * timers run while the world is idle. Fires no onChange: the caller
+   * is already painting.
+   */
+  pruneEffects(now: number): void {
+    if (this.magicEffects.length > 0) {
+      this.magicEffects = this.magicEffects.filter((e) => now - e.startedAt < MAGIC_EFFECT_TTL_MS);
+    }
+    if (this.animatedTexts.length > 0) {
+      this.animatedTexts = this.animatedTexts.filter((e) => now - e.startedAt < ANIMATED_TEXT_TTL_MS);
+    }
+    if (this.distanceShots.length > 0) {
+      this.distanceShots = this.distanceShots.filter((e) => now - e.startedAt < DISTANCE_SHOT_TTL_MS);
+    }
+    if (this.targetSquare && now >= this.targetSquare.until) {
+      this.targetSquare = null;
+    }
   }
 
   /** 0x82 — ambient light: the server's day/night cycle. */

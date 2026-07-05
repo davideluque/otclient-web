@@ -94,23 +94,25 @@ export function effectPhaseAt(now: number, startedAt: number, animationPhases: n
  * first (OTClient's getDirectionFromPosition), not by raw sign — a
  * (7, 1) shot flies east, not southeast.
  */
+// Octants: 0 = E, 1 = NE, 2 = N, 3 = NW, ±4 = W, -3 = SW, -2 = S, -1 = SE.
+// Module-level so the per-shot per-frame lookup allocates nothing.
+const MISSILE_PATTERN_BY_OCTANT: Record<number, { patX: number; patY: number }> = {
+  0: { patX: 2, patY: 1 },
+  1: { patX: 2, patY: 0 },
+  2: { patX: 1, patY: 0 },
+  3: { patX: 0, patY: 0 },
+  4: { patX: 0, patY: 1 },
+  [-4]: { patX: 0, patY: 1 },
+  [-3]: { patX: 0, patY: 2 },
+  [-2]: { patX: 1, patY: 2 },
+  [-1]: { patX: 2, patY: 2 },
+};
+
 export function missilePattern(dx: number, dy: number): { patX: number; patY: number } {
   if (dx === 0 && dy === 0) return { patX: 1, patY: 1 };
   // Screen y grows southward; flip it so atan2 works in math space.
-  // Octants: 0 = E, 1 = NE, 2 = N, 3 = NW, ±4 = W, -3 = SW, -2 = S, -1 = SE.
   const octant = Math.round(Math.atan2(-dy, dx) / (Math.PI / 4));
-  const byOctant: Record<number, { patX: number; patY: number }> = {
-    0: { patX: 2, patY: 1 },
-    1: { patX: 2, patY: 0 },
-    2: { patX: 1, patY: 0 },
-    3: { patX: 0, patY: 0 },
-    4: { patX: 0, patY: 1 },
-    [-4]: { patX: 0, patY: 1 },
-    [-3]: { patX: 0, patY: 2 },
-    [-2]: { patX: 1, patY: 2 },
-    [-1]: { patX: 2, patY: 2 },
-  };
-  return byOctant[octant];
+  return MISSILE_PATTERN_BY_OCTANT[octant];
 }
 
 /** Flight progress 0→1 of a distance shot at `now`, clamped at landing. */

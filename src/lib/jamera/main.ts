@@ -616,8 +616,12 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
     world,
     getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
   });
+  // GameWorld snaps the facing on 0xB5; the controller flushes its
+  // pipeline so a rejected step stops the walk instantly.
+  world.onCancelWalk = () => walker.cancel();
 
   teardownMovement = () => {
+    world.onCancelWalk = null;
     walker.destroy();
     joystickQuery.removeEventListener('change', applyJoystickVisibility);
     joystick.destroy();

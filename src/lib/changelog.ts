@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-06-17', text: 'Corpses and bags open now: double-tap a container to see its contents — tap an item to look at it, ⬆ goes back up, ✕ closes the window.' },
   { date: '2026-06-17', text: 'Walking into something impassable now stops instantly instead of stuttering against it.' },
   { date: '2026-06-11', text: 'Speech looks like Tibia now: yellow "Name says:" text above your head (orange for monsters), spam-casting stacks the lines upward, and longer texts stay longer.' },
   { date: '2026-06-11', text: 'Night is dark again: the world follows the server\'s day/night light, torches and fire fields glow, and your character carries their own light.' },

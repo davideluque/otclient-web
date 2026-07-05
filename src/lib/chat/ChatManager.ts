@@ -40,6 +40,7 @@ export class ChatManager {
   private _activeChannelId: number;
   private _speechBubbles: SpeechBubble[] = [];
   private messageListeners = new Set<(msg: ChatMessage) => void>();
+  private channelListeners = new Set<() => void>();
 
   constructor() {
     for (const channel of DEFAULT_CHANNELS) {
@@ -65,16 +66,27 @@ export class ChatManager {
   }
 
   addChannel(id: number, name: string): void {
-    if (!this.channels.has(id)) {
-      this.channels.set(id, { id, name, messages: [] });
+    const existing = this.channels.get(id);
+    if (existing) {
+      if (existing.name !== name) {
+        existing.name = name;
+        this.notifyChannelsChanged();
+      }
+      return;
     }
+
+    this.channels.set(id, { id, name, messages: [] });
+    this.notifyChannelsChanged();
   }
 
   removeChannel(id: number): void {
-    this.channels.delete(id);
+    const removed = this.channels.delete(id);
+    if (!removed) return;
+
     if (this._activeChannelId === id) {
       this._activeChannelId = ChannelId.Default;
     }
+    this.notifyChannelsChanged();
   }
 
   setActiveChannel(id: number): void {
@@ -98,8 +110,15 @@ export class ChatManager {
     return () => this.messageListeners.delete(listener);
   }
 
+  subscribeChannels(listener: () => void): () => void {
+    this.channelListeners.add(listener);
+    return () => this.channelListeners.delete(listener);
+  }
+
   handleMessage(msg: ChatMessage): void {
-    const channel = this.channels.get(this.channelIdForMessage(msg));
+    const channelId = this.channelIdForMessage(msg);
+    this.ensureChannelForMessage(msg, channelId);
+    const channel = this.channels.get(channelId);
 
     if (channel) {
       this.appendMessage(channel, msg);
@@ -141,6 +160,26 @@ export class ChatManager {
     if (channel.messages.length > MAX_MESSAGES_PER_CHANNEL) {
       channel.messages.shift();
     }
+  }
+
+  private ensureChannelForMessage(msg: ChatMessage, channelId: number): void {
+    if (this.channels.has(channelId) || msg.channelId === undefined) return;
+    if (!this.isChannelMessageType(msg.messageType)) return;
+
+    this.addChannel(msg.channelId, `Channel ${msg.channelId}`);
+  }
+
+  private isChannelMessageType(type: number): boolean {
+    return (
+      type === MessageType.Channel ||
+      type === MessageType.ChannelRed ||
+      type === MessageType.ChannelOrange ||
+      type === MessageType.ChannelRedAnonymous
+    );
+  }
+
+  private notifyChannelsChanged(): void {
+    for (const listener of this.channelListeners) listener();
   }
 
   private addSpeechBubble(msg: ChatMessage, position: SpeechPosition): void {

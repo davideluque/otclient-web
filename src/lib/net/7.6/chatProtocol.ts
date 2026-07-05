@@ -1,7 +1,7 @@
 import { InputPacket } from '../common/InputPacket';
 import { OutputPacket } from '../common/OutputPacket';
 import { MessageType } from '../common/types';
-import type { ChatMessage } from '../common/types';
+import type { ChatChannelInfo, ChatMessage } from '../common/types';
 
 // --- Incoming packet parsers ---
 
@@ -51,6 +51,17 @@ export function parseCreatureSpeak(packet: InputPacket): ChatMessage {
     channelId,
     timestamp: Date.now(),
   };
+}
+
+export function parseChannelOpen(packet: InputPacket): ChatChannelInfo {
+  return {
+    id: packet.getU16(),
+    name: packet.getString(),
+  };
+}
+
+export function parseChannelClose(packet: InputPacket): number {
+  return packet.getU16();
 }
 
 // --- Outgoing packet builders ---

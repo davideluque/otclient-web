@@ -4,9 +4,10 @@ import { ClientOp } from './opcodes';
 
 /**
  * 7.6 world-interaction packets, layouts verified against the server's
- * parseLookAt / parseUseItem (protocol76.cpp):
- *   LookAt  0x8C: pos(5) + U16 spriteId + U8 stackpos
- *   UseItem 0x82: pos(5) + U16 spriteId + U8 stackpos + U8 index
+ * parseLookAt / parseUseItem / parseThrow (protocol76.cpp):
+ *   LookAt    0x8C: pos(5) + U16 spriteId + U8 stackpos
+ *   UseItem   0x82: pos(5) + U16 spriteId + U8 stackpos + U8 index
+ *   ThrowItem 0x78: pos(5) + U16 spriteId + U8 stackpos + pos(5) + U8 count
  */
 export function buildLookAtPacket(pos: WirePosition, spriteId: number, stackPos: number): OutputPacket {
   const out = new OutputPacket();
@@ -24,6 +25,28 @@ export function buildUseItemPacket(pos: WirePosition, spriteId: number, stackPos
   out.addU16(spriteId);
   out.addU8(stackPos);
   out.addU8(index);
+  return out;
+}
+
+/**
+ * 0x78 — move a thing. From/to may be map tiles or the virtual
+ * container/inventory positions (virtualPosition.ts). The server's
+ * parseThrow drops the packet outright when `to` equals `from`.
+ */
+export function buildMoveThingPacket(
+  from: WirePosition,
+  spriteId: number,
+  fromStackPos: number,
+  to: WirePosition,
+  count: number,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.ThrowItem);
+  out.addPosition(from.x, from.y, from.z);
+  out.addU16(spriteId);
+  out.addU8(fromStackPos);
+  out.addPosition(to.x, to.y, to.z);
+  out.addU8(count);
   return out;
 }
 

@@ -26,6 +26,17 @@ export interface InteractionsHandle {
   destroy(): void;
 }
 
+export interface InteractionsOptions {
+  /**
+   * Window id to put in 0x82's trailing index byte — the server opens a
+   * used container under exactly this id (actions.cpp), so without it a
+   * second container replaces the first window. Wired to
+   * ContainerManager.nextFreeId; absent (tests, pre-container mounts)
+   * every use falls back to window 0.
+   */
+  nextContainerId?: () => number;
+}
+
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
 
@@ -83,6 +94,7 @@ export function bindInteractions(
   // Tap-to-walk needs the .dat walkability flags; without them taps
   // only look/use (tests and pre-asset mounts pass undefined).
   datIndex?: Map<number, ThingType>,
+  opts: InteractionsOptions = {},
 ): InteractionsHandle {
   const canvas = app.canvas as HTMLCanvasElement;
   const protocol = client.getProtocol();
@@ -141,7 +153,12 @@ export function bindInteractions(
   function use(clientX: number, clientY: number): void {
     const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
     if (!target) return;
-    send(protocol.actions.buildUseItem(target.position, target.thingId, target.stackPos));
+    // Always sent — the server only reads the index byte when the used
+    // item turns out to be a container, so no .dat check is needed here.
+    send(protocol.actions.buildUseItem(
+      target.position, target.thingId, target.stackPos,
+      opts.nextContainerId?.() ?? 0,
+    ));
   }
 
   // Tap/click-to-walk: A* over the known window, sent as one 0x64

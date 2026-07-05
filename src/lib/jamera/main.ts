@@ -412,7 +412,13 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
     teardownInteractions?.destroy();
     // Stack-order classification for 0x6A inserts (top vs down items).
     world.setDatIndex(atlas.datIndex);
-    teardownInteractions = client ? bindInteractions(client, world, app, atlas.datIndex) : null;
+    teardownInteractions = client
+      ? bindInteractions(client, world, app, atlas.datIndex, {
+        // Client-chosen window id for 0x82: the first free one, so a
+        // second container opens beside the first instead of over it.
+        nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
+      })
+      : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager);
     console.info('[jamera] renderer bound to GameWorld');
   };

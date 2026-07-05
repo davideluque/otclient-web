@@ -31,6 +31,8 @@ import {
 } from './creatureParser';
 import {
   parseCreatureSpeak,
+  parseChannelOpen,
+  parseChannelClose,
   buildSayPacket,
   buildChannelMessagePacket,
   buildPrivateMessagePacket,
@@ -139,6 +141,8 @@ export class GameProtocol implements GameProtocolSpec {
 
     this.chat = {
       parseSpeak: parseCreatureSpeak,
+      parseChannelOpen,
+      parseChannelClose,
       buildSay: buildSayPacket,
       buildChannelMessage: buildChannelMessagePacket,
       buildPrivateMessage: buildPrivateMessagePacket,

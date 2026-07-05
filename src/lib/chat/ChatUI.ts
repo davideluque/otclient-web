@@ -169,8 +169,12 @@ export function createChatUI(
     if (e.key === 'Enter') handleSend();
   });
 
-  // Re-render when messages arrive.
-  const unsubscribe = chatManager.subscribe(() => renderMessages());
+  // Re-render when messages arrive; channel open/close packets refresh tabs.
+  const unsubscribeMessages = chatManager.subscribe(() => renderMessages());
+  const unsubscribeChannels = chatManager.subscribeChannels(() => {
+    renderTabs();
+    renderMessages();
+  });
 
   renderTabs();
   renderMessages();
@@ -178,7 +182,8 @@ export function createChatUI(
   return {
     el: root,
     destroy: () => {
-      unsubscribe();
+      unsubscribeMessages();
+      unsubscribeChannels();
       root.remove();
     },
   };

@@ -56,6 +56,9 @@ export interface InteractionsOptions {
 
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
+/** How long after a touch tap a (legacy, pointerType-less) synthesized
+ *  click is still attributed to that tap and dropped. */
+const SYNTHESIZED_CLICK_MS = 500;
 
 const HINT_STYLE_ID = 'use-with-hint-style';
 
@@ -65,7 +68,7 @@ function ensureHintStyles(): void {
   style.id = HINT_STYLE_ID;
   style.textContent = `
     .use-with-hint {
-      position: fixed; top: calc(${space.lg}px + env(safe-area-inset-top));
+      position: fixed; top: calc(${space.lg}px + env(safe-area-inset-top, 0px));
       left: 50%; transform: translateX(-50%); z-index: ${zIndex.hud};
       display: flex; align-items: center; gap: ${space.lg}px;
       padding: ${space.lg}px ${space.xl}px;
@@ -213,6 +216,7 @@ export function bindInteractions(
   // the next tap/click. A miss (empty tile) still disarms — the tap was
   // the player's one answer to "on what?".
   let armedUseWith: ThingRef | null = null;
+  let lastTouchTapAt = 0;
   let hint: HTMLElement | null = null;
 
   function cancelUseWith(): void {
@@ -259,6 +263,12 @@ export function bindInteractions(
   // duplicate route).
   const onClick = (e: MouseEvent): void => {
     if (e.button !== 0) return;
+    // Legacy browsers synthesize a click after a touch tap WITHOUT a
+    // pointerType for the guard below to catch. For plain walking that
+    // duplicate was benign (same route); with use-with it would walk the
+    // player toward the tile they just targeted — so any click landing
+    // right after a processed tap is dropped by timestamp too.
+    if (Date.now() - lastTouchTapAt < SYNTHESIZED_CLICK_MS) return;
     const pointerType = (e as PointerEvent).pointerType;
     if (pointerType && pointerType !== 'mouse') return;
     if (armedUseWith) {
@@ -325,6 +335,7 @@ export function bindInteractions(
       Math.abs(e.clientY - pressY) <= MOVE_TOLERANCE_PX;
     cancelPress(e);
     if (!wasTap) return;
+    lastTouchTapAt = Date.now();
     if (armedUseWith) fireUseWith(e.clientX, e.clientY);
     else walkTo(e.clientX, e.clientY);
   };

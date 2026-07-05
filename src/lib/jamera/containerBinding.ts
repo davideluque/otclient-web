@@ -1,22 +1,54 @@
 import type { GameClient } from '../net/common/GameClient';
 import { ContainerManager } from '../containers';
+import { createContainerPane, type ContainerPaneHandle, type ContainerPaneOptions } from '../containerPane';
 
 export interface ContainerBindingHandle {
   readonly manager: ContainerManager;
   destroy(): void;
 }
 
+export interface ContainerBindingOptions {
+  renderThumb?: ContainerPaneOptions['renderThumb'];
+}
+
 /**
  * Routes the five server container packets (0x6E–0x72) into a
  * ContainerManager. Registered after registerWireSkips so these handlers
- * override the discard consumers per opcode. The pane (and its close/up
- * sends) layers on top of the manager — this binding is wire → state only.
+ * override the discard consumers per opcode. With a `parent`, a container
+ * pane renders the manager and its taps send ✕ 0x87 / ⬆ 0x88 / look 0x8C;
+ * without one the binding stays wire → state only (node-env tests).
  */
-export function bindContainers(client: GameClient): ContainerBindingHandle {
+export function bindContainers(
+  client: GameClient,
+  parent?: HTMLElement,
+  opts: ContainerBindingOptions = {},
+): ContainerBindingHandle {
   const protocol = client.getProtocol();
   const dispatcher = client.getDispatcher();
   const op = protocol.serverOpcodes;
   const manager = new ContainerManager();
+
+  let pane: ContainerPaneHandle | null = null;
+  if (parent) {
+    const send = (packet: Parameters<GameClient['send']>[0]): void => {
+      try {
+        client.send(packet);
+      } catch (e) {
+        console.warn('[jamera] container send failed:', e instanceof Error ? e.message : e);
+      }
+    };
+    pane = createContainerPane(parent, {
+      renderThumb: opts.renderThumb,
+      onClose: (cid) => send(protocol.containers.buildClose(cid)),
+      onUp: (cid) => send(protocol.containers.buildUp(cid)),
+      // 7.6 addresses a container slot through the virtual position
+      // x=0xFFFF, y=0x40|cid, z=slot (game.cpp internalGetThing); the
+      // 0xB4 "You see …" answer already lands in the chat channel.
+      onItemTap: (cid, slot, item) =>
+        send(protocol.actions.buildLookAt({ x: 0xffff, y: 0x40 | cid, z: slot }, item.id, slot)),
+    });
+    manager.subscribe(() => pane?.update(manager.list));
+  }
 
   dispatcher.on(op.ContainerOpen, (p) => {
     manager.open(protocol.containers.parseOpen(p));
@@ -45,6 +77,7 @@ export function bindContainers(client: GameClient): ContainerBindingHandle {
       dispatcher.off(op.ContainerAddItem);
       dispatcher.off(op.ContainerUpdateItem);
       dispatcher.off(op.ContainerRemoveItem);
+      pane?.destroy();
       manager.clear();
     },
   };

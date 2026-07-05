@@ -11,6 +11,7 @@ import type {
   PlayerProtocol,
   ActionsProtocol,
   ContainersProtocol,
+  EffectsProtocol,
 } from '../common/types';
 import {
   buildLoginPacket,
@@ -49,6 +50,12 @@ import {
   buildWhisperPacket,
   buildYellPacket,
 } from './chatProtocol';
+import {
+  parseMagicEffect,
+  parseAnimatedText,
+  parseDistanceShot,
+  parseCreatureSquare,
+} from './effectsProtocol';
 import { ServerOp, ClientOp } from './opcodes';
 
 /**
@@ -83,6 +90,7 @@ export class GameProtocol implements GameProtocolSpec {
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
   readonly containers: ContainersProtocol;
+  readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
 
@@ -160,6 +168,13 @@ export class GameProtocol implements GameProtocolSpec {
       parseRemoveItem: parseContainerRemoveItem,
       buildClose: buildCloseContainerPacket,
       buildUp: buildUpContainerPacket,
+    };
+
+    this.effects = {
+      parseMagicEffect,
+      parseAnimatedText,
+      parseDistanceShot,
+      parseCreatureSquare,
     };
 
     this.chat = {

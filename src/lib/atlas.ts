@@ -57,12 +57,10 @@ function* denseSpriteIds(spriteCount: number): Generator<number> {
 
 /**
  * Build the set of sprite IDs the atlas needs to contain. Includes
- * every item and creature sprite in the .dat — not just those placed
- * by the initial OTBM region. This ensures dynamically expanded regions
- * render correctly without runtime atlas rebuilds.
- *
- * Effects and missiles are deliberately left out for now — we don't
- * render them yet. Add a third loop here when effects/missiles render.
+ * every item, creature, effect, and missile sprite in the .dat — not
+ * just those placed by the initial OTBM region. This ensures
+ * dynamically expanded regions and one-shot combat effects render
+ * correctly without runtime atlas rebuilds.
  */
 export function collectReferencedSpriteIds(dat: DatFile): Set<number> {
   const referenced = new Set<number>();
@@ -75,6 +73,18 @@ export function collectReferencedSpriteIds(dat: DatFile): Set<number> {
 
   for (const creature of dat.creatures) {
     for (const spriteId of creature.frameGroup.spriteIds) {
+      if (spriteId > 0) referenced.add(spriteId);
+    }
+  }
+
+  for (const effect of dat.effects) {
+    for (const spriteId of effect.frameGroup.spriteIds) {
+      if (spriteId > 0) referenced.add(spriteId);
+    }
+  }
+
+  for (const missile of dat.missiles) {
+    for (const spriteId of missile.frameGroup.spriteIds) {
       if (spriteId > 0) referenced.add(spriteId);
     }
   }

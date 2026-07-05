@@ -44,7 +44,7 @@ export function spriteIndex(
   return ((xyComponent * fg.layers + layer) * fg.height + h) * fg.width + w;
 }
 
-interface PixelDisplacement {
+export interface PixelDisplacement {
   x: number;
   y: number;
 }
@@ -57,7 +57,7 @@ const ZERO_DISPLACEMENT: PixelDisplacement = { x: 0, y: 0 };
  * subtracting it the citizen renders down-and-right — and walls/door
  * frames use it to sit flush against the tile edge. Missing → (0, 0).
  */
-function readPixelDisplacement(thingType: ThingType): PixelDisplacement {
+export function readPixelDisplacement(thingType: ThingType): PixelDisplacement {
   const displacement = thingType.attrs.get(DatAttr.Displacement);
   if (isPixelDisplacement(displacement)) {
     return displacement;

@@ -387,6 +387,55 @@ export interface PlayerProtocol {
   parseSkills(packet: InputPacket): PlayerSkills;
 }
 
+/** A one-shot effect (spell hit, poof, teleport flash) at a position. */
+export interface MagicEffectEvent {
+  x: number;
+  y: number;
+  z: number;
+  /** 1-based .dat effect id: the ThingType is dat.effects[effectId - 1]. */
+  effectId: number;
+}
+
+/** Floating on-screen text (damage/heal numbers, exp) at a position. */
+export interface AnimatedTextEvent {
+  x: number;
+  y: number;
+  z: number;
+  /** Index into the 216-color Tibia palette (see tibiaColorToHex). */
+  color: number;
+  text: string;
+}
+
+/** A projectile (arrow, rune flare) flying between two positions. */
+export interface DistanceShotEvent {
+  fromX: number;
+  fromY: number;
+  fromZ: number;
+  toX: number;
+  toY: number;
+  toZ: number;
+  /** 1-based .dat missile id: the ThingType is dat.missiles[missileId - 1]. */
+  missileId: number;
+}
+
+/** A colored square flashed around a creature (0 = black: attack target). */
+export interface CreatureSquareEvent {
+  creatureId: number;
+  /** Index into the 216-color Tibia palette. */
+  color: number;
+}
+
+export interface EffectsProtocol {
+  /** Parse a 0x83 magic-effect payload. */
+  parseMagicEffect(packet: InputPacket): MagicEffectEvent;
+  /** Parse a 0x84 animated-text payload. */
+  parseAnimatedText(packet: InputPacket): AnimatedTextEvent;
+  /** Parse a 0x85 distance-shot payload. */
+  parseDistanceShot(packet: InputPacket): DistanceShotEvent;
+  /** Parse a 0x86 creature-square payload. */
+  parseCreatureSquare(packet: InputPacket): CreatureSquareEvent;
+}
+
 export interface MovementProtocol {
   /** Build the client→server packet for one step in `direction`. */
   buildMove(direction: WalkDirection): OutputPacket;
@@ -519,6 +568,7 @@ export interface GameProtocol {
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
   readonly containers: ContainersProtocol;
+  readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;
 }

@@ -17,6 +17,8 @@ import { createSkillPane, SKILL_NAMES } from '../skillPane';
 import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
+import { createContainerPane } from '../containerPane';
+import type { OpenContainer } from '../containers';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
 import { createBattleList } from '../battleList';
@@ -217,6 +219,39 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Stack arrows +25', () => { pane.setSlot('ammo', 2544, 63); log('ammo count 63'); });
       knobs.toggle('Visible', true, (on) => pane.setVisible(on));
       log(`slots: ${INVENTORY_SLOTS.join(', ')}`);
+      return () => pane.destroy();
+    },
+  },
+
+  {
+    name: 'Containers',
+    description:
+      'Container windows (left edge): one per open container, stacked by '
+      + 'window id. ⬆ climbs to the parent (only shown when there is '
+      + 'one), ✕ closes, tapping an item looks at it. No atlas here, so '
+      + 'cells show the textual #id fallback.',
+    mount({ knobs, log }) {
+      const corpse: OpenContainer = {
+        id: 0, itemId: 2813, name: 'Dead Rat', capacity: 6, hasParent: false,
+        items: [{ id: 2853 }, { id: 3031, count: 12 }, { id: 2696 }],
+      };
+      const bag: OpenContainer = {
+        id: 1, itemId: 2853, name: 'Bag', capacity: 8, hasParent: true,
+        items: [{ id: 2674, count: 3 }],
+      };
+      let open = [corpse, bag];
+      const pane = createContainerPane(document.body, {
+        onClose: (cid) => {
+          open = open.filter((c) => c.id !== cid);
+          pane.update(open);
+          log(`0x87 close window ${cid}`);
+        },
+        onUp: (cid) => log(`0x88 up window ${cid} — server re-sends 0x6E for the parent`),
+        onItemTap: (cid, slot, item) => log(`0x8C look window ${cid} slot ${slot} (#${item.id})`),
+      });
+      pane.update(open);
+      knobs.button('Reopen both', () => { open = [corpse, bag]; pane.update(open); });
+      knobs.button('Close all (pane hides)', () => { open = []; pane.update(open); });
       return () => pane.destroy();
     },
   },

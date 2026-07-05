@@ -8,16 +8,10 @@ import { ClientOp } from './opcodes';
  *   LookAt  0x8C: pos(5) + U16 spriteId + U8 stackpos
  *   UseItem 0x82: pos(5) + U16 spriteId + U8 stackpos + U8 index
  */
-function writePos(out: OutputPacket, pos: WirePosition): void {
-  out.addU16(pos.x);
-  out.addU16(pos.y);
-  out.addU8(pos.z);
-}
-
 export function buildLookAtPacket(pos: WirePosition, spriteId: number, stackPos: number): OutputPacket {
   const out = new OutputPacket();
   out.addU8(ClientOp.LookAt);
-  writePos(out, pos);
+  out.addPosition(pos.x, pos.y, pos.z);
   out.addU16(spriteId);
   out.addU8(stackPos);
   return out;
@@ -26,7 +20,7 @@ export function buildLookAtPacket(pos: WirePosition, spriteId: number, stackPos:
 export function buildUseItemPacket(pos: WirePosition, spriteId: number, stackPos: number, index = 0): OutputPacket {
   const out = new OutputPacket();
   out.addU8(ClientOp.UseItem);
-  writePos(out, pos);
+  out.addPosition(pos.x, pos.y, pos.z);
   out.addU16(spriteId);
   out.addU8(stackPos);
   out.addU8(index);

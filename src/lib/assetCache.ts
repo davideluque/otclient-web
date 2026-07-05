@@ -107,6 +107,15 @@ function promisifyRequest<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
+function waitForTransaction(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    // tx.error is null for programmatic abort() — never reject with null.
+    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+  });
+}
+
 /**
  * Returns the cached buffers for `version` or null if absent / on error.
  * Never throws — callers can treat null as "fall through to the live path".
@@ -141,11 +150,7 @@ export async function putCached(version: string, files: CompleteLoadedFiles): Pr
       const tx = db.transaction(STORE, 'readwrite');
       const record: CachedRecord = { files, cachedAt: Date.now() };
       await promisifyRequest(tx.objectStore(STORE).put(record, version));
-      await new Promise<void>((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error);
-      });
+      await waitForTransaction(tx);
     } finally {
       db.close();
     }
@@ -169,11 +174,7 @@ export async function clearCached(version: string): Promise<void> {
       await promisifyRequest(tx.objectStore(STORE).delete(version));
       // Wait for the transaction itself — the corruption-recovery path
       // depends on the record actually being gone before the next boot.
-      await new Promise<void>((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error);
-      });
+      await waitForTransaction(tx);
     } finally {
       db.close();
     }

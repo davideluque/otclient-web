@@ -305,6 +305,37 @@ export interface ActionsProtocol {
   buildAttack(creatureId: number): OutputPacket;
 }
 
+/** One open container window, as described by a 0x6E. */
+export interface ContainerOpenEvent {
+  /** Window id 0–15; the server reuses it in every follow-up packet. */
+  containerId: number;
+  /** Client id of the container item itself (bag, corpse, depot…). */
+  containerItemId: number;
+  name: string;
+  capacity: number;
+  /** True when the container sits inside another — enables the up arrow. */
+  hasParent: boolean;
+  /** Slot order as sent: slot 0 first (most recently added). */
+  items: MapTileItem[];
+}
+
+export interface ContainersProtocol {
+  /** 0x6E — a container window opened (or was re-described in place). */
+  parseOpen(packet: InputPacket): ContainerOpenEvent;
+  /** 0x6F — the server closed a window; returns the container id. */
+  parseClose(packet: InputPacket): number;
+  /** 0x70 — item added. No slot on the wire: it goes in at slot 0. */
+  parseAddItem(packet: InputPacket): { containerId: number; item: MapTileItem };
+  /** 0x71 — the item at a slot was replaced. */
+  parseUpdateItem(packet: InputPacket): { containerId: number; slot: number; item: MapTileItem };
+  /** 0x72 — the item at a slot was removed. */
+  parseRemoveItem(packet: InputPacket): { containerId: number; slot: number };
+  /** 0x87 — ask the server to close a container window. */
+  buildClose(containerId: number): OutputPacket;
+  /** 0x88 — ask for the parent container, re-using the same window id. */
+  buildUp(containerId: number): OutputPacket;
+}
+
 export interface PlayerStats {
   health: number;
   maxHealth: number;
@@ -522,6 +553,7 @@ export interface GameProtocol {
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
+  readonly containers: ContainersProtocol;
   readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;

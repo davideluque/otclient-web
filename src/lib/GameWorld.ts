@@ -97,6 +97,13 @@ export class GameWorld {
   onChange: (() => void) | null = null;
 
   /**
+   * Callback when the server cancels a walk (0xB5). The movement binding
+   * points this at the walk controller so it flushes its pipeline
+   * immediately instead of waiting out the step timeout.
+   */
+  onCancelWalk: ((direction: number) => void) | null = null;
+
+  /**
    * Bumped whenever tile contents change (not on creature-only updates).
    * Lets the renderer skip full repaints for creature moves, which fire
    * `onChange` far more often than the map actually changes.
@@ -265,6 +272,24 @@ export class GameWorld {
     // binding.
     dispatcher.on(op.WorldLight, (p) => this.handleWorldLight(p));
     dispatcher.on(op.CreatureLight, (p) => this.handleCreatureLight(p));
+    dispatcher.on(op.CancelWalk, (p) => this.handleCancelWalk(p));
+  }
+
+  /**
+   * 0xB5 — the server rejected or aborted a walk. Carries the direction
+   * the player is facing server-side (a blocked step still turns the
+   * character); snap to it so the client doesn't stay mid-turn.
+   */
+  private handleCancelWalk(packet: InputPacket): void {
+    const direction = packet.getU8();
+    const wc = this.creatures.get(this.playerCreatureId);
+    if (wc) wc.direction = direction;
+    const tile = this.getTile(this.playerX, this.playerY, this.playerZ);
+    const tc = tile?.creatures.find((c) => c.id === this.playerCreatureId);
+    if (tc) tc.direction = direction;
+    this.creatureRevision++;
+    this.onChange?.();
+    this.onCancelWalk?.(direction);
   }
 
   /** 0x82 — ambient light: the server's day/night cycle. */

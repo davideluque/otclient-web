@@ -30,28 +30,18 @@ export function parseCreatureMove(packet: InputPacket): CreatureMoveEvent {
   };
 }
 
-/**
- * Parse creature turn (direction change).
- * Sent as part of a tile transform packet with creature data.
- */
 export function parseCreatureTurn(packet: InputPacket): CreatureTurnEvent {
   const creatureId = packet.getU32();
   const direction = packet.getU8();
   return { type: 'turn', creatureId, direction };
 }
 
-/**
- * Parse creature health update.
- */
 export function parseCreatureHealth(packet: InputPacket): CreatureHealthEvent {
   const creatureId = packet.getU32();
   const healthPercent = packet.getU8();
   return { type: 'health', creatureId, healthPercent };
 }
 
-/**
- * Parse creature light update.
- */
 export function parseCreatureLight(packet: InputPacket): CreatureLightEvent {
   const creatureId = packet.getU32();
   const lightLevel = packet.getU8();
@@ -59,18 +49,12 @@ export function parseCreatureLight(packet: InputPacket): CreatureLightEvent {
   return { type: 'light', creatureId, lightLevel, lightColor };
 }
 
-/**
- * Parse creature speed update.
- */
 export function parseCreatureSpeed(packet: InputPacket): CreatureSpeedEvent {
   const creatureId = packet.getU32();
   const speed = packet.getU16();
   return { type: 'speed', creatureId, speed };
 }
 
-/**
- * Parse creature outfit change.
- */
 export function parseCreatureOutfit(packet: InputPacket): CreatureOutfitEvent {
   const creatureId = packet.getU32();
   // 7.6 sends lookType as a single byte; lookType 0 ("looks like an

@@ -155,8 +155,12 @@ export function createContainerPane(
     el,
     update: (containers) => {
       const sorted = [...containers].sort((a, b) => a.id - b.id);
+      // replaceChildren resets the pane's scroll; a loot tick must not
+      // yank the list back to the top mid-scroll.
+      const scrollTop = el.scrollTop;
       el.replaceChildren(...sorted.map(renderWindow));
       el.style.display = sorted.length > 0 ? 'flex' : 'none';
+      el.scrollTop = scrollTop;
     },
     destroy: () => el.remove(),
   };

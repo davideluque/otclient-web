@@ -29,6 +29,7 @@ export function bindContainers(
   const manager = new ContainerManager();
 
   let pane: ContainerPaneHandle | null = null;
+  let unsubscribe: (() => void) | null = null;
   if (parent) {
     const send = (packet: Parameters<GameClient['send']>[0]): void => {
       try {
@@ -47,7 +48,7 @@ export function bindContainers(
       onItemTap: (cid, slot, item) =>
         send(protocol.actions.buildLookAt({ x: 0xffff, y: 0x40 | cid, z: slot }, item.id, slot)),
     });
-    manager.subscribe(() => pane?.update(manager.list));
+    unsubscribe = manager.subscribe(() => pane?.update(manager.list));
   }
 
   dispatcher.on(op.ContainerOpen, (p) => {
@@ -77,6 +78,9 @@ export function bindContainers(
       dispatcher.off(op.ContainerAddItem);
       dispatcher.off(op.ContainerUpdateItem);
       dispatcher.off(op.ContainerRemoveItem);
+      // The handle exposes `manager` — dropping the subscription keeps a
+      // retained manager from pinning the destroyed pane's DOM.
+      unsubscribe?.();
       pane?.destroy();
       manager.clear();
     },

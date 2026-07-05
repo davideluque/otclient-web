@@ -137,6 +137,28 @@ describe('createWalkController cancel (server 0xB5)', () => {
     walker.destroy();
   });
 
+  it('suppresses the wire direction, not a newer lookahead direction', () => {
+    const { client, world, sent } = makeFakes();
+    let held: Direction | null = Direction.East;
+    const walker = createWalkController({
+      client, world, getHeldDirection: () => held, tickMs: 25,
+    });
+
+    vi.advanceTimersByTime(150); // first send goes out east
+    held = Direction.North;
+    vi.advanceTimersByTime(50); // lookahead goes out north
+    expect(sent).toHaveLength(2);
+
+    // The wall was east — the 0xB5 carries east even though the last
+    // SENT direction was north. North must not be stalled.
+    walker.cancel(Direction.East);
+    vi.advanceTimersByTime(30);
+    expect(sent).toHaveLength(3);
+    expect(sent[2]).toBe(ClientOp.MoveNorth);
+
+    walker.destroy();
+  });
+
   it('a held-direction change lifts the suppression immediately', () => {
     const { client, world, sent } = makeFakes();
     let held: Direction | null = Direction.East;

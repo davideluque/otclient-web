@@ -43,8 +43,12 @@ export interface WalkControllerHandle {
   /**
    * The server cancelled the walk (0xB5): flush the pipeline now instead
    * of waiting out the step timeout, and briefly stop re-sending.
+   * `dir` is the facing from the packet — the direction that hit the
+   * wall; without it the suppression falls back to the last sent
+   * direction, which can be a newer lookahead the player already turned
+   * to (and must not be stalled).
    */
-  cancel(): void;
+  cancel(dir?: Direction | null): void;
 }
 
 /** Executing + one server-queued lookahead. Never more. */
@@ -131,10 +135,10 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
 
   return {
     destroy: () => clearInterval(timer),
-    cancel: () => {
+    cancel: (dir?: Direction | null) => {
       telemetry('walk-cancel', { outstanding: sent.length });
       sent = [];
-      suppressedDir = lastSentDir;
+      suppressedDir = dir ?? lastSentDir;
       suppressUntil = performance.now() + CANCEL_SUPPRESS_MS;
     },
   };

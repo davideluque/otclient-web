@@ -58,7 +58,10 @@ function ensureStyles(): void {
 let active: DeathDialogHandle | null = null;
 
 export function showDeathDialog(opts: DeathDialogOptions): DeathDialogHandle {
-  if (active) return active;
+  // isConnected guards against a stale handle whose element something
+  // external removed — that would otherwise block every future dialog.
+  if (active && active.el.isConnected) return active;
+  active = null;
   ensureStyles();
 
   const el = document.createElement('div');
@@ -82,18 +85,26 @@ export function showDeathDialog(opts: DeathDialogOptions): DeathDialogHandle {
   card.append(skull, title, subtitle, continueBtn);
   el.appendChild(card);
   (opts.parent ?? document.body).appendChild(el);
+  // Focus the primary action: Enter/Space dismisses immediately, and
+  // screen readers announce the dialog through the focus move.
+  continueBtn.focus();
 
   const destroy = (): void => {
     document.removeEventListener('keydown', onKeyDown);
     el.remove();
-    if (active === handle) active = null;
+    active = null;
   };
   const proceed = (): void => {
     destroy();
     opts.onContinue();
   };
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') proceed();
+    if (e.key !== 'Escape') return;
+    // Other document-level Escape listeners (full chat, menus) must not
+    // also fire from behind the modal.
+    e.preventDefault();
+    e.stopPropagation();
+    proceed();
   };
   continueBtn.addEventListener('click', proceed);
   document.addEventListener('keydown', onKeyDown);

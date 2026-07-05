@@ -94,7 +94,13 @@ export function bindChat(
     const messageClass = p.getU8(); // styling can use it later
     const text = p.getString();
     if (messageClass === MSG_EVENT_ADVANCE && text === 'You are dead.') {
-      opts.onDeathMessage?.();
+      // A throwing UI callback must not kill the dispatcher mid-frame —
+      // the rest of the batched packets (and this message) still parse.
+      try {
+        opts.onDeathMessage?.();
+      } catch (e) {
+        console.warn('[jamera] death handler failed:', e instanceof Error ? e.message : e);
+      }
     }
     // The death line still flows to chat — it's part of the log too.
     manager.handleMessage({

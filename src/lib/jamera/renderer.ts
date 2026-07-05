@@ -1,10 +1,13 @@
-import { Container, RenderTexture } from 'pixi.js';
-import type { Application, Sprite } from 'pixi.js';
+import { Container, Graphics, RenderTexture, Sprite } from 'pixi.js';
+import type { Application } from 'pixi.js';
 import {
   buildIlluminationOverlay, computeAmbient, createLightMaskTexture,
   loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
 } from '../lighting';
-import { renderTileRegion, renderPlayer, type TintedTextureCache } from '../tileRenderer';
+import {
+  renderTileRegion, renderPlayer, spriteIndex, readPixelDisplacement,
+  type TintedTextureCache,
+} from '../tileRenderer';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
 import type { ChatManager } from '../chat/ChatManager';
@@ -68,6 +71,18 @@ export const LIGHT_PREF_EVENT = 'jamera:light-pref';
 export function nextStepEma(prevEma: number, sampleMs: number): number {
   if (sampleMs < STEP_GLIDE_MIN_MS || sampleMs > 500) return prevEma;
   return Math.max(STEP_GLIDE_MIN_MS, Math.min(STEP_GLIDE_MAX_MS, prevEma * 0.75 + sampleMs * 0.25));
+}
+
+/** Magic-effect animation cadence: 100 ms per .dat phase (OTClient's 7.6 timing). */
+export const EFFECT_PHASE_MS = 100;
+
+/**
+ * Which .dat animation phase a magic effect shows at `now`, or -1 once
+ * it has played through — effects run once, they don't loop.
+ */
+export function effectPhaseAt(now: number, startedAt: number, animationPhases: number): number {
+  const phase = Math.floor((now - startedAt) / EFFECT_PHASE_MS);
+  return phase < animationPhases ? phase : -1;
 }
 
 export interface RenderPos { x: number; y: number }
@@ -154,6 +169,11 @@ export function bindRenderer(
   let root: Container | null = null;
   let tileLayer: Container | null = null;
   let creatureLayer: Container | null = null;
+  // Combat effects (magic effects, target square). Persistent like the
+  // bubble layer — tiles/creatures/light insert themselves below it —
+  // but its children are transient: rebuilt every frame while any
+  // effect is live, which is rare and brief.
+  let effectsLayer: Container | null = null;
   // Light overlay (multiply-blended) above tiles + creatures. The
   // RenderTexture, bubble pool, and mask persist across rebuilds —
   // buildIlluminationOverlay resizes/recycles them.
@@ -252,10 +272,69 @@ export function bindRenderer(
     }
   };
 
+  /**
+   * Repaint the effects layer for this frame: every live magic effect
+   * at its current animation phase, plus the attack-target square.
+   * Children are rebuilt wholesale — a handful of sprites for well
+   * under a second at a time. Sprite textures come from the memoised
+   * atlas.get, so destroy() here never touches shared GPU resources.
+   */
+  const drawEffects = (now: number): void => {
+    if (!effectsLayer) return;
+    for (const child of effectsLayer.removeChildren()) child.destroy();
+
+    for (const e of world.magicEffects) {
+      if (e.z !== world.playerZ) continue;
+      const thing = atlas.effectIndex.get(e.effectId);
+      if (!thing) continue;
+      const fg = thing.frameGroup;
+      const phase = effectPhaseAt(now, e.startedAt, fg.animationPhases);
+      if (phase < 0) continue;
+      // Position-derived pattern variation, same rule as ground items.
+      const patX = ((e.x % fg.numPatternX) + fg.numPatternX) % fg.numPatternX;
+      const patY = ((e.y % fg.numPatternY) + fg.numPatternY) % fg.numPatternY;
+      const displacement = readPixelDisplacement(thing);
+      for (let h = fg.height - 1; h >= 0; h--) {
+        for (let w = fg.width - 1; w >= 0; w--) {
+          const id = fg.spriteIds[spriteIndex(fg, phase, patX, patY, 0, h, w)];
+          if (!id) continue;
+          const texture = atlas.get(id);
+          if (!texture) continue;
+          const sprite = new Sprite(texture);
+          sprite.x = (e.x - w) * TILE_SIZE - displacement.x;
+          sprite.y = (e.y - h) * TILE_SIZE - displacement.y;
+          effectsLayer.addChild(sprite);
+        }
+      }
+    }
+
+    const square = world.targetSquare;
+    if (square) {
+      const target = world.getCreature(square.creatureId);
+      if (target && target.z === world.playerZ) {
+        // Follow the creature through its glide, not its logical tile —
+        // renderPosFor is the same interpolation the creature sprite uses.
+        const p = renderPosFor(target, now);
+        const g = new Graphics();
+        g.rect(p.x * TILE_SIZE + 1, p.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2)
+          .stroke({ color: tibiaColorToHex(square.color), width: 2 });
+        effectsLayer.addChild(g);
+      }
+    }
+  };
+
   let rafId = 0;
 
   const update = (): void => {
     const now = performance.now();
+    world.pruneEffects(now);
+    // Effects animate frame-by-frame, so the rAF loop must stay armed
+    // while any is live — a spell landing while everyone stands still
+    // reaches here through world.onChange, then this keeps it playing.
+    const effectsActive = world.magicEffects.length > 0
+      || world.animatedTexts.length > 0
+      || world.distanceShots.length > 0
+      || world.targetSquare !== null;
     // While anything is mid-walk-animation the key changes every walk
     // frame, and a rAF loop keeps ticking until everyone is idle again.
     const anyWalking = world.getAllCreatures().some(
@@ -271,7 +350,7 @@ export function bindRenderer(
       bubblesActive = chatManager.speechBubbles.length > 0;
     }
     const walkTick = anyWalking ? Math.floor(now / WALK_FRAME_MS) : -1;
-    if ((anyWalking || bubblesActive) && rafId === 0) {
+    if ((anyWalking || bubblesActive || effectsActive) && rafId === 0) {
       const tick = (): void => {
         rafId = 0;
         update();
@@ -281,6 +360,8 @@ export function bindRenderer(
     if (!root) {
       root = new Container();
       app.stage.addChild(root);
+      effectsLayer = new Container();
+      root.addChild(effectsLayer);
       if (bubbles) root.addChild(bubbles.getContainer());
     }
 
@@ -383,6 +464,7 @@ export function bindRenderer(
       lightKey = lk;
     }
 
+    drawEffects(now);
     glide(now);
   };
 
@@ -432,6 +514,7 @@ export function bindRenderer(
       root = null;
       tileLayer = null;
       creatureLayer = null;
+      effectsLayer = null;
     }
   };
 }

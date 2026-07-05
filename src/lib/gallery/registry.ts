@@ -18,6 +18,7 @@ import { createGameMenu } from '../gameMenu';
 import { showStorageNotice } from '../storageNotice';
 import { createInventoryPane, INVENTORY_SLOTS } from '../inventoryPane';
 import { createContainerPane } from '../containerPane';
+import { showActionSheet, type ActionSheetHandle } from '../actionSheet';
 import type { OpenContainer } from '../containers';
 import { createSettingsPane } from '../settingsPane';
 import { createMinimap, minimapIndexToRgb } from '../minimap';
@@ -253,6 +254,32 @@ export const ENTRIES: GalleryEntry[] = [
       knobs.button('Reopen both', () => { open = [corpse, bag]; pane.update(open); });
       knobs.button('Close all (pane hides)', () => { open = []; pane.update(open); });
       return () => pane.destroy();
+    },
+  },
+
+  {
+    name: 'Action sheet',
+    description:
+      'Bottom sheet of tap actions — the mobile context menu. One button '
+      + 'per action plus Cancel; any selection, Cancel, or a backdrop tap '
+      + 'dismisses it. In-game it opens on container-item and equipment '
+      + 'taps (Loot / Look / Drop / Unequip).',
+    mount({ knobs, log }) {
+      let sheet: ActionSheetHandle | null = null;
+      const open = (): void => {
+        sheet?.close();
+        sheet = showActionSheet({
+          title: '#2853',
+          actions: [
+            { label: 'Loot', onSelect: () => log('loot → backpack') },
+            { label: 'Look', onSelect: () => log('look 0x8C') },
+            { label: 'Drop', onSelect: () => log('drop at feet') },
+          ],
+        });
+      };
+      knobs.button('Open sheet', open);
+      open();
+      return () => sheet?.close();
     },
   },
 

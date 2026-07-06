@@ -46,17 +46,33 @@ export function isWorldTileWalkable(
   world: GameWorld,
   datIndex: Map<number, ThingType>,
   x: number, y: number, z: number,
+  floorChangeIds?: Set<number>,
 ): boolean {
   const tile = world.getTile(x, y, z);
   if (!tile) return false;
   if (tile.items.length === 0) return false; // no ground described
   for (const item of tile.items) {
+    // Stairs/ramps/holes flag NotWalkable in the .dat yet are exactly
+    // where a walk must be able to END — same exception as the offline
+    // isTileWalkable. Only the OTB knows which ids floor-change.
+    if (floorChangeIds?.has(item.id)) continue;
     const thing = datIndex.get(item.id);
     if (thing && (thing.attrs.has(DatAttr.NotWalkable) || thing.attrs.has(DatAttr.NotPathable))) {
       return false;
     }
   }
   return true;
+}
+
+/** True when any item on the tile floor-changes (stair, ramp, hole). */
+export function tileFloorChanges(
+  world: GameWorld,
+  x: number, y: number, z: number,
+  floorChangeIds?: Set<number>,
+): boolean {
+  if (!floorChangeIds) return false;
+  const tile = world.getTile(x, y, z);
+  return !!tile && tile.items.some((item) => floorChangeIds.has(item.id));
 }
 
 function creatureBlocks(world: GameWorld, x: number, y: number, z: number): boolean {
@@ -126,12 +142,13 @@ export function findWalkRoute(
   datIndex: Map<number, ThingType>,
   goalX: number,
   goalY: number,
+  floorChangeIds?: Set<number>,
 ): WalkDirection[] | null {
   const z = world.playerZ;
   const sx = world.playerX;
   const sy = world.playerY;
   if (sx === goalX && sy === goalY) return [];
-  if (!isWorldTileWalkable(world, datIndex, goalX, goalY, z)) return null;
+  if (!isWorldTileWalkable(world, datIndex, goalX, goalY, z, floorChangeIds)) return null;
 
   const openNodes = new Map<string, RouteNode>();
   const cameFrom = new Map<string, RouteStep>();
@@ -163,12 +180,16 @@ export function findWalkRoute(
       const nextY = current.node.y + dy;
       const nextKey = floorTileKey(nextX, nextY);
       if (visitedTiles.has(nextKey)) continue;
-      if (!isWorldTileWalkable(world, datIndex, nextX, nextY, z)) continue;
+      if (!isWorldTileWalkable(world, datIndex, nextX, nextY, z, floorChangeIds)) continue;
 
       // Creatures block intermediate steps but not the goal tile itself
       // (the server stops the walk next to it anyway).
       const isGoalTile = nextX === goalX && nextY === goalY;
       if (!isGoalTile && creatureBlocks(world, nextX, nextY, z)) continue;
+      // A floor-change tile is a valid destination but never a waypoint:
+      // routing THROUGH a stair would teleport the walker mid-route —
+      // same rule as the offline pathfinder.
+      if (!isGoalTile && tileFloorChanges(world, nextX, nextY, z, floorChangeIds)) continue;
 
       const costFromStart = current.node.costFromStart + 1;
       const knownCost = bestCostToTile.get(nextKey);

@@ -10,7 +10,7 @@ import type { MapTile } from '../lib/net/common/types';
  * Item id 1 = plain ground, id 9 = a wall (NotWalkable in the dat).
  */
 function makeWorld(
-  grid: string[], // rows of '.', '#' (wall), ' ' (undescribed), 'M' (monster)
+  grid: string[], // rows of '.', '#' (wall), ' ' (undescribed), 'M' (monster), 'S' (stair)
   px: number, py: number,
 ): { world: GameWorld; datIndex: Map<number, ThingType> } {
   const tiles = new Map<string, MapTile>();
@@ -19,7 +19,7 @@ function makeWorld(
   grid.forEach((row, y) => {
     [...row].forEach((ch, x) => {
       if (ch === ' ') return;
-      const item = { id: ch === '#' ? 9 : 1 };
+      const item = { id: ch === '#' ? 9 : ch === 'S' ? 5 : 1 };
       const tile: MapTile = { x, y, z: 7, things: [{ kind: 'item', item }], items: [item], creatures: [] };
       if (ch === 'M') {
         const id = nextId++;
@@ -38,7 +38,10 @@ function makeWorld(
 
   const wall: ThingType = { id: 9, attrs: new Map([[DatAttr.NotWalkable, true]]) } as unknown as ThingType;
   const ground: ThingType = { id: 1, attrs: new Map() } as unknown as ThingType;
-  const datIndex = new Map<number, ThingType>([[1, ground], [9, wall]]);
+  // Real stairs flag NotWalkable in the .dat too — walkability must
+  // bypass it only via the OTB floor-change knowledge.
+  const stair: ThingType = { id: 5, attrs: new Map([[DatAttr.NotWalkable, true]]) } as unknown as ThingType;
+  const datIndex = new Map<number, ThingType>([[1, ground], [9, wall], [5, stair]]);
   return { world, datIndex };
 }
 
@@ -100,5 +103,27 @@ describe('buildAutoWalkPacket', () => {
     const bytes = [...buildAutoWalkPacket(route).toUint8Array()];
     expect(bytes[1]).toBe(255);
     expect(bytes.length).toBe(2 + 255);
+  });
+});
+
+describe('floor-change tiles (stairs, holes)', () => {
+  const FLOOR_CHANGE_IDS = new Set([5]);
+
+  it('a stair is a valid goal despite its NotWalkable .dat flag', () => {
+    const { world, datIndex } = makeWorld(['..S'], 0, 0);
+    expect(findWalkRoute(world, datIndex, 2, 0)).toBeNull(); // regression shape
+    expect(findWalkRoute(world, datIndex, 2, 0, FLOOR_CHANGE_IDS)).toEqual([1, 1]);
+  });
+
+  it('never routes THROUGH a stair to reach ground behind it', () => {
+    // Detour south exists; the direct path through S must be refused.
+    const { world, datIndex } = makeWorld(['.S.', '...'], 0, 0);
+    const route = findWalkRoute(world, datIndex, 2, 0, FLOOR_CHANGE_IDS);
+    expect(route).toEqual([2, 1, 1, 0]); // S E E N — around, not across
+  });
+
+  it('a boxed-in stair behind walls stays unreachable', () => {
+    const { world, datIndex } = makeWorld(['.#S'], 0, 0);
+    expect(findWalkRoute(world, datIndex, 2, 0, FLOOR_CHANGE_IDS)).toBeNull();
   });
 });

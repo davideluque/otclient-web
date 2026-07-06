@@ -33,8 +33,13 @@ export function buildOcclusionSets(
     sets.set(z, new Set(covered));
     for (let y = y1; y <= y2; y++) {
       for (let x = x1; x <= x2; x++) {
+        const packed = (x << 16) | y;
+        // Already covered by a shallower floor: adding again is a no-op,
+        // so skip the tile lookup — in town floor 7 covers nearly
+        // everything, making this the common case on deeper floors.
+        if (covered.has(packed)) continue;
         const tile = source.getTile(x, y, z);
-        if (tile && hasFullGround(tile, datIndex)) covered.add((x << 16) | y);
+        if (tile && hasFullGround(tile, datIndex)) covered.add(packed);
       }
     }
   }

@@ -223,3 +223,23 @@ export function parseOtb(buffer: ArrayBuffer): OtbFile {
 
   return { version, items, serverToClient, serverIdToFlags };
 }
+
+const FLOOR_CHANGE_MASK =
+  OtbFlags.FloorChangeDown | OtbFlags.FloorChangeNorth | OtbFlags.FloorChangeEast |
+  OtbFlags.FloorChangeSouth | OtbFlags.FloorChangeWest;
+
+/**
+ * Client ids of every floor-changing item (stairs, ramps, holes,
+ * manholes). The .dat has no floor-change flag — only the OTB knows —
+ * and these items typically also carry NotWalkable in the .dat, so
+ * walkability checks need this set to treat them as valid step targets.
+ */
+export function floorChangeClientIds(otb: OtbFile): Set<number> {
+  const ids = new Set<number>();
+  for (const [serverId, flags] of otb.serverIdToFlags) {
+    if ((flags & FLOOR_CHANGE_MASK) === 0) continue;
+    const clientId = otb.serverToClient.get(serverId);
+    if (clientId !== undefined) ids.add(clientId);
+  }
+  return ids;
+}

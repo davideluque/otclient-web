@@ -130,23 +130,34 @@ export function tibiaColorToHex(paletteIndex: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+/**
+ * `zs` is one floor or the whole drawn stack — multi-floor rendering
+ * merges every drawn floor's sources into ONE overlay (design doc: no
+ * per-floor light layers, classic behavior). Gathering stays per-floor-
+ * accurate: only the listed floors contribute, so a torch in the sealed
+ * cellar can't glow through the ground. The plain-number form keeps the
+ * offline viewer's single-floor call site unchanged.
+ */
 export function* gatherLights(
   tileMap: TileSource,
   datIndex: Map<number, ThingType>,
-  x1: number, y1: number, x2: number, y2: number, z: number,
+  x1: number, y1: number, x2: number, y2: number,
+  zs: number | readonly number[],
 ): Generator<LightSource> {
-  for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
-    for (const item of tile.items) {
-      const tt = datIndex.get(item.clientId);
-      if (!tt) continue;
-      const light = tt.attrs.get(DatAttr.Light) as Light | undefined;
-      if (!light || light.intensity === 0) continue;
-      yield {
-        x: tile.x,
-        y: tile.y,
-        intensity: light.intensity,
-        color: tibiaColorToHex(light.color),
-      };
+  for (const z of typeof zs === 'number' ? [zs] : zs) {
+    for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
+      for (const item of tile.items) {
+        const tt = datIndex.get(item.clientId);
+        if (!tt) continue;
+        const light = tt.attrs.get(DatAttr.Light) as Light | undefined;
+        if (!light || light.intensity === 0) continue;
+        yield {
+          x: tile.x,
+          y: tile.y,
+          intensity: light.intensity,
+          color: tibiaColorToHex(light.color),
+        };
+      }
     }
   }
 }
@@ -201,6 +212,11 @@ export class LightSpritePool {
  * (cheap), and light bubbles are borrowed from the pool instead of allocated.
  * The returned Sprite is short-lived (one per call) and may be destroyed by
  * the caller without affecting the underlying texture.
+ *
+ * `zs` (one floor or the drawn stack, see gatherLights) all land at raw
+ * world coordinates in the merged overlay — a torch under an iso-shifted
+ * roof glows at its tile, up to a tile off from the shifted art. Accepted
+ * v1: one classic merged pass, no per-floor light layers.
  */
 export function buildIlluminationOverlay(
   app: Application,
@@ -209,7 +225,8 @@ export function buildIlluminationOverlay(
   mask: Texture,
   texture: RenderTexture,
   pool: LightSpritePool,
-  x1: number, y1: number, x2: number, y2: number, z: number,
+  x1: number, y1: number, x2: number, y2: number,
+  zs: number | readonly number[],
   opts: LightingOptions,
 ): Sprite {
   const w = (x2 - x1 + 1) * TILE_SIZE;
@@ -251,7 +268,7 @@ export function buildIlluminationOverlay(
     tileMap, datIndex,
     x1 - MAX_INTENSITY, y1 - MAX_INTENSITY,
     x2 + MAX_INTENSITY, y2 + MAX_INTENSITY,
-    z,
+    zs,
   )) {
     addBubble(light);
   }

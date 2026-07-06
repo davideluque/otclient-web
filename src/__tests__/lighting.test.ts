@@ -69,11 +69,11 @@ describe('gatherLights', () => {
     [202, thing(202)], // no light
   ]);
 
-  function makeTileMap(items: { x: number; y: number; serverIds: number[] }[]): TileMap {
+  function makeTileMap(items: { x: number; y: number; z?: number; serverIds: number[] }[]): TileMap {
     const otbm: OtbmFile = {
       header: { version: 1, width: 1, height: 1, majorVersionItems: 1, minorVersionItems: 1 },
       tiles: items.map(t => ({
-        position: { x: t.x, y: t.y, z: 7 },
+        position: { x: t.x, y: t.y, z: t.z ?? 7 },
         flags: 0,
         items: t.serverIds.map(id => ({ id })),
       })),
@@ -122,6 +122,45 @@ describe('gatherLights', () => {
     const lights = [...gatherLights(tm, datIndex, 0, 0, 10, 10, 7)];
     expect(lights).toHaveLength(2);
     expect(lights.map(l => l.intensity).sort()).toEqual([3, 7]);
+  });
+
+  it('merges every listed floor into one gather — a torch upstairs lights the view', () => {
+    const tm = makeTileMap([
+      { x: 5, y: 5, z: 7, serverIds: [100] },
+      { x: 6, y: 5, z: 6, serverIds: [101] }, // the floor above the player
+    ]);
+    const lights = [...gatherLights(tm, datIndex, 0, 0, 10, 10, [7, 6])];
+    expect(lights).toHaveLength(2);
+    expect(lights.map(l => l.intensity).sort()).toEqual([3, 7]);
+  });
+
+  it('stays per-floor-accurate: unlisted floors contribute nothing', () => {
+    const tm = makeTileMap([
+      { x: 5, y: 5, z: 7, serverIds: [100] },
+      { x: 5, y: 6, z: 8, serverIds: [100] }, // underground — never drawn above ground
+    ]);
+    const lights = [...gatherLights(tm, datIndex, 0, 0, 10, 10, [7, 6, 5])];
+    expect(lights).toHaveLength(1);
+    expect(lights[0]).toMatchObject({ x: 5, y: 5 });
+  });
+
+  it('a roof-culled drawn set gathers only the remaining floors', () => {
+    const tm = makeTileMap([
+      { x: 5, y: 5, z: 7, serverIds: [100] },
+      { x: 6, y: 5, z: 6, serverIds: [101] },
+    ]);
+    // Indoors: firstVisible === playerZ, the drawn set collapses to [7].
+    const lights = [...gatherLights(tm, datIndex, 0, 0, 10, 10, [7])];
+    expect(lights).toHaveLength(1);
+    expect(lights[0]).toMatchObject({ x: 5, y: 5, intensity: 7 });
+  });
+
+  it('the plain-number form still gathers a single floor (offline viewer)', () => {
+    const tm = makeTileMap([
+      { x: 5, y: 5, z: 7, serverIds: [100] },
+      { x: 6, y: 5, z: 6, serverIds: [101] },
+    ]);
+    expect([...gatherLights(tm, datIndex, 0, 0, 10, 10, 7)]).toHaveLength(1);
   });
 });
 

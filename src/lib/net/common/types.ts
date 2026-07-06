@@ -129,6 +129,11 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface ChatChannelInfo {
+  id: number;
+  name: string;
+}
+
 // Well-known chat constants matching OT 7.6 wire codes. These are
 // pragmatically shared across most OT versions; if a future version's wire
 // codes diverge, expose per-version values on `GameProtocol.chat` instead of
@@ -298,6 +303,51 @@ export interface ActionsProtocol {
   buildRemoveVip(guid: number): OutputPacket;
   /** 0xA1 — set the attacked creature; id 0 stops attacking. */
   buildAttack(creatureId: number): OutputPacket;
+  /**
+   * ThrowItem — move a thing between map tiles, open containers, and
+   * equipment slots (see virtualPosition.ts for the carried-thing
+   * addressing). `count` is the amount moved for stackables, 1
+   * otherwise. The server silently drops the packet when `to` equals
+   * `from` byte-for-byte.
+   */
+  buildMoveThing(from: WirePosition, spriteId: number, fromStackPos: number, to: WirePosition, count: number): OutputPacket;
+  /**
+   * UseItemEx — use `from` on `to` (rope, shovel, runes). Both ends are
+   * full pos + spriteId + stackpos triples; either may be a virtual
+   * container/inventory position (virtualPosition.ts).
+   */
+  buildUseItemWith(from: WirePosition, fromSpriteId: number, fromStackPos: number, to: WirePosition, toSpriteId: number, toStackPos: number): OutputPacket;
+}
+
+/** One open container window, as described by a 0x6E. */
+export interface ContainerOpenEvent {
+  /** Window id 0–15; the server reuses it in every follow-up packet. */
+  containerId: number;
+  /** Client id of the container item itself (bag, corpse, depot…). */
+  containerItemId: number;
+  name: string;
+  capacity: number;
+  /** True when the container sits inside another — enables the up arrow. */
+  hasParent: boolean;
+  /** Slot order as sent: slot 0 first (most recently added). */
+  items: MapTileItem[];
+}
+
+export interface ContainersProtocol {
+  /** 0x6E — a container window opened (or was re-described in place). */
+  parseOpen(packet: InputPacket): ContainerOpenEvent;
+  /** 0x6F — the server closed a window; returns the container id. */
+  parseClose(packet: InputPacket): number;
+  /** 0x70 — item added. No slot on the wire: it goes in at slot 0. */
+  parseAddItem(packet: InputPacket): { containerId: number; item: MapTileItem };
+  /** 0x71 — the item at a slot was replaced. */
+  parseUpdateItem(packet: InputPacket): { containerId: number; slot: number; item: MapTileItem };
+  /** 0x72 — the item at a slot was removed. */
+  parseRemoveItem(packet: InputPacket): { containerId: number; slot: number };
+  /** 0x87 — ask the server to close a container window. */
+  buildClose(containerId: number): OutputPacket;
+  /** 0x88 — ask for the parent container, re-using the same window id. */
+  buildUp(containerId: number): OutputPacket;
 }
 
 export interface PlayerStats {
@@ -337,6 +387,55 @@ export interface PlayerProtocol {
   parseSkills(packet: InputPacket): PlayerSkills;
 }
 
+/** A one-shot effect (spell hit, poof, teleport flash) at a position. */
+export interface MagicEffectEvent {
+  x: number;
+  y: number;
+  z: number;
+  /** 1-based .dat effect id: the ThingType is dat.effects[effectId - 1]. */
+  effectId: number;
+}
+
+/** Floating on-screen text (damage/heal numbers, exp) at a position. */
+export interface AnimatedTextEvent {
+  x: number;
+  y: number;
+  z: number;
+  /** Index into the 216-color Tibia palette (see tibiaColorToHex). */
+  color: number;
+  text: string;
+}
+
+/** A projectile (arrow, rune flare) flying between two positions. */
+export interface DistanceShotEvent {
+  fromX: number;
+  fromY: number;
+  fromZ: number;
+  toX: number;
+  toY: number;
+  toZ: number;
+  /** 1-based .dat missile id: the ThingType is dat.missiles[missileId - 1]. */
+  missileId: number;
+}
+
+/** A colored square flashed around a creature (0 = black: attack target). */
+export interface CreatureSquareEvent {
+  creatureId: number;
+  /** Index into the 216-color Tibia palette. */
+  color: number;
+}
+
+export interface EffectsProtocol {
+  /** Parse a 0x83 magic-effect payload. */
+  parseMagicEffect(packet: InputPacket): MagicEffectEvent;
+  /** Parse a 0x84 animated-text payload. */
+  parseAnimatedText(packet: InputPacket): AnimatedTextEvent;
+  /** Parse a 0x85 distance-shot payload. */
+  parseDistanceShot(packet: InputPacket): DistanceShotEvent;
+  /** Parse a 0x86 creature-square payload. */
+  parseCreatureSquare(packet: InputPacket): CreatureSquareEvent;
+}
+
 export interface MovementProtocol {
   /** Build the client→server packet for one step in `direction`. */
   buildMove(direction: WalkDirection): OutputPacket;
@@ -350,6 +449,8 @@ export interface MovementProtocol {
 
 export interface ChatProtocol {
   parseSpeak(packet: InputPacket): ChatMessage;
+  parseChannelOpen(packet: InputPacket): ChatChannelInfo;
+  parseChannelClose(packet: InputPacket): number;
   buildSay(text: string): OutputPacket;
   buildChannelMessage(channelId: number, text: string): OutputPacket;
   buildPrivateMessage(recipientName: string, text: string): OutputPacket;
@@ -466,6 +567,8 @@ export interface GameProtocol {
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
+  readonly containers: ContainersProtocol;
+  readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;
 }

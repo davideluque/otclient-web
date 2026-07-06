@@ -16,9 +16,11 @@ import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane'
 import { registerWireSkips } from '../net/7.6/wireSkips';
 import { createWalkController } from './walkController';
 import { bindChat, type ChatBindingHandle } from './chatBinding';
+import { showDeathDialog } from '../deathDialog';
 import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
+import { bindContainers, type ContainerBindingHandle } from './containerBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindBattleList, type BattleBindingHandle } from './battleBinding';
 import { bindVip, type VipBindingHandle } from './vipBinding';
@@ -88,6 +90,8 @@ mountLoginScreen(root, {
     teardownStats = null;
     teardownInventory?.destroy();
     teardownInventory = null;
+    teardownContainers?.destroy();
+    teardownContainers = null;
     // The renderer too: its container and tinted-outfit textures belong
     // to the dead session (mountRenderer also bumps the epoch on the
     // next login, but freeing GPU resources shouldn't wait for one).
@@ -133,6 +137,23 @@ mountLoginScreen(root, {
     // these, the first unhandled opcode in a frame silently drops the
     // rest of it. GameWorld registers after and overrides per opcode.
     registerWireSkips(client.getDispatcher(), client.getProtocol());
+    // Death → dialog instead of a silent dump to the login form. Two
+    // signals: standard 7.6 servers send ReloginWindow (0x28,
+    // protocol76.cpp:2386), but Jamera's only call site is commented out
+    // (player.cpp:3398) — it sends a 0xB4 "You are dead." text message
+    // instead, hooked below via bindChat's onDeathMessage. The dialog is
+    // deliberately NOT in onLeaveGame's teardown: death drops the
+    // connection while it's showing and it must outlive the session.
+    const onDeath = (): void => {
+      showDeathDialog({
+        onContinue: () => {
+          // Usually the server already closed the connection by now;
+          // disconnect() covers a Continue tap that beats the close.
+          if (client.getState() !== 'disconnected') client.disconnect();
+        },
+      });
+    };
+    client.getDispatcher().on(client.getProtocol().serverOpcodes.ReloginWindow, onDeath);
     startPingLoop(client);
     loadAssetsForRendering();
     const world = bindGameWorld(client);
@@ -140,7 +161,7 @@ mountLoginScreen(root, {
     teardownCombat?.destroy();
     teardownCombat = bindCombat(client, world);
     teardownChat?.destroy();
-    teardownChat = bindChat(client);
+    teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane
@@ -149,6 +170,23 @@ mountLoginScreen(root, {
       renderThumb: (id) => jameraAtlas
         ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
         : null,
+      // Late-bound: interactions mount with the renderer (after the
+      // atlas), later than this binding — the optional chain no-ops in
+      // that brief window instead of arming a dead handle.
+      armUseWith: (from) => teardownInteractions?.armUseWith(from),
+    });
+    teardownContainers?.destroy();
+    teardownContainers = bindContainers(client, document.body, {
+      // Same lazy atlas read as the inventory pane above: windows
+      // re-render on every container packet, so thumbnails appear as
+      // soon as the atlas exists.
+      renderThumb: (id) => jameraAtlas
+        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+        : null,
+      // Drop target: the tile under the player, read at selection time.
+      playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
+      // Same late-bound interactions handle as the inventory pane above.
+      armUseWith: (from) => teardownInteractions?.armUseWith(from),
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
@@ -382,7 +420,13 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
     teardownInteractions?.destroy();
     // Stack-order classification for 0x6A inserts (top vs down items).
     world.setDatIndex(atlas.datIndex);
-    teardownInteractions = client ? bindInteractions(client, world, app, atlas.datIndex) : null;
+    teardownInteractions = client
+      ? bindInteractions(client, world, app, atlas.datIndex, {
+        // Client-chosen window id for 0x82: the first free one, so a
+        // second container opens beside the first instead of over it.
+        nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
+      })
+      : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager);
     console.info('[jamera] renderer bound to GameWorld');
   };
@@ -616,8 +660,14 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
     world,
     getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
   });
+  // GameWorld snaps the facing on 0xB5; the controller flushes its
+  // pipeline so a rejected step stops the walk instantly. The wire
+  // direction pins the suppression to the direction that actually hit
+  // the wall.
+  world.onCancelWalk = (dir) => walker.cancel(dir as Direction);
 
   teardownMovement = () => {
+    world.onCancelWalk = null;
     walker.destroy();
     joystickQuery.removeEventListener('change', applyJoystickVisibility);
     joystick.destroy();
@@ -635,6 +685,9 @@ let teardownStats: StatsBindingHandle | null = null;
 
 // Per-session inventory binding, replaced on re-login like the rest.
 let teardownInventory: InventoryBindingHandle | null = null;
+
+// Per-session container windows (wire state + pane), same lifecycle.
+let teardownContainers: ContainerBindingHandle | null = null;
 
 // Per-session canvas interactions (look/use), replaced with the renderer.
 let teardownInteractions: InteractionsHandle | null = null;

@@ -57,7 +57,7 @@ describe('long-press pointer tracking', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  function mount(tile?: MapTile) {
+  function mount(tile?: MapTile, opts?: { nextContainerId?: () => number }) {
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
     document.body.appendChild(canvas);
@@ -81,7 +81,7 @@ describe('long-press pointer tracking', () => {
     } as unknown as GameClient;
     // Every tile is plain walkable ground (id 1987, no blocking attrs).
     const datIndex = new Map([[1987, { id: 1987, attrs: new Map() }]]) as never;
-    const handle = bindInteractions(client, liveWorld, liveApp, datIndex);
+    const handle = bindInteractions(client, liveWorld, liveApp, datIndex, opts);
     const touch = (type: string, pointerId: number, clientX: number, clientY: number) =>
       canvas.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', pointerId, clientX, clientY, bubbles: true }));
     return { handle, canvas, sent, touch };
@@ -166,6 +166,24 @@ describe('long-press pointer tracking', () => {
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 2, 0]);
+    handle.destroy();
+  });
+
+  it('uses the client-chosen container window id as 0x82\'s index byte', () => {
+    const { canvas, handle, sent } = mount(undefined, { nextContainerId: () => 5 });
+    canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 400, clientY: 300, bubbles: true }));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 0, 5]);
+    handle.destroy();
+  });
+
+  it('falls back to window 0 without a nextContainerId provider', () => {
+    const { canvas, handle, sent } = mount();
+    canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 400, clientY: 300, bubbles: true }));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 0, 0]);
     handle.destroy();
   });
 

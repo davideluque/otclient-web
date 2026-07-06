@@ -162,6 +162,11 @@ export function createFullChatView(
   const unsubscribe = chatManager.subscribe(() => {
     if (el.classList.contains('open')) renderMessages();
   });
+  const unsubscribeChannels = chatManager.subscribeChannels(() => {
+    if (!el.classList.contains('open')) return;
+    renderTabs();
+    renderMessages();
+  });
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') close();
@@ -187,6 +192,7 @@ export function createFullChatView(
     close,
     destroy: () => {
       unsubscribe();
+      unsubscribeChannels();
       document.removeEventListener('keydown', onKeyDown);
       el.remove();
     },

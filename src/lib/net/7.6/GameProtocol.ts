@@ -10,6 +10,8 @@ import type {
   MovementProtocol,
   PlayerProtocol,
   ActionsProtocol,
+  ContainersProtocol,
+  EffectsProtocol,
 } from '../common/types';
 import {
   buildLoginPacket,
@@ -20,7 +22,16 @@ import {
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
 import { buildMovePacket, buildAutoWalkPacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
-import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket } from './actionsProtocol';
+import { buildLookAtPacket, buildUseItemPacket, buildUseItemWithPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket, buildMoveThingPacket } from './actionsProtocol';
+import {
+  parseContainerOpen,
+  parseContainerClose,
+  parseContainerAddItem,
+  parseContainerUpdateItem,
+  parseContainerRemoveItem,
+  buildCloseContainerPacket,
+  buildUpContainerPacket,
+} from './containersProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -31,12 +42,20 @@ import {
 } from './creatureParser';
 import {
   parseCreatureSpeak,
+  parseChannelOpen,
+  parseChannelClose,
   buildSayPacket,
   buildChannelMessagePacket,
   buildPrivateMessagePacket,
   buildWhisperPacket,
   buildYellPacket,
 } from './chatProtocol';
+import {
+  parseMagicEffect,
+  parseAnimatedText,
+  parseDistanceShot,
+  parseCreatureSquare,
+} from './effectsProtocol';
 import { ServerOp, ClientOp } from './opcodes';
 
 /**
@@ -70,6 +89,8 @@ export class GameProtocol implements GameProtocolSpec {
   readonly movement: MovementProtocol;
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
+  readonly containers: ContainersProtocol;
+  readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
 
@@ -130,15 +151,36 @@ export class GameProtocol implements GameProtocolSpec {
     this.actions = {
       buildLookAt: buildLookAtPacket,
       buildUseItem: buildUseItemPacket,
+      buildUseItemWith: buildUseItemWithPacket,
       buildLogout: buildLogoutPacket,
       buildFightModes: buildFightModesPacket,
       buildAddVip: buildAddVipPacket,
       buildRemoveVip: buildRemoveVipPacket,
       buildAttack: buildAttackPacket,
+      buildMoveThing: buildMoveThingPacket,
+    };
+
+    this.containers = {
+      parseOpen: parseContainerOpen,
+      parseClose: parseContainerClose,
+      parseAddItem: parseContainerAddItem,
+      parseUpdateItem: parseContainerUpdateItem,
+      parseRemoveItem: parseContainerRemoveItem,
+      buildClose: buildCloseContainerPacket,
+      buildUp: buildUpContainerPacket,
+    };
+
+    this.effects = {
+      parseMagicEffect,
+      parseAnimatedText,
+      parseDistanceShot,
+      parseCreatureSquare,
     };
 
     this.chat = {
       parseSpeak: parseCreatureSpeak,
+      parseChannelOpen,
+      parseChannelClose,
       buildSay: buildSayPacket,
       buildChannelMessage: buildChannelMessagePacket,
       buildPrivateMessage: buildPrivateMessagePacket,

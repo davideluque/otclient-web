@@ -114,3 +114,87 @@ describe('createWalkController (one-step lookahead)', () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe('createWalkController cancel (server 0xB5)', () => {
+  it('flushes the pipeline and suppresses re-sends into the wall for 250ms', () => {
+    const { client, world, sent } = makeFakes();
+    const walker = createWalkController({
+      client, world, getHeldDirection: () => Direction.East, tickMs: 25,
+    });
+
+    vi.advanceTimersByTime(200);
+    expect(sent).toHaveLength(2); // first + lookahead, none confirmed
+
+    walker.cancel();
+    // Still held into the wall: quiet — no send→0xB5→send loop…
+    vi.advanceTimersByTime(200);
+    expect(sent).toHaveLength(2);
+    // …but the flush freed both slots, so once the window elapses a
+    // retry goes out long before the 800ms step timeout would have.
+    vi.advanceTimersByTime(100);
+    expect(sent).toHaveLength(3);
+
+    walker.destroy();
+  });
+
+  it('suppresses the wire direction, not a newer lookahead direction', () => {
+    const { client, world, sent } = makeFakes();
+    let held: Direction | null = Direction.East;
+    const walker = createWalkController({
+      client, world, getHeldDirection: () => held, tickMs: 25,
+    });
+
+    vi.advanceTimersByTime(150); // first send goes out east
+    held = Direction.North;
+    vi.advanceTimersByTime(50); // lookahead goes out north
+    expect(sent).toHaveLength(2);
+
+    // The wall was east — the 0xB5 carries east even though the last
+    // SENT direction was north. North must not be stalled.
+    walker.cancel(Direction.East);
+    vi.advanceTimersByTime(30);
+    expect(sent).toHaveLength(3);
+    expect(sent[2]).toBe(ClientOp.MoveNorth);
+
+    walker.destroy();
+  });
+
+  it('a held-direction change lifts the suppression immediately', () => {
+    const { client, world, sent } = makeFakes();
+    let held: Direction | null = Direction.East;
+    const walker = createWalkController({
+      client, world, getHeldDirection: () => held, tickMs: 25,
+    });
+
+    vi.advanceTimersByTime(200);
+    expect(sent).toHaveLength(2);
+
+    walker.cancel();
+    held = Direction.North; // turned away from the wall
+    vi.advanceTimersByTime(30);
+    expect(sent).toHaveLength(3); // no 250ms wait
+    expect(sent[2]).toBe(ClientOp.MoveNorth);
+
+    walker.destroy();
+  });
+
+  it('cancel with nothing outstanding is harmless and still rate-limits', () => {
+    const { client, world, sent } = makeFakes();
+    let held: Direction | null = null;
+    const walker = createWalkController({
+      client, world, getHeldDirection: () => held, tickMs: 25,
+    });
+
+    vi.advanceTimersByTime(100);
+    walker.cancel();
+    expect(sent).toHaveLength(0);
+
+    // Nothing was ever sent, so there is no wall direction to suppress:
+    // a fresh hold starts walking immediately.
+    held = Direction.South;
+    vi.advanceTimersByTime(30);
+    expect(sent).toEqual([ClientOp.MoveSouth]);
+
+    walker.destroy();
+  });
+});

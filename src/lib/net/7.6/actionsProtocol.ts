@@ -4,20 +4,15 @@ import { ClientOp } from './opcodes';
 
 /**
  * 7.6 world-interaction packets, layouts verified against the server's
- * parseLookAt / parseUseItem (protocol76.cpp):
- *   LookAt  0x8C: pos(5) + U16 spriteId + U8 stackpos
- *   UseItem 0x82: pos(5) + U16 spriteId + U8 stackpos + U8 index
+ * parseLookAt / parseUseItem / parseThrow (protocol76.cpp):
+ *   LookAt    0x8C: pos(5) + U16 spriteId + U8 stackpos
+ *   UseItem   0x82: pos(5) + U16 spriteId + U8 stackpos + U8 index
+ *   ThrowItem 0x78: pos(5) + U16 spriteId + U8 stackpos + pos(5) + U8 count
  */
-function writePos(out: OutputPacket, pos: WirePosition): void {
-  out.addU16(pos.x);
-  out.addU16(pos.y);
-  out.addU8(pos.z);
-}
-
 export function buildLookAtPacket(pos: WirePosition, spriteId: number, stackPos: number): OutputPacket {
   const out = new OutputPacket();
   out.addU8(ClientOp.LookAt);
-  writePos(out, pos);
+  out.addPosition(pos.x, pos.y, pos.z);
   out.addU16(spriteId);
   out.addU8(stackPos);
   return out;
@@ -26,10 +21,58 @@ export function buildLookAtPacket(pos: WirePosition, spriteId: number, stackPos:
 export function buildUseItemPacket(pos: WirePosition, spriteId: number, stackPos: number, index = 0): OutputPacket {
   const out = new OutputPacket();
   out.addU8(ClientOp.UseItem);
-  writePos(out, pos);
+  out.addPosition(pos.x, pos.y, pos.z);
   out.addU16(spriteId);
   out.addU8(stackPos);
   out.addU8(index);
+  return out;
+}
+
+/**
+ * 0x78 — move a thing. From/to may be map tiles or the virtual
+ * container/inventory positions (virtualPosition.ts). The server's
+ * parseThrow drops the packet outright when `to` equals `from`.
+ */
+export function buildMoveThingPacket(
+  from: WirePosition,
+  spriteId: number,
+  fromStackPos: number,
+  to: WirePosition,
+  count: number,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.ThrowItem);
+  out.addPosition(from.x, from.y, from.z);
+  out.addU16(spriteId);
+  out.addU8(fromStackPos);
+  out.addPosition(to.x, to.y, to.z);
+  out.addU8(count);
+  return out;
+}
+
+/**
+ * 0x83 — use `from` on `to` (rope on a rope spot, shovel on a stone
+ * pile, rune on a creature's tile). Layout per the server's
+ * parseUseItemEx (protocol76.cpp:1182): both ends carry the full
+ * pos + spriteId + stackpos triple, and either may be a virtual
+ * container/inventory position (virtualPosition.ts).
+ */
+export function buildUseItemWithPacket(
+  from: WirePosition,
+  fromSpriteId: number,
+  fromStackPos: number,
+  to: WirePosition,
+  toSpriteId: number,
+  toStackPos: number,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.UseItemWith);
+  out.addPosition(from.x, from.y, from.z);
+  out.addU16(fromSpriteId);
+  out.addU8(fromStackPos);
+  out.addPosition(to.x, to.y, to.z);
+  out.addU16(toSpriteId);
+  out.addU8(toStackPos);
   return out;
 }
 

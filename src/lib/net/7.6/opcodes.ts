@@ -31,8 +31,14 @@ export const ClientOp = {
   TurnSouth: 0x71,
   TurnWest: 0x72,
 
+  // Containers
+  CloseContainer: 0x87,
+  UpArrowContainer: 0x88,
+
   // Actions
+  ThrowItem: 0x78,
   UseItem: 0x82,
+  UseItemWith: 0x83,
   SetFightModes: 0xa0,
   AddVip: 0xdc,
   RemoveVip: 0xdd,

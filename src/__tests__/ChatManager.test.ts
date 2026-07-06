@@ -64,6 +64,37 @@ describe('ChatManager', () => {
     expect(chat.getChannel(100)).toBeUndefined();
   });
 
+  it('notifies channel subscribers when channels change', () => {
+    const events: string[] = [];
+    const unsubscribe = chat.subscribeChannels(() => events.push(chat.channelList.map(c => c.name).join(',')));
+
+    chat.addChannel(100, 'Custom');
+    chat.addChannel(100, 'Renamed');
+    chat.removeChannel(100);
+    unsubscribe();
+    chat.addChannel(101, 'After unsubscribe');
+
+    expect(events).toHaveLength(3);
+    expect(events[0]).toContain('Custom');
+    expect(events[1]).toContain('Renamed');
+    expect(events[2]).not.toContain('Renamed');
+  });
+
+  it('preserves channel messages even when channel metadata has not arrived yet', () => {
+    chat.handleMessage(makeMsg({
+      messageType: MessageType.Channel,
+      channelId: 100,
+      text: 'Server channel text',
+    }));
+
+    expect(chat.getChannel(100)?.name).toBe('Channel 100');
+    expect(chat.getChannel(100)?.messages[0].text).toBe('Server channel text');
+
+    chat.addChannel(100, 'Server Events');
+    expect(chat.getChannel(100)?.name).toBe('Server Events');
+    expect(chat.getChannel(100)?.messages[0].text).toBe('Server channel text');
+  });
+
   it('falls back to Default when active channel is removed', () => {
     chat.addChannel(100, 'Custom');
     chat.setActiveChannel(100);

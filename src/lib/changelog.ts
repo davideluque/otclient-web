@@ -14,6 +14,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-05', text: 'Use with works: pick a rope, shovel, or rune from a bag or your inventory, choose "Use with…", then tap the target — rope spots, stone piles, and enemies.' },
+  { date: '2026-06-17', text: 'Damage numbers float up from hits and arrows/runes actually fly to their target.' },
+  { date: '2026-06-17', text: 'Combat has visuals now: spell and hit effects play on the battlefield, and your attack target flashes a black square.' },
+  { date: '2026-06-17', text: 'Looting works: tap an item in a corpse or bag to loot it to your backpack, look at it, or drop it — and tap equipment to unequip it into your backpack.' },
+  { date: '2026-06-17', text: 'Dying shows a proper death screen with a Continue button instead of silently dumping you to the login form.' },
+  { date: '2026-06-17', text: 'Opening a second bag no longer replaces the first window — containers open side by side.' },
+  { date: '2026-06-17', text: 'Corpses and bags open now: double-tap a container to see its contents — tap an item to look at it, ⬆ goes back up, ✕ closes the window.' },
+  { date: '2026-06-17', text: 'Walking into something impassable now stops instantly instead of stuttering against it.' },
   { date: '2026-06-11', text: 'Speech looks like Tibia now: yellow "Name says:" text above your head (orange for monsters), spam-casting stacks the lines upward, and longer texts stay longer.' },
   { date: '2026-06-11', text: 'Night is dark again: the world follows the server\'s day/night light, torches and fire fields glow, and your character carries their own light.' },
   { date: '2026-06-11', text: 'Settings → Brightness: 0% follows the server\'s darkness fully (classic Tibia), 100% ignores it — pick what your eyes want.' },

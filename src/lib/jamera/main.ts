@@ -37,6 +37,7 @@ import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
 import { setItemWireFlags } from '../net/common/itemFlags';
 import { parseDat } from '../dat';
+import { parseOtb, floorChangeClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
 
@@ -425,6 +426,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         // Client-chosen window id for 0x82: the first free one, so a
         // second container opens beside the first instead of over it.
         nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
+        floorChangeIds: jameraFloorChangeIds ?? undefined,
       })
       : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager);
@@ -470,6 +472,9 @@ assetsReady.catch(() => { /* observed lazily */ });
 // Page-lifetime cache: assets don't change between re-logins, so the
 // expensive sprite-decode + GPU upload only runs once per tab.
 let jameraAtlas: SpriteAtlas | null = null;
+// Client ids that floor-change (stairs, ramps, holes) — OTB knowledge
+// the walkability checks need (those ids are NotWalkable in the .dat).
+let jameraFloorChangeIds: Set<number> | null = null;
 
 function loadAssetsForRendering(): void {
   if (assetsLoaded || assetsLoading) return;
@@ -491,6 +496,7 @@ async function tryAutoloadAssets(): Promise<void> {
       // misalign the stream otherwise. Cheap (one .dat parse) and safe
       // to repeat on retries.
       setItemWireFlags(parseDat(loaded.dat));
+      jameraFloorChangeIds = floorChangeClientIds(parseOtb(loaded.otb));
       assetsReadyResolve?.();
       try {
         jameraAtlas = buildSpriteAtlas(loaded.dat, loaded.spr);

@@ -52,6 +52,12 @@ export interface InteractionsOptions {
    * every use falls back to window 0.
    */
   nextContainerId?: () => number;
+  /**
+   * Client ids of floor-changing items (from the OTB) — stairs/holes
+   * flag NotWalkable in the .dat, so without this set tap-to-walk can't
+   * target them and going up/down by tap silently does nothing.
+   */
+  floorChangeIds?: Set<number>;
 }
 
 const LONG_PRESS_MS = 500;
@@ -207,7 +213,7 @@ export function bindInteractions(
   function walkTo(clientX: number, clientY: number): void {
     if (!datIndex) return;
     const pos = worldTileAtPointer(clientX, clientY);
-    const route = findWalkRoute(world, datIndex, pos.x, pos.y);
+    const route = findWalkRoute(world, datIndex, pos.x, pos.y, opts.floorChangeIds);
     if (!route || route.length === 0) return;
     send(protocol.movement.buildAutoWalk(route));
   }

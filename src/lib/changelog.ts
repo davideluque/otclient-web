@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-06', text: 'Buildings have roofs now — and they get out of the way when you step inside.' },
   { date: '2026-07-06', text: 'You can see down now: cliffs, holes and stairs show up to three floors below instead of black.' },
   { date: '2026-07-06', text: 'Fixed tapping stairs, ramps and holes doing nothing — tap them and you walk over and go up or down.' },
   { date: '2026-07-05', text: 'Use with works: pick a rope, shovel, or rune from a bag or your inventory, choose "Use with…", then tap the target — rope spots, stone piles, and enemies.' },

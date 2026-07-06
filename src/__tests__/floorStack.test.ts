@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { drawnFloorsBelow, dirtyFloors } from '../lib/render/floorStack';
+import {
+  drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
+} from '../lib/render/floorStack';
 
 describe('drawnFloorsBelow', () => {
   it('the surface floor draws alone — holes never show underground', () => {
@@ -26,6 +28,64 @@ describe('drawnFloorsBelow', () => {
   it('the deepest floor draws alone', () => {
     expect(drawnFloorsBelow(15)).toEqual([15]);
     expect(drawnFloorsBelow(14)).toEqual([15, 14]);
+  });
+});
+
+describe('drawnFloorsAbove', () => {
+  it('roof culled — cover directly above leaves nothing to draw', () => {
+    expect(drawnFloorsAbove(7, 7)).toEqual([]);
+    expect(drawnFloorsAbove(10, 10)).toEqual([]);
+  });
+
+  it('open sky at the surface draws the whole stack, deepest first', () => {
+    expect(drawnFloorsAbove(0, 7)).toEqual([6, 5, 4, 3, 2, 1, 0]);
+  });
+
+  it('cover higher up draws only the floors beneath it', () => {
+    expect(drawnFloorsAbove(5, 7)).toEqual([6, 5]);
+  });
+
+  it('underground spans down to the z−2 base at most', () => {
+    expect(drawnFloorsAbove(8, 10)).toEqual([9, 8]);
+  });
+});
+
+describe('glideEndpoints', () => {
+  it('at rest both endpoints are the camera tile', () => {
+    expect(glideEndpoints(60, 60)).toEqual({ fromX: 60, fromY: 60, toX: 60, toY: 60 });
+  });
+
+  it('mid-glide the endpoints are the departed and destination tiles', () => {
+    // Walking east, 30% through the step.
+    expect(glideEndpoints(60.3, 60)).toEqual({ fromX: 60, fromY: 60, toX: 61, toY: 60 });
+    // Walking north (screen up = decreasing y), 70% through.
+    expect(glideEndpoints(60, 59.3)).toEqual({ fromX: 60, fromY: 59, toX: 60, toY: 60 });
+  });
+
+  it('diagonal glides yield the bounding corners', () => {
+    expect(glideEndpoints(60.5, 59.5)).toEqual({ fromX: 60, fromY: 59, toX: 61, toY: 60 });
+  });
+});
+
+describe('coveringRevisionKey', () => {
+  const rev = (entries: Array<[number, number]>): Map<number, number> => new Map(entries);
+
+  it('moves when a potentially-covering floor changes', () => {
+    const before = coveringRevisionKey(rev([]), 7);
+    const after = coveringRevisionKey(rev([[6, 1]]), 7);
+    expect(after).not.toBe(before);
+  });
+
+  it('ignores the player floor and floors below it', () => {
+    const before = coveringRevisionKey(rev([]), 7);
+    expect(coveringRevisionKey(rev([[7, 5], [8, 2]]), 7)).toBe(before);
+  });
+
+  it('underground only watches down to the z−2 base', () => {
+    // z=10 → base 8: floor 7 (stored but never drawn underground) is out.
+    const before = coveringRevisionKey(rev([]), 10);
+    expect(coveringRevisionKey(rev([[7, 3]]), 10)).toBe(before);
+    expect(coveringRevisionKey(rev([[8, 1]]), 10)).not.toBe(before);
   });
 });
 

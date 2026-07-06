@@ -12,6 +12,7 @@ import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
+  partitionByFloor,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -224,6 +225,21 @@ export function bindRenderer(
   let aboveTilesRoot: Container | null = null;
   const aboveFloorLayers = new Map<number, Container>();
   let creatureLayer: Container | null = null;
+  // Non-player-floor creatures (and their nameplates) live in per-floor
+  // containers inserted as SIBLINGS right after their floor's tile layer
+  // — creatures on z must draw between tiles(z) and tiles(z−1). Siblings
+  // rather than children of the tile layers: tile layers are destroyed
+  // with `{ children: true }` on the expensive rebuild path, which would
+  // take the persistent nameplates down with them mid-frame. The player
+  // floor keeps its dedicated root-level layer (between the two tile
+  // parents) — same draw position, and the light/effects insertion
+  // logic anchors on it.
+  const creatureFloorLayers = new Map<number, Container>();
+  // Bumped whenever tile-layer containers are created or destroyed, so
+  // the (cheap) creature pass re-inserts its per-floor siblings against
+  // the new stack — a roof change while everyone stands still must not
+  // leave creature containers ordered against destroyed layers.
+  let tileLayoutRev = 0;
   // Combat effects (magic effects, target square). Persistent like the
   // bubble layer — tiles/creatures/light insert themselves below it —
   // but its children are transient: rebuilt every frame while any
@@ -418,6 +434,34 @@ export function bindRenderer(
   const update = (): void => {
     const now = performance.now();
     world.pruneEffects(now);
+
+    // ── Roof probe: how far above the player the view reaches ──
+    // Cheap (≤5 positions × ≤7 floors) but not per-frame: keyed on the
+    // camera endpoint tiles, the player floor, and the revisions of
+    // every floor that could provide cover (a door or map edit can
+    // change coverage without anyone moving). During a glide BOTH
+    // endpoint tiles are probed and the more-covered one wins, so a
+    // roof doesn't blink back in for the half-step where only one
+    // endpoint is indoors (design-doc anti-flicker rule, PoC fabe172).
+    // Runs before the rAF-keep-alive check below: the drawn-floor set
+    // it feeds decides which creatures' walks keep the loop armed.
+    const selfC = world.getCreature(world.playerCreatureId);
+    const cam = selfC ? renderPosFor(selfC, now) : { x: world.playerX, y: world.playerY };
+    const ep = glideEndpoints(cam.x, cam.y);
+    const probeKey = `${ep.fromX}:${ep.fromY}:${ep.toX}:${ep.toY}:${world.playerZ}:`
+      + coveringRevisionKey(world.tileRevisionByZ, world.playerZ);
+    if (probeKey !== lastProbeKey) {
+      firstVisible = firstVisibleFloorForGlide(
+        world, atlas.datIndex, ep.fromX, ep.fromY, ep.toX, ep.toY, world.playerZ,
+      );
+      lastProbeKey = probeKey;
+    }
+    // Deepest-first, matching container stacking order; playerZ is
+    // always the last entry of drawnBelow.
+    const drawnBelow = drawnFloorsBelow(world.playerZ);
+    const drawnAbove = drawnFloorsAbove(firstVisible, world.playerZ);
+    const drawnZ = new Set([...drawnBelow, ...drawnAbove]);
+
     // Effects animate frame-by-frame, so the rAF loop must stay armed
     // while any is live — a spell landing while everyone stands still
     // reaches here through world.onChange, then this keeps it playing.
@@ -427,8 +471,10 @@ export function bindRenderer(
       || world.targetSquare !== null;
     // While anything is mid-walk-animation the key changes every walk
     // frame, and a rAF loop keeps ticking until everyone is idle again.
+    // Any DRAWN floor counts — a creature climbing the stairs above the
+    // player animates on screen just like one beside them.
     const anyWalking = world.getAllCreatures().some(
-      (c) => c.z === world.playerZ && c.lastMoveAt !== undefined
+      (c) => drawnZ.has(c.z) && c.lastMoveAt !== undefined
         && now - c.lastMoveAt < Math.max(WALK_ANIM_MS, STEP_GLIDE_MAX_MS) + RENDER_DELAY_MS,
     ) || anyBufferedMotion(now);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
@@ -456,26 +502,6 @@ export function bindRenderer(
       if (bubbles) root.addChild(bubbles.getContainer());
     }
 
-    // ── Roof probe: how far above the player the view reaches ──
-    // Cheap (≤5 positions × ≤7 floors) but not per-frame: keyed on the
-    // camera endpoint tiles, the player floor, and the revisions of
-    // every floor that could provide cover (a door or map edit can
-    // change coverage without anyone moving). During a glide BOTH
-    // endpoint tiles are probed and the more-covered one wins, so a
-    // roof doesn't blink back in for the half-step where only one
-    // endpoint is indoors (design-doc anti-flicker rule, PoC fabe172).
-    const selfC = world.getCreature(world.playerCreatureId);
-    const cam = selfC ? renderPosFor(selfC, now) : { x: world.playerX, y: world.playerY };
-    const ep = glideEndpoints(cam.x, cam.y);
-    const probeKey = `${ep.fromX}:${ep.fromY}:${ep.toX}:${ep.toY}:${world.playerZ}:`
-      + coveringRevisionKey(world.tileRevisionByZ, world.playerZ);
-    if (probeKey !== lastProbeKey) {
-      firstVisible = firstVisibleFloorForGlide(
-        world, atlas.datIndex, ep.fromX, ep.fromY, ep.toX, ep.toY, world.playerZ,
-      );
-      lastProbeKey = probeKey;
-    }
-
     // ── Tile layers (expensive): hysteresis + throttle ──
     const movedFar =
       Number.isNaN(paintedCenterX) ||
@@ -490,8 +516,6 @@ export function bindRenderer(
     const roofStateChanged = firstVisible !== paintedFirstVisible;
     const revisionDue = revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS;
     if (fullRebuild || roofStateChanged || revisionDue) {
-      const drawnBelow = drawnFloorsBelow(world.playerZ);
-      const drawnAbove = drawnFloorsAbove(firstVisible, world.playerZ);
       const belowToRebuild = fullRebuild ? drawnBelow
         : revisionDue ? dirtyFloors(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
           : [];
@@ -600,6 +624,9 @@ export function bindRenderer(
         }
         paintedFirstVisible = firstVisible;
         lastTileRebuildAt = now;
+        // Tile containers were created/replaced/destroyed — the creature
+        // pass below must re-seat its per-floor siblings against them.
+        tileLayoutRev++;
         // Tile rebuild cost — the phone-CPU half of the lag decomposition.
         reportMetric('repaint', performance.now() - repaintStart);
       }
@@ -609,14 +636,51 @@ export function bindRenderer(
       paintedTileRevision = world.tileRevision;
     }
 
-    // ── Creature layer (cheap): poses + creature state ──
-    const ck = `${world.creatureRevision}:${walkTick}:${world.playerZ}:${world.playerX}:${world.playerY}`;
+    // ── Creature layers (cheap): poses + creature state ──
+    // tileLayoutRev in the key: the per-floor containers are ordered
+    // against the tile stack, so a stack rebuild (which alone covers a
+    // firstVisible change too) forces a re-seat even when no creature
+    // moved.
+    const ck = `${world.creatureRevision}:${walkTick}:${world.playerZ}:${world.playerX}:${world.playerY}:${tileLayoutRev}`;
     if (!creatureLayer || ck !== creatureKey) {
+      // One container per drawn floor, seated in draw-order position
+      // BEFORE drawCreatures fills them. Floors whose tile layer isn't
+      // painted yet (login transient) get no container this pass — the
+      // tile rebuild that paints them bumps tileLayoutRev and re-runs
+      // this block.
+      const layers = new Map<number, Container>();
+      for (const z of drawnBelow) {
+        if (z === world.playerZ) continue;
+        const tileLayer = tileFloorLayers.get(z);
+        if (!tilesRoot || !tileLayer) continue;
+        const layer = new Container();
+        tilesRoot.addChildAt(layer, tilesRoot.getChildIndex(tileLayer) + 1);
+        layers.set(z, layer);
+      }
       const nextCreatures = new Container();
+      layers.set(world.playerZ, nextCreatures);
+      for (const z of drawnAbove) {
+        const tileLayer = aboveFloorLayers.get(z);
+        if (!aboveTilesRoot || !tileLayer) continue;
+        const layer = new Container();
+        // Same iso offset as the floor's tiles — creatures stand on the
+        // shifted ground, and shallower roofs paint over them.
+        layer.position.copyFrom(tileLayer.position);
+        aboveTilesRoot.addChildAt(layer, aboveTilesRoot.getChildIndex(tileLayer) + 1);
+        layers.set(z, layer);
+      }
       // Build first, destroy after: drawCreatures reparents persistent
-      // nameplates into the new layer, keeping them out of the destroy.
-      movables = drawCreatures(world, atlas, nextCreatures, tintedCache, nameplates);
+      // nameplates into the new layers, keeping them out of the destroy.
+      movables = drawCreatures(world, atlas, layers, tintedCache, nameplates);
       root.addChildAt(nextCreatures, tilesRoot ? 1 : 0);
+      for (const old of creatureFloorLayers.values()) {
+        old.parent?.removeChild(old);
+        old.destroy({ children: true });
+      }
+      creatureFloorLayers.clear();
+      for (const [z, layer] of layers) {
+        if (z !== world.playerZ) creatureFloorLayers.set(z, layer);
+      }
       if (creatureLayer) {
         root.removeChild(creatureLayer);
         creatureLayer.destroy({ children: true });
@@ -726,20 +790,26 @@ export function bindRenderer(
       aboveTilesRoot = null;
       aboveFloorLayers.clear();
       creatureLayer = null;
+      creatureFloorLayers.clear();
       effectsLayer = null;
     }
   };
 }
 
 /**
- * Draw every creature in the visible region (the player included) on top
- * of the tile pass. North-to-south so southern creatures overlap the
- * ones behind them, matching the tile painter order.
+ * Draw every creature in the visible region (the player included) into
+ * its floor's container — one per drawn z, pre-seated by the caller in
+ * draw-order position, so a creature on z paints between tiles(z) and
+ * tiles(z−1) and roofs occlude the people under them. North-to-south
+ * within each floor so southern creatures overlap the ones behind them,
+ * matching the tile painter order. Nameplates go into the SAME per-floor
+ * container as their creature — a roof that hides a creature must hide
+ * its nameplate too.
  */
 function drawCreatures(
   world: GameWorld,
   atlas: SpriteAtlas,
-  container: Container,
+  layersByZ: ReadonlyMap<number, Container>,
   tintedCache: TintedTextureCache,
   nameplates: Map<number, NameplateHandle>,
 ): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
@@ -749,34 +819,40 @@ function drawCreatures(
   const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
   const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
 
-  const visible = world.getAllCreatures().filter((c) =>
-    c.z === world.playerZ && c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2,
-  );
-  visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  const byFloor = partitionByFloor(world.getAllCreatures(), [...layersByZ.keys()]);
 
   const now = performance.now();
   const seen = new Set<number>();
-  for (const c of visible) {
-    const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
-    if (sprite) {
-      container.addChild(sprite);
-      movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });
-    }
+  for (const [z, container] of layersByZ) {
+    const visible = (byFloor.get(z) ?? []).filter((c) =>
+      c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2,
+    );
+    visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
-    // Nameplate (name + six-band health bar) above the creature's tile.
-    // Reparented into the fresh container each rebuild; updated in place.
-    seen.add(c.id);
-    let plate = nameplates.get(c.id);
-    if (!plate) {
-      plate = createNameplate(c.name, c.health);
-      nameplates.set(c.id, plate);
-    } else {
-      plate.update(c.name, c.health);
+    for (const c of visible) {
+      const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
+      if (sprite) {
+        container.addChild(sprite);
+        movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });
+      }
+
+      // Nameplate (name + six-band health bar) above the creature's tile.
+      // Reparented into the fresh container each rebuild; updated in place.
+      seen.add(c.id);
+      let plate = nameplates.get(c.id);
+      if (!plate) {
+        plate = createNameplate(c.name, c.health);
+        nameplates.set(c.id, plate);
+      } else {
+        plate.update(c.name, c.health);
+      }
+      plate.container.x = (c.x + 0.5) * TILE_SIZE;
+      plate.container.y = c.y * TILE_SIZE - 14;
+      container.addChild(plate.container);
+      movables.push({
+        node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c,
+      });
     }
-    plate.container.x = (c.x + 0.5) * TILE_SIZE;
-    plate.container.y = c.y * TILE_SIZE - 14;
-    container.addChild(plate.container);
-    movables.push({ node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c });
   }
   for (const [id, plate] of nameplates) {
     if (!seen.has(id)) {

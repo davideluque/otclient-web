@@ -78,6 +78,22 @@ export function coveringRevisionKey(
 }
 
 /**
+ * Group creatures by the floor they stand on, keeping only the drawn
+ * floors — the pure partition behind the renderer's per-floor creature
+ * passes. Every drawn floor gets an entry (possibly empty), in `drawn`
+ * order, so callers can iterate floors and containers in lockstep;
+ * creatures on floors outside the drawn set are simply not rendered.
+ */
+export function partitionByFloor<T extends { z: number }>(
+  creatures: Iterable<T>,
+  drawn: readonly number[],
+): Map<number, T[]> {
+  const byZ = new Map<number, T[]>(drawn.map((z) => [z, []]));
+  for (const c of creatures) byZ.get(c.z)?.push(c);
+  return byZ;
+}
+
+/**
  * The subset of `drawn` floors whose world revision moved since they
  * were last painted (absent = 0 on the world side; a floor never painted
  * is always dirty). Order is preserved from `drawn`.

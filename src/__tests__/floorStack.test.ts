@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
+  partitionByFloor,
 } from '../lib/render/floorStack';
 
 describe('drawnFloorsBelow', () => {
@@ -86,6 +87,35 @@ describe('coveringRevisionKey', () => {
     const before = coveringRevisionKey(rev([]), 10);
     expect(coveringRevisionKey(rev([[7, 3]]), 10)).toBe(before);
     expect(coveringRevisionKey(rev([[8, 1]]), 10)).not.toBe(before);
+  });
+});
+
+describe('partitionByFloor', () => {
+  const c = (id: number, z: number): { id: number; z: number } => ({ id, z });
+
+  it('groups creatures under their floor, preserving input order', () => {
+    const groups = partitionByFloor([c(1, 7), c(2, 6), c(3, 7)], [8, 7, 6]);
+    expect(groups.get(7)).toEqual([c(1, 7), c(3, 7)]);
+    expect(groups.get(6)).toEqual([c(2, 6)]);
+  });
+
+  it('every drawn floor gets an entry even when nobody stands on it', () => {
+    const groups = partitionByFloor([c(1, 7)], [8, 7]);
+    expect([...groups.keys()]).toEqual([8, 7]);
+    expect(groups.get(8)).toEqual([]);
+  });
+
+  it('creatures outside the drawn set are dropped, not misfiled', () => {
+    // z=5 is roof-culled here — the creature upstairs must not render.
+    const groups = partitionByFloor([c(1, 5), c(2, 7)], [7, 6]);
+    expect(groups.get(7)).toEqual([c(2, 7)]);
+    expect(groups.get(6)).toEqual([]);
+    expect(groups.has(5)).toBe(false);
+  });
+
+  it('entries follow the drawn (stacking) order, not creature order', () => {
+    const groups = partitionByFloor([c(1, 6), c(2, 8)], [8, 7, 6]);
+    expect([...groups.keys()]).toEqual([8, 7, 6]);
   });
 });
 

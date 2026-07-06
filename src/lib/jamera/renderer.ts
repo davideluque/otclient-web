@@ -460,7 +460,6 @@ export function bindRenderer(
     // always the last entry of drawnBelow.
     const drawnBelow = drawnFloorsBelow(world.playerZ);
     const drawnAbove = drawnFloorsAbove(firstVisible, world.playerZ);
-    const drawnZ = new Set([...drawnBelow, ...drawnAbove]);
 
     // Effects animate frame-by-frame, so the rAF loop must stay armed
     // while any is live — a spell landing while everyone stands still
@@ -474,7 +473,9 @@ export function bindRenderer(
     // Any DRAWN floor counts — a creature climbing the stairs above the
     // player animates on screen just like one beside them.
     const anyWalking = world.getAllCreatures().some(
-      (c) => drawnZ.has(c.z) && c.lastMoveAt !== undefined
+      // includes() over two ≤7-entry arrays: membership without the
+      // per-frame Set allocation this loop used to pay.
+      (c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lastMoveAt !== undefined
         && now - c.lastMoveAt < Math.max(WALK_ANIM_MS, STEP_GLIDE_MAX_MS) + RENDER_DELAY_MS,
     ) || anyBufferedMotion(now);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time

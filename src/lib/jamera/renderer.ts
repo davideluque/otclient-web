@@ -706,11 +706,12 @@ export function bindRenderer(
         const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
         const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
         // Creature-carried lights (the player's glow, torches in hand)
-        // — only ones whose bubble can reach the visible region (light
-        // intensity caps at 7 tiles), matching the tile-light gather.
+        // — any DRAWN floor's carriers count, matching the tile-light
+        // gather below; only ones whose bubble can reach the visible
+        // region (light intensity caps at 7 tiles).
         const MAX_LIGHT_REACH = 7;
         const extraLights: LightSource[] = world.getAllCreatures()
-          .filter((c) => c.z === world.playerZ && c.lightLevel > 0
+          .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0
             && c.x >= x1 - MAX_LIGHT_REACH && c.x <= x2 + MAX_LIGHT_REACH
             && c.y >= y1 - MAX_LIGHT_REACH && c.y <= y2 + MAX_LIGHT_REACH)
           .map((c) => ({
@@ -718,10 +719,14 @@ export function bindRenderer(
             intensity: c.lightLevel,
             color: tibiaColorToHex(c.lightColor),
           }));
+        // Every drawn floor feeds ONE merged overlay (design doc:
+        // classic behavior, no per-floor light layers) — a torch on the
+        // stairs above you lights your view; the sealed cellar's does
+        // not, because a culled floor is never in the drawn set.
         lightLayer = buildIlluminationOverlay(
           app, world, atlas.datIndex, lightMask,
           illuminationTexture, lightSpritePool,
-          x1, y1, x2, y2, world.playerZ,
+          x1, y1, x2, y2, [...drawnBelow, ...drawnAbove],
           {
             ambientColor: computeAmbient(world.worldLight.level, world.worldLight.color, brightness),
             enabled: true,

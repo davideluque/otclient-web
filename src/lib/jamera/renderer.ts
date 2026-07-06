@@ -8,6 +8,8 @@ import {
   renderTileRegion, renderPlayer, spriteIndex, readPixelDisplacement,
   type TintedTextureCache,
 } from '../tileRenderer';
+import { buildOcclusionSets } from '../render/floorOcclusion';
+import { drawnFloorsBelow, dirtyFloors } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
@@ -45,12 +47,13 @@ export const STEP_GLIDE_MAX_MS = 650;
 const GLIDE_PAD = 3;
 
 /**
- * Tile-layer rebuild policy. Rebuilding the tile layer is the expensive
+ * Tile-layer rebuild policy. Rebuilding tile layers is the expensive
  * operation (hundreds to thousands of sprites in dense town areas), so
- * it no longer runs per walk-pose frame: only when the player has moved
- * HYSTERESIS tiles from the painted center (the pad keeps the screen
- * covered in between), on a floor change, or — throttled — when tile
- * contents change in place (doors, dropped items).
+ * it no longer runs per walk-pose frame: all drawn floors rebuild only
+ * when the player has moved HYSTERESIS tiles from the painted center
+ * (the pad keeps the screen covered in between) or on a floor change;
+ * in-place tile changes (doors, dropped items) rebuild — throttled —
+ * only the floors whose per-z revision moved.
  */
 const TILE_REBUILD_HYSTERESIS = 2;
 const TILE_REVISION_THROTTLE_MS = 300;
@@ -183,9 +186,8 @@ function walkPhase(c: WorldCreature, now: number): number {
  * page unload — without it, the previous session's container would leak
  * into the new session's stage.
  *
- * No diffing — every change rebuilds the visible-region container from
- * scratch. Adequate for first-paint correctness; a follow-up PR will
- * diff tile-by-tile so single moves don't trigger ~250-tile rebuilds.
+ * Tile floors rebuild whole-floor-at-a-time (per-z dirty tracking picks
+ * which); no tile-by-tile diffing yet — that's a separate track (#85).
  *
  * Creatures (the player included — it's just a creature the server put
  * on a tile) draw after the tile pass, north-to-south so southern
@@ -202,7 +204,14 @@ export function bindRenderer(
   // layers: tiles (expensive, rebuilt with hysteresis), creatures
   // (cheap, rebuilt per pose/state change), bubbles (persistent).
   let root: Container | null = null;
-  let tileLayer: Container | null = null;
+  // Tile floors live as one child container per drawn z inside this
+  // parent (kept at root index 0), deepest floor first so shallower
+  // floors paint over deeper ones. All of them sit at RAW world
+  // coordinates — no per-z screen offset for floors below the player
+  // (design-doc lesson 988f86d: a +32px/z offset put stairs one tile
+  // off; tall sprites alone carry the 2.5D depth).
+  let tilesRoot: Container | null = null;
+  const tileFloorLayers = new Map<number, Container>();
   let creatureLayer: Container | null = null;
   // Combat effects (magic effects, target square). Persistent like the
   // bubble layer — tiles/creatures/light insert themselves below it —
@@ -221,6 +230,9 @@ export function bindRenderer(
   let paintedCenterY = NaN;
   let paintedCenterZ = NaN;
   let paintedTileRevision = -1;
+  // Per-floor paint bookkeeping mirroring world.tileRevisionByZ, so the
+  // throttled revision path repaints only the floors that changed.
+  const paintedRevisionByZ = new Map<number, number>();
   let lastTileRebuildAt = 0;
   let creatureKey = '';
   // Outfit tint compositions are expensive; cache them for the lifetime
@@ -428,43 +440,82 @@ export function bindRenderer(
       if (bubbles) root.addChild(bubbles.getContainer());
     }
 
-    // ── Tile layer (expensive): hysteresis + throttle ──
+    // ── Tile layers (expensive): hysteresis + throttle ──
     const movedFar =
       Number.isNaN(paintedCenterX) ||
       Math.abs(world.playerX - paintedCenterX) >= TILE_REBUILD_HYSTERESIS ||
       Math.abs(world.playerY - paintedCenterY) >= TILE_REBUILD_HYSTERESIS;
     const zChanged = world.playerZ !== paintedCenterZ;
     const revChanged = world.tileRevision !== paintedTileRevision;
-    if (!tileLayer || zChanged || movedFar
-      || (revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS)) {
-      const repaintStart = performance.now();
-      // GLIDE_PAD: covers both the pursuing camera trailing behind the
-      // confirmed position AND the hysteresis lag of the painted center
-      // — the trailing/lagging edges show lingering known tiles instead
-      // of black. Undescribed tiles stay black but sit past the leading
-      // edge, never on screen.
-      const { container: nextTiles } = renderTileRegion(
-        world,
-        atlas.datIndex,
-        atlas.atlasTextures,
-        atlas.layout,
-        world.playerX - HALF_W_LEFT - GLIDE_PAD, world.playerY - HALF_H_TOP - GLIDE_PAD,
-        world.playerX + HALF_W_RIGHT + GLIDE_PAD, world.playerY + HALF_H_BOTTOM + GLIDE_PAD,
-        world.playerZ,
-      );
-      root.addChildAt(nextTiles, 0);
-      if (tileLayer) {
-        root.removeChild(tileLayer);
-        tileLayer.destroy({ children: true });
+    const fullRebuild = !tilesRoot || zChanged || movedFar;
+    if (fullRebuild || (revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS)) {
+      const drawnFloors = drawnFloorsBelow(world.playerZ);
+      const floorsToRebuild = fullRebuild
+        ? drawnFloors
+        : dirtyFloors(drawnFloors, paintedRevisionByZ, world.tileRevisionByZ);
+      if (floorsToRebuild.length > 0) {
+        const repaintStart = performance.now();
+        if (!tilesRoot) {
+          tilesRoot = new Container();
+          root.addChildAt(tilesRoot, 0);
+        }
+        if (fullRebuild) {
+          // The drawn set is a function of playerZ — floors of a
+          // previous stack must not linger, so the full path starts
+          // from an empty parent and re-centers the painted region.
+          for (const layer of tileFloorLayers.values()) {
+            tilesRoot.removeChild(layer);
+            layer.destroy({ children: true });
+          }
+          tileFloorLayers.clear();
+          paintedRevisionByZ.clear();
+          paintedCenterX = world.playerX;
+          paintedCenterY = world.playerY;
+          paintedCenterZ = world.playerZ;
+        }
+        // GLIDE_PAD: covers both the pursuing camera trailing behind
+        // the confirmed position AND the hysteresis lag of the painted
+        // center — the trailing/lagging edges show lingering known
+        // tiles instead of black. Undescribed tiles stay black but sit
+        // past the leading edge, never on screen. Partial (per-floor)
+        // rebuilds reuse the painted center so every floor keeps
+        // covering the exact same region.
+        const x1 = paintedCenterX - HALF_W_LEFT - GLIDE_PAD;
+        const y1 = paintedCenterY - HALF_H_TOP - GLIDE_PAD;
+        const x2 = paintedCenterX + HALF_W_RIGHT + GLIDE_PAD;
+        const y2 = paintedCenterY + HALF_H_BOTTOM + GLIDE_PAD;
+        // Tiles fully covered by a shallower floor's FullGround never
+        // paint — in town, the surface floor blanks out nearly every
+        // slot beneath it (see floorOcclusion.ts for the cascade rules).
+        const occlusion = buildOcclusionSets(
+          world, atlas.datIndex, x1, y1, x2, y2, [...drawnFloors].reverse(),
+        );
+        for (const z of floorsToRebuild) {
+          const { container: nextTiles } = renderTileRegion(
+            world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
+            x1, y1, x2, y2, z, occlusion.get(z),
+          );
+          const old = tileFloorLayers.get(z);
+          if (old) {
+            tilesRoot.addChildAt(nextTiles, tilesRoot.getChildIndex(old));
+            tilesRoot.removeChild(old);
+            old.destroy({ children: true });
+          } else {
+            // Full path only — drawnFloors is deepest-first, so plain
+            // appends produce the paint-over stacking.
+            tilesRoot.addChild(nextTiles);
+          }
+          tileFloorLayers.set(z, nextTiles);
+          paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
+        }
+        lastTileRebuildAt = now;
+        // Tile rebuild cost — the phone-CPU half of the lag decomposition.
+        reportMetric('repaint', performance.now() - repaintStart);
       }
-      tileLayer = nextTiles;
-      paintedCenterX = world.playerX;
-      paintedCenterY = world.playerY;
-      paintedCenterZ = world.playerZ;
+      // Sync even when no drawn floor was dirty: the global counter also
+      // moves for floors this renderer never draws, and chasing those
+      // would re-diff (and rebuild the light overlay) every update.
       paintedTileRevision = world.tileRevision;
-      lastTileRebuildAt = now;
-      // Tile rebuild cost — the phone-CPU half of the lag decomposition.
-      reportMetric('repaint', performance.now() - repaintStart);
     }
 
     // ── Creature layer (cheap): poses + creature state ──
@@ -474,7 +525,7 @@ export function bindRenderer(
       // Build first, destroy after: drawCreatures reparents persistent
       // nameplates into the new layer, keeping them out of the destroy.
       movables = drawCreatures(world, atlas, nextCreatures, tintedCache, nameplates);
-      root.addChildAt(nextCreatures, tileLayer ? 1 : 0);
+      root.addChildAt(nextCreatures, tilesRoot ? 1 : 0);
       if (creatureLayer) {
         root.removeChild(creatureLayer);
         creatureLayer.destroy({ children: true });
@@ -577,7 +628,8 @@ export function bindRenderer(
       app.stage.removeChild(root);
       root.destroy({ children: true });
       root = null;
-      tileLayer = null;
+      tilesRoot = null;
+      tileFloorLayers.clear();
       creatureLayer = null;
       effectsLayer = null;
     }

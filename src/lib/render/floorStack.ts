@@ -1,10 +1,10 @@
 import { drawRange } from './floorVisibility';
 
 /**
- * Which floors the renderer stacks below (and including) the player, and
- * which of them actually need repainting — the pure half of the
- * per-floor tile-layer policy in jamera/renderer.ts, split out so the
- * decisions stay unit-testable without a Pixi stage.
+ * Which floors the renderer stacks around the player, and which of them
+ * actually need repainting — the pure half of the per-floor tile-layer
+ * policy in jamera/renderer.ts, split out so the decisions stay
+ * unit-testable without a Pixi stage.
  */
 
 /**
@@ -26,6 +26,55 @@ export function drawnFloorsBelow(playerZ: number): number[] {
   const floors: number[] = [];
   for (let z = last; z >= playerZ; z--) floors.push(z);
   return floors;
+}
+
+/**
+ * The floors to draw above the player, deepest FIRST — the stacking
+ * order of their containers, so the shallowest (nearest the viewer)
+ * paints last. Empty when the roof probe found cover on the floor
+ * directly above (`firstVisible === playerZ`) — that IS roof culling.
+ */
+export function drawnFloorsAbove(firstVisible: number, playerZ: number): number[] {
+  const floors: number[] = [];
+  for (let z = playerZ - 1; z >= firstVisible; z--) floors.push(z);
+  return floors;
+}
+
+export interface GlideEndpoints { fromX: number; fromY: number; toX: number; toY: number }
+
+/**
+ * The two tiles a fractional camera position glides between, for the
+ * anti-flicker roof probe (floorVisibility's firstVisibleFloorForGlide).
+ * At rest floor === ceil and both endpoints are the camera tile. For the
+ * rare diagonal glide these are the path's bounding corners rather than
+ * the literal step endpoints — both adjacent to the path, and the
+ * probe's max() rule keeps that safe (over-hiding for a half-step at
+ * worst, never blinking a roof back in).
+ */
+export function glideEndpoints(camX: number, camY: number): GlideEndpoints {
+  return {
+    fromX: Math.floor(camX), fromY: Math.floor(camY),
+    toX: Math.ceil(camX), toY: Math.ceil(camY),
+  };
+}
+
+/**
+ * Fingerprint of the revisions of every floor that could roof the
+ * player (base..playerZ−1) — when it moves, cover may have appeared or
+ * vanished (a door closing, a map edit) and the roof probe must rerun.
+ * Watching the whole potential range, not just the currently drawn
+ * floors: a roof re-appearing on a currently-hidden floor must still
+ * retrigger the probe.
+ */
+export function coveringRevisionKey(
+  revisions: ReadonlyMap<number, number>,
+  playerZ: number,
+): string {
+  const parts: string[] = [];
+  for (let z = drawRange(playerZ).base; z < playerZ; z++) {
+    parts.push(String(revisions.get(z) ?? 0));
+  }
+  return parts.join(',');
 }
 
 /**

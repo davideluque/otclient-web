@@ -9,7 +9,10 @@ import {
   type TintedTextureCache,
 } from '../tileRenderer';
 import { buildOcclusionSets } from '../render/floorOcclusion';
-import { drawnFloorsBelow, dirtyFloors } from '../render/floorStack';
+import { firstVisibleFloorForGlide } from '../render/floorVisibility';
+import {
+  drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
+} from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
@@ -204,14 +207,22 @@ export function bindRenderer(
   // layers: tiles (expensive, rebuilt with hysteresis), creatures
   // (cheap, rebuilt per pose/state change), bubbles (persistent).
   let root: Container | null = null;
-  // Tile floors live as one child container per drawn z inside this
-  // parent (kept at root index 0), deepest floor first so shallower
-  // floors paint over deeper ones. All of them sit at RAW world
-  // coordinates — no per-z screen offset for floors below the player
-  // (design-doc lesson 988f86d: a +32px/z offset put stairs one tile
-  // off; tall sprites alone carry the 2.5D depth).
+  // Tile floors live as one child container per drawn z, deepest floor
+  // first so shallower floors paint over deeper ones — split across TWO
+  // parents around the creature layer (root: playerAndBelowTiles(0) →
+  // creatures(1) → aboveTiles(2)), the simplest structure where roofs
+  // also draw over creatures while creatures still stand on the ground.
+  //
+  // Player floor and below sit at RAW world coordinates — no per-z
+  // screen offset (design-doc lesson 988f86d: a +32px/z offset put
+  // stairs one tile off; tall sprites alone carry the 2.5D depth).
+  // Floors ABOVE instead carry the iso offset (z − playerZ)·TILE_SIZE
+  // on both axes, negative → up-left (design-doc lesson 3691ea3:
+  // without it multi-story buildings collapse into a flat silhouette).
   let tilesRoot: Container | null = null;
   const tileFloorLayers = new Map<number, Container>();
+  let aboveTilesRoot: Container | null = null;
+  const aboveFloorLayers = new Map<number, Container>();
   let creatureLayer: Container | null = null;
   // Combat effects (magic effects, target square). Persistent like the
   // bubble layer — tiles/creatures/light insert themselves below it —
@@ -233,6 +244,11 @@ export function bindRenderer(
   // Per-floor paint bookkeeping mirroring world.tileRevisionByZ, so the
   // throttled revision path repaints only the floors that changed.
   const paintedRevisionByZ = new Map<number, number>();
+  // Roof-probe result (shallowest floor still drawn) and its input
+  // fingerprint — recomputed only when the inputs move, not per frame.
+  let firstVisible = world.playerZ;
+  let lastProbeKey = '';
+  let paintedFirstVisible = NaN;
   let lastTileRebuildAt = 0;
   let creatureKey = '';
   // Outfit tint compositions are expensive; cache them for the lifetime
@@ -440,6 +456,26 @@ export function bindRenderer(
       if (bubbles) root.addChild(bubbles.getContainer());
     }
 
+    // ── Roof probe: how far above the player the view reaches ──
+    // Cheap (≤5 positions × ≤7 floors) but not per-frame: keyed on the
+    // camera endpoint tiles, the player floor, and the revisions of
+    // every floor that could provide cover (a door or map edit can
+    // change coverage without anyone moving). During a glide BOTH
+    // endpoint tiles are probed and the more-covered one wins, so a
+    // roof doesn't blink back in for the half-step where only one
+    // endpoint is indoors (design-doc anti-flicker rule, PoC fabe172).
+    const selfC = world.getCreature(world.playerCreatureId);
+    const cam = selfC ? renderPosFor(selfC, now) : { x: world.playerX, y: world.playerY };
+    const ep = glideEndpoints(cam.x, cam.y);
+    const probeKey = `${ep.fromX}:${ep.fromY}:${ep.toX}:${ep.toY}:${world.playerZ}:`
+      + coveringRevisionKey(world.tileRevisionByZ, world.playerZ);
+    if (probeKey !== lastProbeKey) {
+      firstVisible = firstVisibleFloorForGlide(
+        world, atlas.datIndex, ep.fromX, ep.fromY, ep.toX, ep.toY, world.playerZ,
+      );
+      lastProbeKey = probeKey;
+    }
+
     // ── Tile layers (expensive): hysteresis + throttle ──
     const movedFar =
       Number.isNaN(paintedCenterX) ||
@@ -448,16 +484,34 @@ export function bindRenderer(
     const zChanged = world.playerZ !== paintedCenterZ;
     const revChanged = world.tileRevision !== paintedTileRevision;
     const fullRebuild = !tilesRoot || zChanged || movedFar;
-    if (fullRebuild || (revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS)) {
-      const drawnFloors = drawnFloorsBelow(world.playerZ);
-      const floorsToRebuild = fullRebuild
-        ? drawnFloors
-        : dirtyFloors(drawnFloors, paintedRevisionByZ, world.tileRevisionByZ);
-      if (floorsToRebuild.length > 0) {
+    // Stepping through a door changes no tile and moves the player one
+    // step — the roof-culling moment rides on the probe result alone,
+    // immediate (a vanishing roof must not wait out the throttle).
+    const roofStateChanged = firstVisible !== paintedFirstVisible;
+    const revisionDue = revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS;
+    if (fullRebuild || roofStateChanged || revisionDue) {
+      const drawnBelow = drawnFloorsBelow(world.playerZ);
+      const drawnAbove = drawnFloorsAbove(firstVisible, world.playerZ);
+      const belowToRebuild = fullRebuild ? drawnBelow
+        : revisionDue ? dirtyFloors(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
+          : [];
+      // The above set is a function of the probe, so a probe change
+      // rebuilds that whole (small, sparse) stack; roof-culled means
+      // drawnAbove is simply empty and the parent ends up childless.
+      const rebuildAllAbove = fullRebuild || roofStateChanged;
+      const aboveToRebuild = rebuildAllAbove ? drawnAbove
+        : revisionDue ? dirtyFloors(drawnAbove, paintedRevisionByZ, world.tileRevisionByZ)
+          : [];
+      if (belowToRebuild.length > 0 || aboveToRebuild.length > 0 || rebuildAllAbove) {
         const repaintStart = performance.now();
-        if (!tilesRoot) {
+        if (!tilesRoot || !aboveTilesRoot) {
           tilesRoot = new Container();
           root.addChildAt(tilesRoot, 0);
+          // Takes index 1 now, while no creature layer exists yet;
+          // creatures always insert at index 1, landing between the
+          // two tile parents from then on.
+          aboveTilesRoot = new Container();
+          root.addChildAt(aboveTilesRoot, 1);
         }
         if (fullRebuild) {
           // The drawn set is a function of playerZ — floors of a
@@ -472,6 +526,14 @@ export function bindRenderer(
           paintedCenterX = world.playerX;
           paintedCenterY = world.playerY;
           paintedCenterZ = world.playerZ;
+        }
+        if (rebuildAllAbove) {
+          for (const [z, layer] of aboveFloorLayers) {
+            aboveTilesRoot.removeChild(layer);
+            layer.destroy({ children: true });
+            paintedRevisionByZ.delete(z);
+          }
+          aboveFloorLayers.clear();
         }
         // GLIDE_PAD: covers both the pursuing camera trailing behind
         // the confirmed position AND the hysteresis lag of the painted
@@ -488,9 +550,9 @@ export function bindRenderer(
         // paint — in town, the surface floor blanks out nearly every
         // slot beneath it (see floorOcclusion.ts for the cascade rules).
         const occlusion = buildOcclusionSets(
-          world, atlas.datIndex, x1, y1, x2, y2, [...drawnFloors].reverse(),
+          world, atlas.datIndex, x1, y1, x2, y2, [...drawnBelow].reverse(),
         );
-        for (const z of floorsToRebuild) {
+        for (const z of belowToRebuild) {
           const { container: nextTiles } = renderTileRegion(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
             x1, y1, x2, y2, z, occlusion.get(z),
@@ -501,13 +563,42 @@ export function bindRenderer(
             tilesRoot.removeChild(old);
             old.destroy({ children: true });
           } else {
-            // Full path only — drawnFloors is deepest-first, so plain
+            // Full path only — drawnBelow is deepest-first, so plain
             // appends produce the paint-over stacking.
             tilesRoot.addChild(nextTiles);
           }
           tileFloorLayers.set(z, nextTiles);
           paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
         }
+        for (const z of aboveToRebuild) {
+          // No skipPositions here: the iso offset shifts every above
+          // floor a tile up-left per z, breaking the same-(x,y)
+          // alignment the FullGround cascade assumes — and above
+          // floors are sparse roof outlines, so there is little to
+          // save anyway.
+          const { container: nextTiles } = renderTileRegion(
+            world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
+            x1, y1, x2, y2, z,
+          );
+          // Iso offset, negative → up-left (design-doc lesson 3691ea3:
+          // without it multi-story buildings collapse flat).
+          nextTiles.position.set(
+            (z - world.playerZ) * TILE_SIZE, (z - world.playerZ) * TILE_SIZE,
+          );
+          const old = aboveFloorLayers.get(z);
+          if (old) {
+            aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));
+            aboveTilesRoot.removeChild(old);
+            old.destroy({ children: true });
+          } else {
+            // Deepest (playerZ−1) first, shallowest last — nearest the
+            // viewer paints on top.
+            aboveTilesRoot.addChild(nextTiles);
+          }
+          aboveFloorLayers.set(z, nextTiles);
+          paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
+        }
+        paintedFirstVisible = firstVisible;
         lastTileRebuildAt = now;
         // Tile rebuild cost — the phone-CPU half of the lag decomposition.
         reportMetric('repaint', performance.now() - repaintStart);
@@ -572,8 +663,10 @@ export function bindRenderer(
             extraLights,
           },
         );
-        // Above tiles and creatures, below the bubble layer.
-        root.addChildAt(lightLayer, creatureLayer ? root.getChildIndex(creatureLayer) + 1 : root.children.length);
+        // Above both tile parents and the creatures — roofs darken
+        // with the world too — below the bubble layer.
+        root.addChildAt(lightLayer, aboveTilesRoot ? root.getChildIndex(aboveTilesRoot) + 1
+          : creatureLayer ? root.getChildIndex(creatureLayer) + 1 : root.children.length);
       }
       lightKey = lk;
     }
@@ -630,6 +723,8 @@ export function bindRenderer(
       root = null;
       tilesRoot = null;
       tileFloorLayers.clear();
+      aboveTilesRoot = null;
+      aboveFloorLayers.clear();
       creatureLayer = null;
       effectsLayer = null;
     }

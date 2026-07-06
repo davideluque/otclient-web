@@ -123,6 +123,13 @@ export class GameWorld {
   tileRevision = 0;
 
   /**
+   * Per-floor counterparts of tileRevision, keyed by z (absent = 0).
+   * Additive — the global counter stays for whole-map consumers; these
+   * let a multi-floor renderer rebuild only the floors that changed.
+   */
+  tileRevisionByZ = new Map<number, number>();
+
+  /**
    * Bumped whenever creature state changes (position, direction, health,
    * outfit, speed, appear/disappear) — the creature-layer counterpart of
    * tileRevision, so the renderer can key its repaints on both.
@@ -395,6 +402,11 @@ export class GameWorld {
     this.onChange?.();
   }
 
+  private bumpTileRevision(z: number): void {
+    this.tileRevision++;
+    this.tileRevisionByZ.set(z, (this.tileRevisionByZ.get(z) ?? 0) + 1);
+  }
+
   getTile(x: number, y: number, z: number): MapTile | undefined {
     return this.tiles.get(TileMap.key(x, y, z));
   }
@@ -443,7 +455,7 @@ export class GameWorld {
 
   private setTile(tile: MapTile): void {
     this.tiles.set(TileMap.key(tile.x, tile.y, tile.z), tile);
-    this.tileRevision++;
+    this.bumpTileRevision(tile.z);
     if (tile.creatures.length > 0) this.creatureRevision++;
 
     for (const creature of tile.creatures) this.rememberCreatureAt(creature, tile);
@@ -476,7 +488,7 @@ export class GameWorld {
     if ((packet.peekU16() & 0xff00) === 0xff00) {
       packet.getU16();
       this.tiles.delete(TileMap.key(pos.x, pos.y, pos.z));
-      this.tileRevision++;
+      this.bumpTileRevision(pos.z);
       this.onChange?.();
       return;
     }
@@ -514,7 +526,7 @@ export class GameWorld {
       // stack positions resolve against the same order the server used.
       this.insertItem(tile, this.protocol.map.parseItem(packet));
     }
-    this.tileRevision++;
+    this.bumpTileRevision(pos.z);
     this.onChange?.();
   }
 
@@ -549,7 +561,7 @@ export class GameWorld {
         this.insertItem(tile, item);
       }
       GameWorld.syncTileViews(tile);
-      this.tileRevision++;
+      this.bumpTileRevision(pos.z);
     }
     this.onChange?.();
   }
@@ -571,7 +583,7 @@ export class GameWorld {
         this.creatures.delete(removed.creature.id);
         this.creatureRevision++;
       }
-      this.tileRevision++;
+      this.bumpTileRevision(pos.z);
     }
     this.onChange?.();
   }
@@ -791,7 +803,13 @@ export class GameWorld {
       selfC.fromX = undefined;
       selfC.fromY = undefined;
     }
+    // A floor change shifts which floors matter rather than one tile's
+    // contents — bump every floor so per-z consumers can't miss it (the
+    // renderer's zChanged path rebuilds all drawn floors regardless).
     this.tileRevision++;
+    for (let z = 0; z <= 15; z++) {
+      this.tileRevisionByZ.set(z, (this.tileRevisionByZ.get(z) ?? 0) + 1);
+    }
     this.onChange?.();
   }
 

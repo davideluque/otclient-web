@@ -21,8 +21,15 @@ const SKIP_COUNT_MASK = 0x00ff;
 const CREATURE_KNOWN = 0x0062;
 const CREATURE_UNKNOWN = 0x0061;
 
+type TilePosition = Pick<MapTile, 'x' | 'y' | 'z'>;
+
+interface OccupiedTileParse {
+  tile: MapTile;
+  skipTiles: number;
+}
+
 /** OT 7.6 visible-floor range as a function of the player's z. */
-function getVisibleFloors(playerZ: number): number[] {
+function visibleFloorsForPlayerZ(playerZ: number): number[] {
   if (playerZ > 7) {
     // Underground: z-2 .. z+2 (clamped to [0, 15]), ascending top-of-screen
     // to bottom-of-screen.
@@ -34,6 +41,23 @@ function getVisibleFloors(playerZ: number): number[] {
   }
   // Above ground: 8 layers from sky down to ground, regardless of player's z.
   return [7, 6, 5, 4, 3, 2, 1, 0];
+}
+
+function isSkipMarker(value: number): boolean {
+  return (value & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH;
+}
+
+function consumeSkipCount(packet: InputPacket): number {
+  return packet.getU16() & SKIP_COUNT_MASK;
+}
+
+function createEmptyTile(position: TilePosition): MapTile {
+  return { ...position, things: [], items: [], creatures: [] };
+}
+
+function parseOccupiedTile(packet: InputPacket, position: TilePosition): OccupiedTileParse {
+  const tile = createEmptyTile(position);
+  return { tile, skipTiles: parseTileSlot(packet, tile) };
 }
 
 /**
@@ -62,7 +86,7 @@ export function parseMapDescription(
   playerZ: number,
 ): MapTile[] {
   const tiles: MapTile[] = [];
-  const floors = getVisibleFloors(playerZ);
+  const floors = visibleFloorsForPlayerZ(playerZ);
   let skipTiles = 0;
 
   for (const z of floors) {
@@ -84,18 +108,18 @@ export function parseMapDescription(
         }
         if (packet.bytesLeft < 2) return tiles;
 
-        // Peek the next U16. If the high byte is 0xFF it's a skip marker
-        // for an empty tile slot — consume it and carry the count.
         const peek = packet.peekU16();
-        if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
-          skipTiles = packet.getU16() & SKIP_COUNT_MASK;
+        if (isSkipMarker(peek)) {
+          skipTiles = consumeSkipCount(packet);
           continue;
         }
 
-        // Non-empty tile slot: parse its things, then the trailing skip
-        // marker that closes the slot.
-        const tile: MapTile = { x: nx + dz, y: ny + dz, z, things: [], items: [], creatures: [] };
-        skipTiles = parseTileSlot(packet, tile);
+        const { tile, skipTiles: trailingSkipTiles } = parseOccupiedTile(packet, {
+          x: nx + dz,
+          y: ny + dz,
+          z,
+        });
+        skipTiles = trailingSkipTiles;
         tiles.push(tile);
       }
     }
@@ -112,8 +136,8 @@ export function parseMapDescription(
 export function parseTileSlot(packet: InputPacket, tile: MapTile): number {
   while (packet.bytesLeft >= 2) {
     const peek = packet.peekU16();
-    if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
-      return packet.getU16() & SKIP_COUNT_MASK;
+    if (isSkipMarker(peek)) {
+      return consumeSkipCount(packet);
     }
 
     // Appending to things AND the matching view keeps both in wire
@@ -238,19 +262,16 @@ export function parseFloorStream(
           continue;
         }
         const peek = packet.peekU16();
-        if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
-          skipTiles = packet.getU16() & SKIP_COUNT_MASK;
+        if (isSkipMarker(peek)) {
+          skipTiles = consumeSkipCount(packet);
           continue;
         }
-        const tile: MapTile = {
+        const { tile, skipTiles: trailingSkipTiles } = parseOccupiedTile(packet, {
           x: startX + offset + col,
           y: startY + offset + row,
           z,
-          things: [],
-          items: [],
-          creatures: [],
-        };
-        skipTiles = parseTileSlot(packet, tile);
+        });
+        skipTiles = trailingSkipTiles;
         tiles.push(tile);
       }
     }

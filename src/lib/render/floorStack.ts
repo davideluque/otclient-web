@@ -105,3 +105,21 @@ export function dirtyFloors(
 ): number[] {
   return drawn.filter((z) => painted.get(z) !== (current.get(z) ?? 0));
 }
+
+/**
+ * Below-floor tile layers share a cascading FullGround occlusion set: a
+ * shallower floor can hide every deeper floor at the same (x, y). When a
+ * shallow floor changes, repaint the affected deeper cached layers too so
+ * their skip sets match the new cover.
+ */
+export function dirtyFloorsWithBelowOcclusion(
+  drawn: readonly number[],
+  painted: ReadonlyMap<number, number>,
+  current: ReadonlyMap<number, number>,
+): number[] {
+  const dirty = new Set(dirtyFloors(drawn, painted, current));
+  return drawn.filter((z, index) => {
+    if (dirty.has(z)) return true;
+    return drawn.slice(index + 1).some((shallowerZ) => dirty.has(shallowerZ));
+  });
+}

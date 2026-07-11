@@ -12,7 +12,7 @@ import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  partitionByFloor,
+  partitionByFloor, dirtyFloorsWithBelowOcclusion,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -518,7 +518,7 @@ export function bindRenderer(
     const revisionDue = revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS;
     if (fullRebuild || roofStateChanged || revisionDue) {
       const belowToRebuild = fullRebuild ? drawnBelow
-        : revisionDue ? dirtyFloors(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
+        : revisionDue ? dirtyFloorsWithBelowOcclusion(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
           : [];
       // The above set is a function of the probe, so a probe change
       // rebuilds that whole (small, sparse) stack; roof-culled means

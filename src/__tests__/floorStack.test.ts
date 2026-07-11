@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  partitionByFloor,
+  partitionByFloor, dirtyFloorsWithBelowOcclusion,
 } from '../lib/render/floorStack';
 
 describe('drawnFloorsBelow', () => {
@@ -150,5 +150,33 @@ describe('dirtyFloors', () => {
   it('preserves the drawn (deepest-first) order for multiple dirty floors', () => {
     expect(dirtyFloors([9, 8, 7], rev([[9, 1], [8, 1], [7, 1]]), rev([[9, 2], [8, 1], [7, 2]])))
       .toEqual([9, 7]);
+  });
+});
+
+describe('dirtyFloorsWithBelowOcclusion', () => {
+  const rev = (entries: Array<[number, number]>): Map<number, number> => new Map(entries);
+
+  it('a shallow below-floor change repaints every deeper cached layer', () => {
+    expect(dirtyFloorsWithBelowOcclusion(
+      [11, 10, 9],
+      rev([[11, 1], [10, 1], [9, 1]]),
+      rev([[11, 1], [10, 1], [9, 2]]),
+    )).toEqual([11, 10, 9]);
+  });
+
+  it('a middle below-floor change repaints itself and deeper layers', () => {
+    expect(dirtyFloorsWithBelowOcclusion(
+      [11, 10, 9],
+      rev([[11, 1], [10, 1], [9, 1]]),
+      rev([[11, 1], [10, 2], [9, 1]]),
+    )).toEqual([11, 10]);
+  });
+
+  it('a deepest below-floor change stays localized', () => {
+    expect(dirtyFloorsWithBelowOcclusion(
+      [11, 10, 9],
+      rev([[11, 1], [10, 1], [9, 1]]),
+      rev([[11, 2], [10, 1], [9, 1]]),
+    )).toEqual([11]);
   });
 });

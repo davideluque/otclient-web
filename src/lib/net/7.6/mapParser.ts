@@ -11,6 +11,11 @@ import { itemHasCountByte } from '../common/itemFlags';
 const SKIP_MARKER_HIGH = 0xff00;
 const SKIP_COUNT_MASK = 0x00ff;
 
+type ParsedTileSlot = {
+  skipTiles: number;
+  tile?: MapTile;
+};
+
 /**
  * Known/unknown creature thing markers (Tibia 7.6). Verified against the
  * server's Protocol76::AddCreature: 0x62 is the KNOWN short form (id
@@ -84,24 +89,24 @@ export function parseMapDescription(
         }
         if (packet.bytesLeft < 2) return tiles;
 
-        // Peek the next U16. If the high byte is 0xFF it's a skip marker
-        // for an empty tile slot — consume it and carry the count.
-        const peek = packet.peekU16();
-        if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
-          skipTiles = packet.getU16() & SKIP_COUNT_MASK;
-          continue;
-        }
-
-        // Non-empty tile slot: parse its things, then the trailing skip
-        // marker that closes the slot.
-        const tile: MapTile = { x: nx + dz, y: ny + dz, z, things: [], items: [], creatures: [] };
-        skipTiles = parseTileSlot(packet, tile);
-        tiles.push(tile);
+        const parsed = parseNextTileSlot(packet, nx + dz, ny + dz, z);
+        skipTiles = parsed.skipTiles;
+        if (parsed.tile) tiles.push(parsed.tile);
       }
     }
   }
 
   return tiles;
+}
+
+function parseNextTileSlot(packet: InputPacket, x: number, y: number, z: number): ParsedTileSlot {
+  const peek = packet.peekU16();
+  if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
+    return { skipTiles: packet.getU16() & SKIP_COUNT_MASK };
+  }
+
+  const tile: MapTile = { x, y, z, things: [], items: [], creatures: [] };
+  return { skipTiles: parseTileSlot(packet, tile), tile };
 }
 
 /**
@@ -237,21 +242,9 @@ export function parseFloorStream(
           skipTiles--;
           continue;
         }
-        const peek = packet.peekU16();
-        if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
-          skipTiles = packet.getU16() & SKIP_COUNT_MASK;
-          continue;
-        }
-        const tile: MapTile = {
-          x: startX + offset + col,
-          y: startY + offset + row,
-          z,
-          things: [],
-          items: [],
-          creatures: [],
-        };
-        skipTiles = parseTileSlot(packet, tile);
-        tiles.push(tile);
+        const parsed = parseNextTileSlot(packet, startX + offset + col, startY + offset + row, z);
+        skipTiles = parsed.skipTiles;
+        if (parsed.tile) tiles.push(parsed.tile);
       }
     }
   }

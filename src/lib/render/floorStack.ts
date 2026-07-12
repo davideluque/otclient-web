@@ -105,3 +105,21 @@ export function dirtyFloors(
 ): number[] {
   return drawn.filter((z) => painted.get(z) !== (current.get(z) ?? 0));
 }
+
+/**
+ * Below-floor FullGround occlusion flows from shallower floors to deeper
+ * floors. `drawn` is deepest-first, so a dirty shallower floor invalidates
+ * the cached skip masks for itself and every earlier/deeper floor.
+ */
+export function dirtyFloorsWithBelowOcclusion(
+  drawn: readonly number[],
+  painted: ReadonlyMap<number, number>,
+  current: ReadonlyMap<number, number>,
+): number[] {
+  let shallowestDirtyIndex = -1;
+  for (let i = 0; i < drawn.length; i++) {
+    const z = drawn[i];
+    if (painted.get(z) !== (current.get(z) ?? 0)) shallowestDirtyIndex = i;
+  }
+  return shallowestDirtyIndex < 0 ? [] : drawn.slice(0, shallowestDirtyIndex + 1);
+}

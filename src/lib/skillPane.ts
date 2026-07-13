@@ -121,15 +121,15 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
   }
   parent.appendChild(el);
 
-  const clampPct = (p: number): string => `${Math.max(0, Math.min(100, p))}%`;
+  const percentWidth = (percent: number): string => `${Math.max(0, Math.min(100, percent))}%`;
 
   return {
     el,
     setStats: (stats) => {
       (levelRow.querySelector('.lvl') as HTMLElement).textContent = String(stats.level);
-      (levelRow.querySelector('.fill') as HTMLElement).style.width = clampPct(stats.levelPercent);
+      (levelRow.querySelector('.fill') as HTMLElement).style.width = percentWidth(stats.levelPercent);
       (magicRow.querySelector('.lvl') as HTMLElement).textContent = String(stats.magicLevel);
-      (magicRow.querySelector('.fill') as HTMLElement).style.width = clampPct(stats.magicLevelPercent);
+      (magicRow.querySelector('.fill') as HTMLElement).style.width = percentWidth(stats.magicLevelPercent);
       expEl.textContent = stats.experience.toLocaleString();
       capEl.textContent = String(stats.capacity);
       soulEl.textContent = String(stats.soul);
@@ -138,7 +138,7 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
       const row = rows.get(name);
       if (!row) return;
       row.lvl.textContent = String(level);
-      row.fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      row.fill.style.width = percentWidth(percent);
     },
     setVisible: (visible) => { el.style.display = visible ? 'block' : 'none'; },
     destroy: () => el.remove(),

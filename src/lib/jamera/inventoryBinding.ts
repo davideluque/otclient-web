@@ -1,4 +1,9 @@
-import { createInventoryPane, slotName, type InventoryPaneHandle, type InventoryPaneOptions } from '../inventoryPane';
+import {
+  createInventoryPane,
+  inventorySlotNameFromWireSlot,
+  type InventoryPaneHandle,
+  type InventoryPaneOptions,
+} from '../inventoryPane';
 import type { GameClient } from '../net/common/GameClient';
 import { inventorySlotPosition, PLAYER_BACKPACK_SLOT } from '../net/common/virtualPosition';
 import { showActionSheet, type ActionSheetHandle, type ActionSheetAction } from '../actionSheet';
@@ -85,12 +90,12 @@ export function bindInventory(
   };
 
   dispatcher.on(op.InventorySet, (p) => {
-    const slot = slotName(p.getU8());
+    const slot = inventorySlotNameFromWireSlot(p.getU8());
     const item = protocol.map.parseItem(p);
     if (slot) ensurePane().setSlot(slot, item.id, item.count);
   });
   dispatcher.on(op.InventoryClear, (p) => {
-    const slot = slotName(p.getU8());
+    const slot = inventorySlotNameFromWireSlot(p.getU8());
     if (slot) ensurePane().setSlot(slot, null);
   });
 

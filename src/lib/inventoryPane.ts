@@ -17,8 +17,7 @@ export const INVENTORY_SLOTS = [
 
 export type InventorySlotName = (typeof INVENTORY_SLOTS)[number];
 
-/** Wire slot byte (1-based, creature.h) → slot name. */
-export function slotName(wireSlot: number): InventorySlotName | null {
+export function inventorySlotNameFromWireSlot(wireSlot: number): InventorySlotName | null {
   return INVENTORY_SLOTS[wireSlot - 1] ?? null;
 }
 

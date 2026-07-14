@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { Container } from 'pixi.js';
-import { drawCreatures } from '../lib/jamera/renderer';
-import type { NameplateHandle } from '../lib/jamera/nameplate';
+import { drawCreatures } from '../lib/render/creatures';
+import type { NameplateHandle } from '../lib/render/nameplate';
 import { GameWorld, type WorldCreature } from '../lib/GameWorld';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import type { SpriteAtlas } from '../lib/spriteAtlas';

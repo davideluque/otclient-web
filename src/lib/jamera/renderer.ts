@@ -5,22 +5,21 @@ import {
   creatureLightSource, loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
 } from '../lighting';
 import {
-  renderTileRegion, renderPlayer, spriteIndex, readPixelDisplacement,
+  renderTileRegion, spriteIndex, readPixelDisplacement,
   type TintedTextureCache,
 } from '../tileRenderer';
 import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
-  floorLayerOffset, glideEndpoints, coveringRevisionKey, partitionByFloor,
+  floorLayerOffset, glideEndpoints, coveringRevisionKey,
 } from '../render/floorStack';
-import { createNameplate, type NameplateHandle } from './nameplate';
+import type { NameplateHandle } from '../render/nameplate';
 import { CombatTextRenderer } from './combatText';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
 import type { ChatManager } from '../chat/ChatManager';
-import { DISTANCE_SHOT_TTL_MS, type GameWorld, type WorldCreature } from '../GameWorld';
+import type { GameWorld, WorldCreature } from '../GameWorld';
 import { DatAttr } from '../dat';
-import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
 import type { PlaybackSample, PlaybackState, RenderPos } from '../render/motion/types';
 import {
@@ -32,20 +31,12 @@ import {
 } from '../render/motion/prewalk';
 import { directionFromStepDelta } from '../player';
 import { TILE_SIZE } from '../../constants';
-import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
+import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from '../render/region';
+import { WALK_FRAME_MS, effectPhaseAt, missilePattern, shotProgressAt } from '../render/effects';
+import { GLIDE_PAD, drawCreatures } from '../render/creatures';
 import { VIEWPORT_EVENT } from './viewport';
 import { reportMetric } from './metrics';
 
-/** Walk frame duration — two alternating walk poses at ~8 fps. */
-const WALK_FRAME_MS = 125;
-
-/**
- * Extra painted tiles beyond the server window on every side: the
- * pursuing camera trails the confirmed position by up to a tile, and
- * the trailing edge must show the (already-known, lingering) tiles
- * there instead of black.
- */
-const GLIDE_PAD = 3;
 
 /**
  * Tile-layer rebuild policy. Rebuilding tile layers is the expensive
@@ -65,59 +56,6 @@ const TILE_REVISION_THROTTLE_MS = 300;
  * world.onChange).
  */
 export const LIGHT_PREF_EVENT = 'jamera:light-pref';
-
-/** Magic-effect animation cadence: 100 ms per .dat phase (OTClient's 7.6 timing). */
-export const EFFECT_PHASE_MS = 100;
-
-/**
- * Which .dat animation phase a magic effect shows at `now`, or -1 once
- * it has played through — effects run once, they don't loop.
- */
-export function effectPhaseAt(now: number, startedAt: number, animationPhases: number): number {
-  const phase = Math.floor((now - startedAt) / EFFECT_PHASE_MS);
-  return phase < animationPhases ? phase : -1;
-}
-
-/**
- * Sprite pick from a missile's 3×3 directional pattern grid — the
- * OTClient thingtype convention: patX is the flight's horizontal
- * component (west 0, none 1, east 2), patY the vertical (north 0,
- * none 1, south 2). The delta is snapped to 8 directions by angle
- * first (OTClient's getDirectionFromPosition), not by raw sign — a
- * (7, 1) shot flies east, not southeast.
- */
-// Octants: 0 = E, 1 = NE, 2 = N, 3 = NW, ±4 = W, -3 = SW, -2 = S, -1 = SE.
-// Module-level so the per-shot per-frame lookup allocates nothing.
-const MISSILE_PATTERN_BY_OCTANT: Record<number, { patX: number; patY: number }> = {
-  0: { patX: 2, patY: 1 },
-  1: { patX: 2, patY: 0 },
-  2: { patX: 1, patY: 0 },
-  3: { patX: 0, patY: 0 },
-  4: { patX: 0, patY: 1 },
-  [-4]: { patX: 0, patY: 1 },
-  [-3]: { patX: 0, patY: 2 },
-  [-2]: { patX: 1, patY: 2 },
-  [-1]: { patX: 2, patY: 2 },
-};
-
-export function missilePattern(dx: number, dy: number): { patX: number; patY: number } {
-  if (dx === 0 && dy === 0) return { patX: 1, patY: 1 };
-  // Screen y grows southward; flip it so atan2 works in math space.
-  const octant = Math.round(Math.atan2(-dy, dx) / (Math.PI / 4));
-  return MISSILE_PATTERN_BY_OCTANT[octant];
-}
-
-/** Flight progress 0→1 of a distance shot at `now`, clamped at landing. */
-export function shotProgressAt(now: number, startedAt: number): number {
-  return Math.min(1, Math.max(0, (now - startedAt) / DISTANCE_SHOT_TTL_MS));
-}
-
-function walkPhase(moving: boolean, now: number): number {
-  if (!moving) return 0;
-  // Phases 1..n-1 are the walk cycle (renderPlayer clamps to the
-  // outfit's actual phase count).
-  return 1 + (Math.floor(now / WALK_FRAME_MS) % 2);
-}
 
 /**
  * Bridges `GameWorld` → PIXI: subscribes to `world.onChange` and repaints
@@ -840,111 +778,3 @@ export function bindRenderer(
   };
 }
 
-/**
- * Draw every creature in the visible region (the player included) into
- * its floor's container — one per drawn z, pre-seated by the caller in
- * draw-order position, so a creature on z paints between tiles(z) and
- * tiles(z−1) and roofs occlude the people under them. North-to-south
- * within each floor so southern creatures overlap the ones behind them,
- * matching the tile painter order. Nameplates go into the SAME per-floor
- * container as their creature — a roof that hides a creature must hide
- * its nameplate too. The one exception is the PLAYER's own plate, which
- * goes into `selfPlateLayer` (above both tile parents): standing under a
- * stairwell opening, the floor-above ground paints exactly where the
- * plate hangs, and the player's own name must never vanish while the
- * player is visible. Exported for tests.
- */
-export function drawCreatures(
-  world: GameWorld,
-  atlas: SpriteAtlas,
-  layersByZ: ReadonlyMap<number, Container>,
-  tintedCache: TintedTextureCache,
-  nameplates: Map<number, NameplateHandle>,
-  isMoving: (creature: WorldCreature) => boolean,
-  now: number,
-  selfPlateLayer: Container | null,
-): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
-  const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
-  const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
-  const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
-  const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
-  const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
-
-  const byFloor = partitionByFloor(world.getAllCreatures(), [...layersByZ.keys()]);
-
-  const seen = new Set<number>();
-  for (const [z, container] of layersByZ) {
-    const visible = (byFloor.get(z) ?? []).filter((c) =>
-      c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2,
-    );
-    visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
-
-    for (const c of visible) {
-      const sprite = renderCreature(c, atlas, tintedCache, walkPhase(isMoving(c), now));
-      if (sprite) {
-        container.addChild(sprite);
-        movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });
-      }
-
-      // Nameplate (name + six-band health bar) above the creature's tile.
-      // Reparented into the fresh container each rebuild; updated in place.
-      seen.add(c.id);
-      let plate = nameplates.get(c.id);
-      if (!plate) {
-        plate = createNameplate(c.name, c.health);
-        nameplates.set(c.id, plate);
-      } else {
-        plate.update(c.name, c.health);
-      }
-      plate.container.x = (c.x + 0.5) * TILE_SIZE;
-      plate.container.y = c.y * TILE_SIZE - 14;
-      const plateParent = c.id === world.playerCreatureId && selfPlateLayer
-        ? selfPlateLayer
-        : container;
-      plateParent.addChild(plate.container);
-      movables.push({
-        node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c,
-      });
-    }
-  }
-  for (const [id, plate] of nameplates) {
-    if (!seen.has(id)) {
-      plate.destroy();
-      nameplates.delete(id);
-    }
-  }
-  return movables;
-}
-
-function renderCreature(
-  c: WorldCreature,
-  atlas: SpriteAtlas,
-  tintedCache: TintedTextureCache,
-  animationPhase: number,
-): Container | null {
-  if (!c.outfit || c.outfit.lookType === 0) return null; // invisible / item-look: not drawn yet
-  return renderPlayer(
-    {
-      x: c.x,
-      y: c.y,
-      z: c.z,
-      // The wire direction byte is value-compatible with Direction
-      // (0 north, 1 east, 2 south, 3 west); renderPlayer additionally
-      // clamps to the outfit's pattern count.
-      direction: (c.direction & 3) as Direction,
-      animationPhase,
-      outfit: {
-        lookType: c.outfit.lookType,
-        headColor: c.outfit.head,
-        bodyColor: c.outfit.body,
-        legsColor: c.outfit.legs,
-        feetColor: c.outfit.feet,
-      },
-    },
-    atlas.creatureIndex,
-    atlas.atlasTextures,
-    atlas.atlasPages,
-    atlas.layout,
-    tintedCache,
-  );
-}

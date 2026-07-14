@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveProxyOverride } from '../lib/jamera/proxyUrl';
+import { defaultProxyUrl, resolveProxyOverride } from '../lib/jamera/proxyUrl';
 
 function page(hostname: string): Pick<Location, 'hostname'> {
   return { hostname };
@@ -27,5 +27,19 @@ describe('resolveProxyOverride', () => {
     expect(resolveProxyOverride('wss://official.example:8443', page('official.example'))).toBe(
       'wss://official.example:8443',
     );
+  });
+});
+
+describe('defaultProxyUrl', () => {
+  it('uses the local bridge in dev regardless of page origin', () => {
+    expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example' }, true)).toBe('ws://localhost:8090');
+  });
+
+  it('defaults to the same origin over wss on an https production page', () => {
+    expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example' }, false)).toBe('wss://tibia.example');
+  });
+
+  it('preserves a non-default port and falls back to ws on a plain-http page', () => {
+    expect(defaultProxyUrl({ protocol: 'http:', host: 'box.local:8080' }, false)).toBe('ws://box.local:8080');
   });
 });

@@ -28,11 +28,55 @@ npm run dev
 
 You'll need Tibia 7.6 client files (`.dat`, `.spr`) — these are not included in the repo. Place them in the project root.
 
-To connect to an OT server, start the proxy:
+## Connecting to an OT server
+
+Browsers can't open raw TCP sockets, so a small WebSocket↔TCP bridge sits
+between the client and the OT server. Start it alongside `npm run dev`:
 
 ```bash
-npm run proxy
+npm run proxy          # bridges ws://localhost:8090 → 127.0.0.1:7171 (login) / :7172 (game)
 ```
+
+Some 7.6 servers (e.g. the jamera stack in `docker/`) serve **login and game
+on the same port** 7171. For those, use:
+
+```bash
+npm run proxy:jamera   # same as `npm run proxy` but with OT_GAME_PORT=7171
+```
+
+Override the target with env vars when needed: `OT_HOST`, `OT_LOGIN_PORT`,
+`OT_GAME_PORT`, `WS_PORT` (see `proxy/server.ts`).
+
+## Playing from your phone (same Wi‑Fi)
+
+By default both Vite and the client's proxy URL point at `localhost`, which on
+your phone means *the phone itself*. To reach your computer instead, bind Vite
+to your LAN and pass the proxy explicitly.
+
+1. Start the bridge and the LAN dev server (two terminals):
+
+   ```bash
+   npm run proxy:jamera   # or `npm run proxy` for a two-port server
+   npm run dev:lan        # Vite bound to 0.0.0.0 — prints a "Network:" URL
+   ```
+
+2. Find your computer's LAN IP (looks like `192.168.x.x`):
+
+   ```bash
+   ipconfig getifaddr en0   # macOS (try en1 on Ethernet)
+   hostname -I              # Linux
+   ```
+
+3. On the phone's browser (same Wi‑Fi), open — replacing `<LAN-IP>`:
+
+   ```
+   http://<LAN-IP>:5173/jamera.html?proxy=ws://<LAN-IP>:8090
+   ```
+
+   The `?proxy=` override is required: it's only honoured for loopback or a
+   host matching the page, so pointing it at your computer's IP (the same host
+   serving the page) is allowed. Make sure the OT server (e.g. the Docker
+   stack) is running, and that your firewall permits inbound `5173` and `8090`.
 
 ## Project structure
 

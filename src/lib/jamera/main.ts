@@ -43,6 +43,7 @@ import { DatAttr, parseDat } from '../dat';
 import { parseOtb, floorChangeClientIds, useableClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
+import { bindScreenWakeLock, loadKeepScreenAwake, type ScreenWakeLockHandle } from './screenWakeLock';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -124,12 +125,16 @@ mountLoginScreen(root, {
     teardownTextWindows = null;
     teardownTrade?.destroy();
     teardownTrade = null;
+    screenWakeLock?.destroy();
+    screenWakeLock = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
     changelogPane?.close();
   },
   onEnterGame: (client) => {
+    screenWakeLock?.destroy();
+    screenWakeLock = bindScreenWakeLock();
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
     // live-map renderer, chat UI, and movement input. Surface the live
     // client on `window` only in dev builds, never in production: the
@@ -255,6 +260,13 @@ mountLoginScreen(root, {
         hint: 'Off: move with the joystick; taps still open and use objects.',
         get: () => loadTapToWalk(),
         set: (on) => saveTapToWalk(on),
+      },
+      {
+        kind: 'toggle',
+        label: 'Keep screen awake',
+        hint: 'Prevents sleep while the game is visible when the browser allows it.',
+        get: () => screenWakeLock?.enabled ?? loadKeepScreenAwake(),
+        set: (on) => screenWakeLock?.setEnabled(on),
       },
       {
         kind: 'slider',
@@ -762,6 +774,7 @@ let teardownInteractions: InteractionsHandle | null = null;
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
+let screenWakeLock: ScreenWakeLockHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownBattle: BattleBindingHandle | null = null;
 let teardownTextWindows: TextWindowBindingHandle | null = null;

@@ -57,8 +57,14 @@ export function bindViewportCover(app: Application): () => void {
     if (!(w >= 1) || !(h >= 1)) return; // hidden tab / mid-orientation
     const zoom = computeCoverZoom(w, h);
     const sizeChanged = w !== app.screen.width || h !== app.screen.height;
-    const positionChanged = app.canvas.style.left !== `${left}px`
-      || app.canvas.style.top !== `${top}px`;
+    const currentLeft = Number.parseFloat(app.canvas.style.left);
+    const currentTop = Number.parseFloat(app.canvas.style.top);
+    // Browsers may serialize fractional CSS pixels at slightly different
+    // precision than VisualViewport reports them. Ignore sub-hundredth-pixel
+    // noise so a stable viewport cannot trigger endless layout work.
+    const positionChanged = !Number.isFinite(currentLeft) || !Number.isFinite(currentTop)
+      || Math.abs(left - currentLeft) > 0.01
+      || Math.abs(top - currentTop) > 0.01;
     // visualViewport.resize fires liberally (URL-bar reveal, pinch) and
     // the cold-start path applies twice by design — skip the renderer
     // churn and the downstream recenters when nothing actually changed.

@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Repeated door/walk warnings now expire instead of lingering, and duplicate spell speech echoes no longer stack twice.' },
   { date: '2026-07-14', text: 'Writable books and house guest, subowner, and door lists can now be edited and saved from their movable window.' },
   { date: '2026-07-14', text: 'Trading works: choose Trade with… on an item, tap a nearby player, then review and accept both offers.' },
   { date: '2026-07-14', text: 'Tap a creature on the map to select/attack it directly; red, gold, and white tap rings confirm attacks, uses, and walking.' },

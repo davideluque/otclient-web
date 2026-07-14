@@ -28,6 +28,8 @@ const SPEECH_MIN_DURATION_MS = 3000;
 /** Stacked-lines cap per speaker (OTClient's deque holds 10). */
 const MAX_SPEECH_LINES = 10;
 const MAX_MESSAGES_PER_CHANNEL = 200;
+/** Immediate duplicate 0xAA speech echoes are transport noise, not a second cast. */
+const DUPLICATE_SPEECH_MS = 250;
 const DEFAULT_CHANNELS = [
   { id: ChannelId.Default, name: 'Default' },
   { id: ChannelId.GameChat, name: 'Game Chat' },
@@ -41,6 +43,7 @@ export class ChatManager {
   private _speechBubbles: SpeechBubble[] = [];
   private messageListeners = new Set<(msg: ChatMessage) => void>();
   private channelListeners = new Set<() => void>();
+  private lastSpeechBySender = new Map<string, ChatMessage>();
 
   constructor() {
     for (const channel of DEFAULT_CHANNELS) {
@@ -116,6 +119,7 @@ export class ChatManager {
   }
 
   handleMessage(msg: ChatMessage): void {
+    if (this.isDuplicateSpeech(msg)) return;
     const channelId = this.channelIdForMessage(msg);
     this.ensureChannelForMessage(msg, channelId);
     const channel = this.channels.get(channelId);
@@ -129,6 +133,20 @@ export class ChatManager {
     }
 
     for (const listener of this.messageListeners) listener(msg);
+  }
+
+  private isDuplicateSpeech(msg: ChatMessage): boolean {
+    if (!msg.position || !this.hasSpeechBubbleMessageType(msg.messageType)) return false;
+    const previous = this.lastSpeechBySender.get(msg.senderName);
+    this.lastSpeechBySender.set(msg.senderName, msg);
+    if (!previous?.position) return false;
+    const elapsed = msg.timestamp - previous.timestamp;
+    return elapsed >= 0 && elapsed <= DUPLICATE_SPEECH_MS
+      && msg.messageType === previous.messageType
+      && msg.text === previous.text
+      && msg.position.x === previous.position.x
+      && msg.position.y === previous.position.y
+      && msg.position.z === previous.position.z;
   }
 
   /** Remove expired speech bubbles. Call each frame. */

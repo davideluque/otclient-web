@@ -8,6 +8,8 @@ export interface GameMessageOverlayHandle {
 
 const STYLE_ID = 'game-message-overlay-style';
 const MESSAGE_TTL_MS = 4500;
+/** Repeated movement failures stay suppressed until the server goes quiet. */
+const DUPLICATE_COOLDOWN_MS = 5000;
 const MAX_VISIBLE = 4;
 
 function ensureStyles(): void {
@@ -51,6 +53,7 @@ export function createGameMessageOverlay(parent: HTMLElement = document.body): G
   el.setAttribute('aria-live', 'polite');
   parent.appendChild(el);
   const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+  const duplicateCooldowns = new Map<string, ReturnType<typeof setTimeout>>();
 
   const remove = (message: HTMLElement): void => {
     const timer = timers.get(message);
@@ -62,6 +65,13 @@ export function createGameMessageOverlay(parent: HTMLElement = document.body): G
   return {
     el,
     show: (messageClass, text) => {
+      const duplicateKey = `${messageClass}\u0000${text}`;
+      const existingCooldown = duplicateCooldowns.get(duplicateKey);
+      if (existingCooldown !== undefined) clearTimeout(existingCooldown);
+      duplicateCooldowns.set(duplicateKey, setTimeout(() => {
+        duplicateCooldowns.delete(duplicateKey);
+      }, DUPLICATE_COOLDOWN_MS));
+      if (existingCooldown !== undefined) return;
       const message = document.createElement('div');
       message.className = `message ${classNameFor(messageClass)}`;
       message.textContent = text;
@@ -72,6 +82,8 @@ export function createGameMessageOverlay(parent: HTMLElement = document.body): G
     destroy: () => {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
+      for (const timer of duplicateCooldowns.values()) clearTimeout(timer);
+      duplicateCooldowns.clear();
       el.remove();
     },
   };

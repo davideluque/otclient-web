@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindInteractions, screenToWorldTile } from '../lib/jamera/interactions';
+import { bindInteractions, floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/interactions';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from '../lib/net/7.6/actionsProtocol';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import type { GameClient } from '../lib/net/common/GameClient';
@@ -34,6 +34,36 @@ describe('screenToWorldTile', () => {
     expect(screenToWorldTile(zoomed, world, 400 + 64, 300)).toEqual({ x: 101, y: 200, z: 7 });
     // Tile spans ±32px around center at zoom 2 — +31px is still the player tile.
     expect(screenToWorldTile(zoomed, world, 400 + 31, 300).x).toBe(100);
+  });
+});
+
+describe('floorChangeTileAtPointer', () => {
+  const frameGroup = {
+    width: 2, height: 2, exactSize: 64, layers: 1,
+    numPatternX: 1, numPatternY: 1, numPatternZ: 1,
+    animationPhases: 1, spriteIds: [1, 2, 3, 4],
+  };
+  const datIndex = new Map([[1947, { id: 1947, attrs: new Map(), frameGroup }]]) as Map<number, never>;
+  const stair = {
+    x: 101, y: 201, z: 7,
+    things: [{ kind: 'item', item: { id: 1947 } }],
+    items: [{ id: 1947 }], creatures: [],
+  } as MapTile;
+  const liveWorld = {
+    getTile: (x: number, y: number, z: number) => x === 101 && y === 201 && z === 7 ? stair : undefined,
+  } as unknown as GameWorld;
+
+  it('maps every visible piece of a multi-tile stair to its anchor tile', () => {
+    const floorChanges = new Set([1947]);
+    for (const [x, y] of [[100, 200], [101, 200], [100, 201], [101, 201]]) {
+      expect(floorChangeTileAtPointer(liveWorld, datIndex, { x, y, z: 7 }, floorChanges))
+        .toEqual({ x: 101, y: 201, z: 7 });
+    }
+  });
+
+  it('leaves ordinary ground taps unchanged', () => {
+    expect(floorChangeTileAtPointer(liveWorld, datIndex, { x: 99, y: 199, z: 7 }, new Set([1947])))
+      .toEqual({ x: 99, y: 199, z: 7 });
   });
 });
 

@@ -94,6 +94,11 @@ mountLoginScreen(root, {
   onLeaveGame: () => {
     // Disconnect/kick: drop the per-session surfaces instead of leaving
     // a live joystick and chat floating over the re-shown login screen.
+    // The atlas waiter goes too — the game can be entered before the
+    // atlas finishes building, and a still-armed waiter would otherwise
+    // retain the dead session's world and bind a renderer for it over
+    // the login screen when the build lands.
+    assetPipeline.onAtlasReady(null);
     teardownMovement?.();
     teardownChat?.destroy();
     teardownChat = null;

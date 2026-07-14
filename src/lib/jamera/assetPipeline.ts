@@ -168,6 +168,9 @@ export function createAssetPipeline(deps?: Partial<AssetPipelineDeps>): AssetPip
       // The attempt failed (missing manifest, fetch error, atlas build
       // failure): reject the gate so character-select surfaces an error,
       // then re-arm a fresh promise for the retry the next gate call kicks.
+      // When only the atlas build failed the gate already resolved (wire
+      // flags exist, the game may proceed) and this reject is a no-op —
+      // the re-arm is what matters for the retry.
       readyReject?.(new Error('Game assets failed to load — check public/assets/<version>/ and retry.'));
       gate = armGate();
     }

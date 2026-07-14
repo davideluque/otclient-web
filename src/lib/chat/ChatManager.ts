@@ -1,4 +1,7 @@
 import { MessageType, ChannelId, type ChatMessage } from '../net/common/types';
+import type { NpcChatContext } from './npcContext';
+
+export type ChatPresentationMode = 'glance' | 'quick' | 'full';
 
 export interface Channel {
   id: number;
@@ -43,7 +46,13 @@ export class ChatManager {
   private _speechBubbles: SpeechBubble[] = [];
   private messageListeners = new Set<(msg: ChatMessage) => void>();
   private channelListeners = new Set<() => void>();
+  private stateListeners = new Set<() => void>();
   private lastSpeechBySender = new Map<string, ChatMessage>();
+  private _draft = '';
+  private _unreadCount = 0;
+  private _presentationMode: ChatPresentationMode = 'glance';
+  private _npcContext: NpcChatContext | null = null;
+  private scrollPositions = new Map<string, number>();
 
   constructor() {
     for (const channel of DEFAULT_CHANNELS) {
@@ -66,6 +75,66 @@ export class ChatManager {
 
   get speechBubbles(): SpeechBubble[] {
     return this._speechBubbles;
+  }
+
+  get draft(): string {
+    return this._draft;
+  }
+
+  setDraft(text: string): void {
+    if (this._draft === text) return;
+    this._draft = text;
+    this.notifyStateChanged();
+  }
+
+  get unreadCount(): number {
+    return this._unreadCount;
+  }
+
+  get presentationMode(): ChatPresentationMode {
+    return this._presentationMode;
+  }
+
+  setPresentationMode(mode: ChatPresentationMode): void {
+    if (this._presentationMode === mode) return;
+    this._presentationMode = mode;
+    if (mode !== 'glance') this.clearUnread();
+    this.notifyStateChanged();
+  }
+
+  /** Increment unread when a message arrives while chat is collapsed. */
+  bumpUnread(): void {
+    if (this._presentationMode !== 'glance') return;
+    this._unreadCount += 1;
+    this.notifyStateChanged();
+  }
+
+  clearUnread(): void {
+    if (this._unreadCount === 0) return;
+    this._unreadCount = 0;
+    this.notifyStateChanged();
+  }
+
+  get npcContext(): NpcChatContext | null {
+    return this._npcContext;
+  }
+
+  setNpcContext(ctx: NpcChatContext | null): void {
+    this._npcContext = ctx;
+    this.notifyStateChanged();
+  }
+
+  saveScrollPosition(key: string, position: number): void {
+    this.scrollPositions.set(key, position);
+  }
+
+  getScrollPosition(key: string): number {
+    return this.scrollPositions.get(key) ?? 0;
+  }
+
+  subscribeState(listener: () => void): () => void {
+    this.stateListeners.add(listener);
+    return () => this.stateListeners.delete(listener);
   }
 
   addChannel(id: number, name: string): void {
@@ -93,8 +162,9 @@ export class ChatManager {
   }
 
   setActiveChannel(id: number): void {
-    if (this.channels.has(id)) {
+    if (this.channels.has(id) && this._activeChannelId !== id) {
       this._activeChannelId = id;
+      this.notifyStateChanged();
     }
   }
 
@@ -132,6 +202,7 @@ export class ChatManager {
       this.addSpeechBubble(msg, msg.position);
     }
 
+    this.bumpUnread();
     for (const listener of this.messageListeners) listener(msg);
   }
 
@@ -198,6 +269,10 @@ export class ChatManager {
 
   private notifyChannelsChanged(): void {
     for (const listener of this.channelListeners) listener();
+  }
+
+  private notifyStateChanged(): void {
+    for (const listener of this.stateListeners) listener();
   }
 
   private addSpeechBubble(msg: ChatMessage, position: SpeechPosition): void {

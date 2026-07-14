@@ -93,7 +93,6 @@ export function createChatPresentation(opts: ChatPresentationOptions): ChatPrese
   const unsubChannels = chatManager.subscribeChannels(() => refresh());
   const unsubState = chatManager.subscribeState(() => {
     applyVisibility();
-    refresh();
   });
 
   applyVisibility();

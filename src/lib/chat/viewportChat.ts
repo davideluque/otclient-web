@@ -17,8 +17,10 @@ export function readVisualViewport(): VisualViewportRect {
 }
 
 export function isLandscapeLayout(): boolean {
-  const { width, height } = readVisualViewport();
-  return width > height;
+  if (typeof window.matchMedia === 'function') {
+    return window.matchMedia('(orientation: landscape)').matches;
+  }
+  return window.innerWidth > window.innerHeight;
 }
 
 /**
@@ -26,14 +28,20 @@ export function isLandscapeLayout(): boolean {
  * visualViewport). Returns an unsubscribe that removes every listener.
  */
 export function bindVisualViewport(onChange: () => void): () => void {
+  let rafId = 0;
   const schedule = (): void => {
-    requestAnimationFrame(onChange);
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      onChange();
+    });
   };
   window.addEventListener('resize', schedule);
   window.addEventListener('orientationchange', schedule);
   window.visualViewport?.addEventListener('resize', schedule);
   window.visualViewport?.addEventListener('scroll', schedule);
   return () => {
+    if (rafId) cancelAnimationFrame(rafId);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
     window.visualViewport?.removeEventListener('resize', schedule);

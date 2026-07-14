@@ -1,5 +1,5 @@
 import type { ChatManager } from './ChatManager';
-import type { GameProtocol } from '../net/common/types';
+import { ChannelId, type GameProtocol } from '../net/common/types';
 import { parseCommand, type SendPacketFn } from './ChatUI';
 import { buildMessageRow } from './chatDom';
 import { resolveNpcReplies } from './npcContext';
@@ -200,15 +200,21 @@ export function createQuickChatView(opts: QuickChatViewOptions): QuickChatViewHa
       btn.textContent = channel.name;
       if (channel.id === opts.chatManager.activeChannelId) btn.classList.add('active');
       btn.addEventListener('click', () => {
+        opts.chatManager.saveScrollPosition(
+          quickScrollKey(opts.chatManager.activeChannelId),
+          messagesEl.scrollTop,
+        );
         opts.chatManager.setActiveChannel(channel.id);
         renderTabs();
-        renderMessages();
+        renderMessages(true);
       });
       tabsEl.appendChild(btn);
     }
   };
 
-  const renderMessages = (): void => {
+  const quickScrollKey = (channelId: number): string => `quick-${channelId}`;
+
+  const renderMessages = (restoreChannelScroll = false): void => {
     const channel = opts.chatManager.activeChannel;
     if (!channel) return;
     const prevScroll = messagesEl.scrollTop;
@@ -217,11 +223,12 @@ export function createQuickChatView(opts: QuickChatViewOptions): QuickChatViewHa
     for (const msg of channel.messages) {
       messagesEl.appendChild(buildMessageRow(msg));
     }
-    const saved = opts.chatManager.getScrollPosition('quick');
-    if (atBottom) {
+    const key = quickScrollKey(opts.chatManager.activeChannelId);
+    if (restoreChannelScroll) {
+      const saved = opts.chatManager.getScrollPosition(key);
+      messagesEl.scrollTop = saved > 0 ? saved : messagesEl.scrollHeight;
+    } else if (atBottom) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
-    } else if (saved > 0) {
-      messagesEl.scrollTop = saved;
     } else {
       messagesEl.scrollTop = prevScroll;
     }
@@ -246,7 +253,7 @@ export function createQuickChatView(opts: QuickChatViewOptions): QuickChatViewHa
       chip.type = 'button';
       chip.textContent = reply.label;
       chip.addEventListener('click', () => {
-        const packet = parseCommand(reply.text, opts.chatManager.activeChannelId, opts.protocol);
+        const packet = parseCommand(reply.text, ChannelId.Default, opts.protocol);
         if (packet) opts.sendPacket(packet);
       });
       npcEl.appendChild(chip);
@@ -302,20 +309,36 @@ export function createQuickChatView(opts: QuickChatViewOptions): QuickChatViewHa
   });
 
   closeBtn.addEventListener('click', () => {
-    opts.chatManager.saveScrollPosition('quick', messagesEl.scrollTop);
+    opts.chatManager.saveScrollPosition(
+      quickScrollKey(opts.chatManager.activeChannelId),
+      messagesEl.scrollTop,
+    );
     opts.onClose();
   });
   expandBtn.addEventListener('click', () => {
-    opts.chatManager.saveScrollPosition('quick', messagesEl.scrollTop);
+    opts.chatManager.saveScrollPosition(
+      quickScrollKey(opts.chatManager.activeChannelId),
+      messagesEl.scrollTop,
+    );
     opts.onExpand();
   });
 
   head.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
     swipeStartY = e.clientY;
+    head.setPointerCapture(e.pointerId);
   });
   head.addEventListener('pointerup', (e) => {
+    if (head.hasPointerCapture(e.pointerId)) {
+      head.releasePointerCapture(e.pointerId);
+    }
     if (e.clientY - swipeStartY > 48 && !isLandscapeLayout()) {
       opts.onClose();
+    }
+  });
+  head.addEventListener('pointercancel', (e) => {
+    if (head.hasPointerCapture(e.pointerId)) {
+      head.releasePointerCapture(e.pointerId);
     }
   });
 
@@ -355,7 +378,7 @@ export function createQuickChatView(opts: QuickChatViewOptions): QuickChatViewHa
   const render = (): void => {
     syncDraftFromManager();
     renderTabs();
-    renderMessages();
+    renderMessages(true);
     renderNpc();
     applyLayout();
   };

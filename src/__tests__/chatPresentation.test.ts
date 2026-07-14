@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatManager } from '../lib/chat/ChatManager';
 import { createChatPresentation } from '../lib/chat/ChatPresentation';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
-import { MessageType } from '../lib/net/common/types';
+import { ChannelId, MessageType } from '../lib/net/common/types';
 import { keyboardOverlapHeight, isLandscapeLayout, readVisualViewport } from '../lib/chat/viewportChat';
 import { resolveNpcReplies, DEFAULT_NPC_REPLIES } from '../lib/chat/npcContext';
 
@@ -112,6 +112,20 @@ describe('createChatPresentation', () => {
     expect(sent).toHaveLength(1);
     expect((sent[0] as { toUint8Array(): Uint8Array }).toUint8Array()[0]).toBe(0x96);
     expect(manager.npcContext?.npcName).toBe('Tom');
+    presentation.destroy();
+  });
+
+  it('NPC quick-replies use say path even when another tab is active', () => {
+    const { presentation, manager, sent } = mountPresentation();
+    manager.setActiveChannel(ChannelId.Trade);
+    presentation.setNpcContext({ npcName: 'Tom', replies: [{ label: 'hi', text: 'hi' }] });
+    presentation.openQuick();
+
+    const chip = [...document.querySelectorAll('.quick-chat-npc button')]
+      .find((b) => b.textContent === 'hi') as HTMLButtonElement;
+    chip.click();
+    expect(sent).toHaveLength(1);
+    expect((sent[0] as { toUint8Array(): Uint8Array }).toUint8Array()[0]).toBe(0x96);
     presentation.destroy();
   });
 

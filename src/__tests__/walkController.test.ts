@@ -71,6 +71,28 @@ describe('createWalkController (one-step lookahead)', () => {
     walker.destroy();
   });
 
+  it('reports every send through onStepSent with its timestamp', () => {
+    const { client, world, sent } = makeFakes();
+    const reported: Array<{ dir: Direction; now: number }> = [];
+    const walker = createWalkController({
+      client, world, getHeldDirection: () => Direction.East, tickMs: 25,
+      onStepSent: (dir, now) => reported.push({ dir, now }),
+    });
+    vi.advanceTimersByTime(200); // first + lookahead out
+    expect(sent).toHaveLength(2);
+    expect(reported).toHaveLength(2);
+    expect(reported.every((r) => r.dir === Direction.East)).toBe(true);
+    // The lookahead is reported at its own (later) send time — the
+    // prediction chain relies on real send timestamps.
+    expect(reported[1].now).toBeGreaterThan(reported[0].now);
+
+    world.selfSteps = 2;
+    vi.advanceTimersByTime(30);
+    expect(reported).toHaveLength(3); // refill reported too
+
+    walker.destroy();
+  });
+
   it('flushes the whole pipeline on timeout — no stale queued move survives', () => {
     const { client, world, sent } = makeFakes();
     const walker = createWalkController({

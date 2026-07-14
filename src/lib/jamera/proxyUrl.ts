@@ -1,6 +1,32 @@
 const ALLOWED_PROXY_PROTOCOLS = new Set(['ws:', 'wss:']);
 
 /**
+ * Default WebSocket bridge URL when no `?proxy=` override is given.
+ *
+ * Dev builds talk to a bridge on :8090 of the page's own host — localhost on
+ * your machine, or the LAN IP when a phone loads the Vite `--host` server, so
+ * LAN testing needs no `?proxy=` override. Production defaults to the SAME
+ * ORIGIN as the page (wss:// on an https page) so no deployment host is ever
+ * baked into the shipped bundle — the reverse proxy in front of the page
+ * forwards `/login` and `/game` on the same host. `isDev` is a parameter (not
+ * read inline) so the behaviour is unit-testable.
+ */
+export function defaultProxyUrl(
+  pageLocation: Pick<Location, 'protocol' | 'host' | 'hostname'> = window.location,
+  isDev: boolean = import.meta.env.DEV,
+): string {
+  if (isDev) return `ws://${urlHost(pageLocation.hostname)}:8090`;
+  const scheme = pageLocation.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${scheme}//${pageLocation.host}`;
+}
+
+/** URL.host requires IPv6 literals to retain their square brackets. */
+function urlHost(hostname: string): string {
+  if (hostname.startsWith('[') && hostname.endsWith(']')) return hostname;
+  return hostname.includes(':') ? `[${hostname}]` : hostname;
+}
+
+/**
  * Query-string proxy overrides are useful for local/manual testing, but a
  * remote override would silently send account passwords through an
  * attacker-controlled WebSocket bridge. Only trust loopback proxies or a

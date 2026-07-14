@@ -14,6 +14,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Mobile view is no longer magnified by the phone’s pixel density, and portrait mode shows 11 tiles across instead of about six.' },
+  { date: '2026-07-14', text: 'A single tap opens corpses and bags and uses doors, ladders, levers, and grates; Settings → Tap to walk can leave movement to the joystick.' },
+  { date: '2026-07-14', text: 'Brightness now behaves like brightness: 0% is dark and 100% preserves the server’s full day/night light.' },
+  { date: '2026-07-14', text: 'Server notices, look results, warnings, and status messages now appear briefly over the game as well as in chat.' },
   { date: '2026-07-14', text: 'Fixed looting the wrong item when a bag updated while its action sheet was open — the sheet now closes so you tap the live slot.' },
   { date: '2026-07-14', text: 'Fixed lower floors showing stale ghost tiles (or staying blank) when the ground above them changed, and fixed quickly opening two bags making the second replace the first.' },
   { date: '2026-07-14', text: 'Fixed the game opening zoomed-in/off-center after login when mobile Safari shifts the visible screen around the login form.' },

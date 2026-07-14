@@ -711,7 +711,10 @@ export function bindRenderer(
 
     // ── Light overlay: server world light × brightness preference ──
     const brightness = loadBrightness();
-    const lk = brightness >= 100 ? 'off'
+    const ambientColor = computeAmbient(world.worldLight.level, world.worldLight.color, brightness);
+    // Multiplying by pure white is a no-op, and additive light bubbles
+    // cannot brighten it further. Skip the render-texture pass in daylight.
+    const lk = ambientColor === 0xffffff ? 'off'
       : `${paintedTileRevision}:${creatureKey}:${world.worldLight.level}:${world.worldLight.color}:${brightness}`;
     if (lk !== lightKey) {
       if (lightLayer) {
@@ -747,7 +750,7 @@ export function bindRenderer(
           illuminationTexture, lightSpritePool,
           x1, y1, x2, y2, [...drawnBelow, ...drawnAbove],
           {
-            ambientColor: computeAmbient(world.worldLight.level, world.worldLight.color, brightness),
+            ambientColor,
             enabled: true,
             extraLights,
           },

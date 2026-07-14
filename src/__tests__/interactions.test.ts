@@ -123,6 +123,13 @@ describe('long-press pointer tracking', () => {
       [200, { id: 200, attrs: new Map() }],
       // The 7.6 ladder: ForceUse in the .dat, but NOT Useable in the OTB.
       [1948, { id: 1948, attrs: new Map([[DatAttr.ForceUse, true]]) }],
+      // Jamera's base lever and blueberry bush are also missing OTB Useable.
+      [2772, { id: 2772, attrs: new Map<number, boolean | number>([
+        [DatAttr.NotMoveable, true], [DatAttr.LensHelp, 1103],
+      ]) }],
+      [3699, { id: 3699, attrs: new Map<number, boolean | number>([
+        [DatAttr.OnBottom, true], [DatAttr.NotWalkable, true], [DatAttr.NotMoveable, true],
+      ]) }],
     ]) as never;
     const handle = bindInteractions(client, liveWorld, liveApp, datIndex, opts);
     const touch = (type: string, pointerId: number, clientX: number, clientY: number) =>
@@ -199,6 +206,45 @@ describe('long-press pointer tracking', () => {
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0x9c, 0x07, 1, 0]);
+    handle.destroy();
+  });
+
+  it.each([
+    ['lever', 2772],
+    ['blueberry bush', 3699],
+  ])('a single touch tap uses a %s whose OTB entry lacks Useable', (_name, itemId) => {
+    const targetTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 200 } },
+        { kind: 'item', item: { id: itemId } },
+      ],
+      items: [{ id: 200 }, { id: itemId }],
+      creatures: [],
+    };
+    const { handle, sent, touch } = mount(targetTile, { useableIds: new Set() });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 400, 300);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([
+      0x82, 100, 0, 200, 0, 7, itemId & 0xff, itemId >> 8, 1, 0,
+    ]);
+    handle.destroy();
+  });
+
+  it('a single desktop click activates an OTB-missed lever', () => {
+    const leverTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [{ kind: 'item', item: { id: 2772 } }],
+      items: [{ id: 2772 }], creatures: [],
+    };
+    const { canvas, handle, sent } = mount(leverTile, { useableIds: new Set() });
+    canvas.dispatchEvent(new MouseEvent('click', {
+      button: 0, clientX: 400, clientY: 300, bubbles: true,
+    }));
+
+    expect(sent[0]?.[0]).toBe(0x82);
     handle.destroy();
   });
 

@@ -64,9 +64,8 @@ export interface InteractionsOptions {
    * target them and going up/down by tap silently does nothing.
    */
   floorChangeIds?: Set<number>;
-  /** OTB Useable ids: containers/corpses, doors and levers. Items the
-   *  OTB misses but the .dat flags ForceUse (ladders) are always tap-
-   *  useable on top of this set. */
+  /** OTB Useable ids: containers/corpses, doors and levers. DAT metadata
+   *  fills gaps in old OTB files for ladders, switches and fixed objects. */
   useableIds?: Set<number>;
   /** Live preference adapter. Defaults to the persisted mobile setting. */
   tapToWalk?: () => boolean;
@@ -328,8 +327,28 @@ export function bindInteractions(
     return datIndex?.get(itemId)?.attrs.has(DatAttr.ForceUse) ?? false;
   }
 
+  /**
+   * Old 7.6 OTB files do not consistently mark world actions as Useable.
+   * In Jamera that includes the base lever sprites and the blueberry bush.
+   * The DAT still gives us the original client's interaction hints:
+   * LensHelp 1103 identifies switches, while fixed blocking bottom objects
+   * cover harvestable scenery such as berry bushes. A no-op use on ordinary
+   * fixed scenery is harmless and preferable to treating its tap as a walk
+   * target that pathfinding can never enter.
+   */
+  function itemLooksDirectUse(itemId: number): boolean {
+    const attrs = datIndex?.get(itemId)?.attrs;
+    if (!attrs) return false;
+    return attrs.get(DatAttr.LensHelp) === 1103
+      || (attrs.has(DatAttr.OnBottom)
+        && attrs.has(DatAttr.NotWalkable)
+        && attrs.has(DatAttr.NotMoveable));
+  }
+
   function isTapUseable(itemId: number): boolean {
-    return (opts.useableIds?.has(itemId) ?? false) || itemForcesUse(itemId);
+    return (opts.useableIds?.has(itemId) ?? false)
+      || itemForcesUse(itemId)
+      || itemLooksDirectUse(itemId);
   }
 
   function tileHasItem(position: WirePosition, accept: (itemId: number) => boolean): boolean {
@@ -529,12 +548,11 @@ export function bindInteractions(
       fireTrade(e.clientX, e.clientY);
       return;
     }
-    // ForceUse items (ladders, stairwells) in reach use on a single
-    // click, like the original client — everything else keeps
-    // walk-then-dblclick, so a distant ladder click walks toward it.
+    // Objects advertised as direct-use by either OTB or DAT use on a single
+    // click when in reach. A distant fixed object remains a walk target.
     const pointed = worldTileAtPointer(e.clientX, e.clientY);
-    if (tileHasItem(pointed, itemForcesUse) && isWithinReach(pointed)) {
-      use(e.clientX, e.clientY, itemForcesUse);
+    if (tileHasItem(pointed, isTapUseable) && isWithinReach(pointed)) {
+      use(e.clientX, e.clientY, isTapUseable);
       return;
     }
     walkTo(e.clientX, e.clientY);

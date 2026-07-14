@@ -187,14 +187,18 @@ describe('useableClientIds', () => {
     expect(ids).toEqual(new Set([3050]));
   });
 
-  it('includes door-group items even without the Useable flag', () => {
+  it('includes blocking door-group items even without the Useable flag', () => {
     // The 7.6 OTB never flags doors Useable (the server opens them via
-    // actions.xml) — the node-type group is their only marker.
+    // actions.xml) — the node-type group + BlockSolid marks a closed or
+    // locked door. Open (walkable) doors stay walk targets: using one
+    // closes it onto whoever tapped the doorway.
+    const blockSolid = 1 << 0;
     const ids = useableClientIds(parseOtb(buildOtb([
-      { serverId: 1211, clientId: 1630, group: OtbGroups.Door },
+      { serverId: 1210, clientId: 1629, group: OtbGroups.Door, flags: blockSolid },
+      { serverId: 1211, clientId: 1630, group: OtbGroups.Door }, // open door
       { serverId: 2002, clientId: 3051 },
     ])));
-    expect(ids).toEqual(new Set([1630]));
+    expect(ids).toEqual(new Set([1629]));
   });
 
   it('parses the node-type group byte', () => {

@@ -255,12 +255,16 @@ export const OtbGroups = {
  * This includes containers/corpses, doors, ladders, levers and grates.
  * Doors carry no Useable flag in the 7.6 OTB (the server routes them
  * through actions.xml, so it never needed one) — their node-type group
- * marks them instead. */
+ * marks them instead. Only BLOCKING doors join the set: closed and
+ * locked doors open (or refuse) on use, but using an open door closes
+ * it and relocates whatever stands on it — a tap on a walkable doorway
+ * must stay a walk target, not slam the door. */
 export function useableClientIds(otb: OtbFile): Set<number> {
   const ids = new Set<number>();
   for (const item of otb.items) {
     if (item.clientId <= 0) continue;
-    if ((item.flags & OtbFlags.Useable) !== 0 || item.group === OtbGroups.Door) {
+    const closedDoor = item.group === OtbGroups.Door && (item.flags & OtbFlags.BlockSolid) !== 0;
+    if ((item.flags & OtbFlags.Useable) !== 0 || closedDoor) {
       ids.add(item.clientId);
     }
   }

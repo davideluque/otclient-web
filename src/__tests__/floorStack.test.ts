@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  floorLayerOffset, partitionByFloor, dirtyFloorsWithBelowOcclusion,
+  partitionByFloor, dirtyFloorsWithBelowOcclusion,
 } from '../lib/render/floorStack';
 
 describe('drawnFloorsBelow', () => {
@@ -48,13 +48,6 @@ describe('drawnFloorsAbove', () => {
 
   it('underground spans down to the z−2 base at most', () => {
     expect(drawnFloorsAbove(8, 10)).toEqual([9, 8]);
-  });
-});
-
-describe('floorLayerOffset', () => {
-  it('keeps floors above and below aligned to their world tiles', () => {
-    expect(floorLayerOffset(6, 7)).toEqual({ x: 0, y: 0 });
-    expect(floorLayerOffset(8, 7)).toEqual({ x: 0, y: 0 });
   });
 });
 

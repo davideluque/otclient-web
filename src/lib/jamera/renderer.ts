@@ -12,7 +12,7 @@ import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
-  floorLayerOffset, glideEndpoints, coveringRevisionKey, partitionByFloor,
+  glideEndpoints, coveringRevisionKey, partitionByFloor,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -729,8 +729,11 @@ export function bindRenderer(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
             x1, y1, x2, y2, z,
           );
-          const offset = floorLayerOffset(z, world.playerZ);
-          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
+          // No container offset: every floor sits at raw world
+          // coordinates. OTBM maps pre-shift upper floors one tile NW
+          // per level (the classic-client perspective is baked into the
+          // map data), so translating the container again displaced
+          // stairs and ladders NW of their true tile.
           const old = aboveFloorLayers.get(z);
           if (old) {
             aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));

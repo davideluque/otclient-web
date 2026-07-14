@@ -39,9 +39,14 @@ take `max(firstVisible)` (PoC commit fabe172).
 ### Screen placement
 
 - **Every floor uses raw world coordinates, with no per-z container
-  offset.** Applying another screen offset shifts stairs and ladders
-  north-west of their actual tile. The 2.5D illusion comes from tall
-  sprites drawing above their base tile.
+  offset.** The classic-client perspective is baked into the map data:
+  OTBM mappers place each floor above shifted one tile NW per level
+  (`Position::coveredUp` in otserv is (x-1, y-1, z-1)), and upstream
+  OTClient draws all floors untranslated for the same reason. Applying
+  a container offset on top double-shears the view and shifts stairs
+  and ladders north-west of their actual tile (the earlier "collapses
+  flat without the offset" lesson 3691ea3 was a PoC misdiagnosis). The
+  2.5D illusion comes from tall sprites drawing above their base tile.
 
 ### Occlusion + perf policy
 

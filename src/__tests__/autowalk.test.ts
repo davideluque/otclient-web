@@ -106,6 +106,27 @@ describe('findWalkRoute', () => {
     ], 0, 0);
     expect(findWalkRoute(world, datIndex, 1, 1)).toBeNull();
   });
+
+  it('keeps open-ground paths cardinal — no zig-zagging across free tiles', () => {
+    const { world, datIndex } = makeWorld([
+      '...',
+      '...',
+      '...',
+    ], 0, 0);
+    const route = findWalkRoute(world, datIndex, 2, 2);
+    expect(route).toHaveLength(4);
+    expect(route!.every((dir) => dir <= 3)).toBe(true);
+  });
+
+  it('reaches a diagonally-adjacent goal with two cardinal steps on open ground', () => {
+    const { world, datIndex } = makeWorld([
+      '..',
+      '..',
+    ], 0, 0);
+    const route = findWalkRoute(world, datIndex, 1, 1);
+    expect(route).toHaveLength(2);
+    expect(route!.every((dir) => dir <= 3)).toBe(true);
+  });
 });
 
 describe('buildAutoWalkPacket', () => {

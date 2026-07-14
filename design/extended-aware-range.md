@@ -43,7 +43,7 @@ server; measure with the metrics overlay after deploy.
    (9/7 today) must widen with the window, or updates at the new edge
    rows are silently dropped.
 4. Check `NETWORKMESSAGE_MAXSIZE` headroom: the full login description
-   grows ×1.71 (worst case ~5.9k tile slots across 8 floors).
+   grows ×1.71 (worst case 18×24×8 = 3,456 tile slots vs 2,016 today).
 5. Gameplay review: monster aggro/targeting uses its own ranges — only
    `getSpectators` callers that default to `maxClientViewport*` widen.
 
@@ -51,8 +51,12 @@ server; measure with the metrics overlay after deploy.
 
 Single source of truth: an `AwareRange` value (`left 8, right 9,
 top 11, bottom 12`) carried on the `GameProtocol` interface, replacing
-the scattered constants — vanilla 7.6 keeps `8/9/6/7`, the Jamera
-profile ships the extended one. Touch points:
+the scattered constants — vanilla 7.6 keeps `8/9/6/7`. The value is
+fixed per session: the 0x33 confirmation arrives after the login ack
+and before the first 0x64 map description, so it is set exactly once,
+before any consumer reads it — no mid-session mutation, and downstream
+code (renderer windows, slice bounds, parse dims) reads it lazily per
+frame/packet anyway. Touch points:
 
 - `jamera/region.ts` `HALF_W_LEFT/RIGHT/H_TOP/BOTTOM` (feeds renderer
   paint windows, occlusion + light regions — all already derive).
@@ -67,20 +71,26 @@ profile ships the extended one. Touch points:
 A range mismatch is not cosmetic: skip counts misalign the whole map
 stream. Two options:
 
-- **v1 (recommended): capability byte.** When config.lua
-  `extendedAwareRange = true`, the server sends one custom packet
-  (unused opcode, e.g. `0x33: u8 width, u8 height`) immediately after
-  the login ack, before the first 0x64. The client defaults to 18×14
-  and switches when it sees it. Old clients ignore nothing (they never
-  see the opcode unless the config is on — flip the config only after
-  the client ships). Multi-version friendly; no atomic deploy needed.
+- **v1 (recommended): client announces, server confirms.** The client
+  appends one capability byte to its (fixed-length) 7.6 login packet;
+  an old server parses its known fields and never looks at trailing
+  bytes, so this is invisible to vanilla. A server with
+  `extendedAwareRange = true` that SEES the flag replies with one
+  custom packet (unused opcode `0x33: u8 width, u8 height`) after the
+  login ack, before the first 0x64, and uses the extended window for
+  that session only. Every pairing is safe: old client + new server →
+  no flag → vanilla range, no 0x33; new client + old server → flag
+  ignored, no 0x33 → client stays at its 18×14 default. Deploy order
+  is fully flexible (review catch: a server that sent 0x33
+  unconditionally would crash old clients on the unknown opcode).
 - v0 (rejected): lockstep hardcode on both sides — one missed deploy
   bricks the map stream for everyone.
 
 ## Rollout
 
-1. Client PR: AwareRange plumbing + 0x33 capability parsing (default
-   vanilla — zero behavior change until the server opts in).
+1. Client PR: AwareRange plumbing, the login capability byte, and 0x33
+   parsing (default vanilla — zero behavior change until the server
+   opts in).
 2. Server branch: constants + parametrized protocol76 + 0x33 sender
    behind `extendedAwareRange` (default off). Build via docker
    `build.sh` (~100 s restart; qemu amd64).

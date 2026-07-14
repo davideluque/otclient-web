@@ -10,6 +10,7 @@
 
 import type { OpenContainer } from './containers';
 import type { MapTileItem } from './net/common/types';
+import { makeDraggable } from './draggable';
 
 export interface ContainerPaneOptions {
   /**
@@ -139,6 +140,7 @@ export function createContainerPane(
       head.appendChild(headerButton('⬆', () => opts.onUp?.(container.id)));
     }
     head.appendChild(headerButton('✕', () => opts.onClose?.(container.id)));
+    makeDraggable(el, head);
     const grid = document.createElement('div');
     grid.className = 'grid';
     // A container can overfill past its nominal capacity (server-side

@@ -14,6 +14,8 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Settings, Hotkeys, Changelog, VIP, Skills, and container windows can be dragged by their headers and kept out of the action.' },
+  { date: '2026-07-14', text: 'Panel, menu, and chat text is slightly smaller so more useful information fits on a phone.' },
   { date: '2026-07-14', text: 'Fixed looting the wrong item when a bag updated while its action sheet was open — the sheet now closes so you tap the live slot.' },
   { date: '2026-07-14', text: 'Fixed lower floors showing stale ghost tiles (or staying blank) when the ground above them changed, and fixed quickly opening two bags making the second replace the first.' },
   { date: '2026-07-14', text: 'Fixed the game opening zoomed-in/off-center after login when mobile Safari shifts the visible screen around the login form.' },

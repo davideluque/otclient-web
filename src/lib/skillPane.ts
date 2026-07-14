@@ -5,6 +5,7 @@
  * fist, club, sword, axe, distance, shielding, fishing — so wiring the
  * live packet later is a positional map.
  */
+import { makeDraggable } from './draggable';
 
 export const SKILL_NAMES = [
   'Fist', 'Club', 'Sword', 'Axe', 'Distance', 'Shielding', 'Fishing',
@@ -120,6 +121,7 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
     });
   }
   parent.appendChild(el);
+  const stopDragging = makeDraggable(el, el.querySelector('h3') as HTMLElement);
 
   const clampPct = (p: number): string => `${Math.max(0, Math.min(100, p))}%`;
 
@@ -141,6 +143,9 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
       row.fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
     },
     setVisible: (visible) => { el.style.display = visible ? 'block' : 'none'; },
-    destroy: () => el.remove(),
+    destroy: () => {
+      stopDragging();
+      el.remove();
+    },
   };
 }

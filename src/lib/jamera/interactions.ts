@@ -337,6 +337,15 @@ export function bindInteractions(
     return tile?.items.some((item) => accept(item.id)) ?? false;
   }
 
+  // The server rejects uses beyond arm's reach ("Too far away."), so a
+  // ForceUse item is only used when the player can actually reach it;
+  // farther away the click/tap walks toward it instead.
+  function isWithinReach(position: WirePosition): boolean {
+    return Math.abs(position.x - world.playerX) <= 1
+      && Math.abs(position.y - world.playerY) <= 1
+      && position.z === world.playerZ;
+  }
+
   function topCreatureAtTile(position: WirePosition): number | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile) return null;
@@ -393,8 +402,17 @@ export function bindInteractions(
       return;
     }
     if (tileHasItem(pointed, isTapUseable)) {
-      showTapFeedback(clientX, clientY, 'use');
-      use(clientX, clientY, isTapUseable);
+      // OTB useables (doors, corpses, levers) keep use-in-place; a
+      // ForceUse travel item out of reach walks toward it first — the
+      // next tap on it climbs.
+      if (tileHasItem(pointed, (id) => opts.useableIds?.has(id) ?? false)
+        || isWithinReach(pointed)) {
+        showTapFeedback(clientX, clientY, 'use');
+        use(clientX, clientY, isTapUseable);
+        return;
+      }
+      showTapFeedback(clientX, clientY, 'walk');
+      walkTo(clientX, clientY);
       return;
     }
     if ((opts.tapToWalk ?? loadTapToWalk)()) {
@@ -511,9 +529,11 @@ export function bindInteractions(
       fireTrade(e.clientX, e.clientY);
       return;
     }
-    // ForceUse items (ladders, stairwells) use on a single click, like
-    // the original client — everything else keeps walk-then-dblclick.
-    if (tileHasItem(worldTileAtPointer(e.clientX, e.clientY), itemForcesUse)) {
+    // ForceUse items (ladders, stairwells) in reach use on a single
+    // click, like the original client — everything else keeps
+    // walk-then-dblclick, so a distant ladder click walks toward it.
+    const pointed = worldTileAtPointer(e.clientX, e.clientY);
+    if (tileHasItem(pointed, itemForcesUse) && isWithinReach(pointed)) {
       use(e.clientX, e.clientY, itemForcesUse);
       return;
     }

@@ -2,7 +2,7 @@ import { Container, Graphics, RenderTexture, Sprite } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import {
   buildIlluminationOverlay, computeAmbient, createLightMaskTexture,
-  loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
+  creatureLightSource, loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
 } from '../lighting';
 import {
   renderTileRegion, renderPlayer, spriteIndex, readPixelDisplacement,
@@ -832,24 +832,28 @@ export function bindRenderer(
         lightLayer = null;
       }
       if (lk !== 'off') {
-        const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
-        const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
-        const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
-        const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
+        // Match the tile texture's stable hysteresis center. Centering this
+        // texture on every confirmed step exposes the still-painted trailing
+        // edge as a briefly full-bright strip.
+        const x1 = paintedCenterX - HALF_W_LEFT - GLIDE_PAD;
+        const x2 = paintedCenterX + HALF_W_RIGHT + GLIDE_PAD;
+        const y1 = paintedCenterY - HALF_H_TOP - GLIDE_PAD;
+        const y2 = paintedCenterY + HALF_H_BOTTOM + GLIDE_PAD;
         // Creature-carried lights (the player's glow, torches in hand)
         // — any DRAWN floor's carriers count, matching the tile-light
         // gather below; only ones whose bubble can reach the visible
         // region (light intensity caps at 7 tiles).
         const MAX_LIGHT_REACH = 7;
+        // Floor/light filters run BEFORE the position lookup: renderPosFor
+        // seeds a persistent playback entry per creature, which dark-only
+        // carriers on undrawn floors must not accumulate.
         const extraLights: LightSource[] = world.getAllCreatures()
-          .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0
-            && c.x >= x1 - MAX_LIGHT_REACH && c.x <= x2 + MAX_LIGHT_REACH
-            && c.y >= y1 - MAX_LIGHT_REACH && c.y <= y2 + MAX_LIGHT_REACH)
-          .map((c) => ({
-            x: c.x, y: c.y,
-            intensity: c.lightLevel,
-            color: tibiaColorToHex(c.lightColor),
-          }));
+          .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0)
+          .map((creature) => ({ creature, position: renderPosFor(creature, now) }))
+          .filter(({ position }) =>
+            position.x >= x1 - MAX_LIGHT_REACH && position.x <= x2 + MAX_LIGHT_REACH
+            && position.y >= y1 - MAX_LIGHT_REACH && position.y <= y2 + MAX_LIGHT_REACH)
+          .map(({ creature, position }) => creatureLightSource(creature, position));
         // Every drawn floor feeds ONE merged overlay (design doc:
         // classic behavior, no per-floor light layers) — a torch on the
         // stairs above you lights your view; the sealed cellar's does

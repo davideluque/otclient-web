@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAmbient, gatherLights, tibiaColorToHex } from '../lib/lighting';
+import { computeAmbient, creatureLightSource, gatherLights, tibiaColorToHex } from '../lib/lighting';
 import { DatAttr, ThingCategory } from '../lib/dat';
 import { TileMap } from '../lib/tileMap';
 import type { ThingType, FrameGroup } from '../lib/dat';
@@ -48,6 +48,18 @@ describe('tibiaColorToHex', () => {
   it('clamps out-of-range indices', () => {
     expect(tibiaColorToHex(-5)).toBe(0x000000);
     expect(tibiaColorToHex(999)).toBe(0xffffff);
+  });
+});
+
+describe('creatureLightSource', () => {
+  it('uses the interpolated render position instead of the confirmed tile', () => {
+    const creature = { x: 11, y: 20, lightLevel: 6, lightColor: 206 };
+    expect(creatureLightSource(creature, { x: 10.25, y: 20 })).toEqual({
+      x: 10.25,
+      y: 20,
+      intensity: 6,
+      color: tibiaColorToHex(206),
+    });
   });
 });
 

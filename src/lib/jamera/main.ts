@@ -448,11 +448,10 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
 }
 
 /**
- * Background-load the asset bundle (.dat / .spr / .otb / .otbm) the
- * upcoming renderer PR will need. Uses the existing `tryAutoload` from
- * `assetAutoload.ts` so the jamera flow shares the same source-of-truth
- * resolution (`?version=…` + `public/assets/<version>/`) as the offline
- * demo.
+ * Background-load the renderer's required assets (.dat / .spr / .otb).
+ * Uses `tryAutoloadFiles` so the Jamera flow shares the offline demo's
+ * source-of-truth resolution (`?version=…` + `public/assets/<version>/`)
+ * without downloading the unused full-map .otbm file.
  *
  * Module-scoped guards prevent re-fetching the (large) bundle on every
  * re-login or overlapping in-flight requests — assets only need to load

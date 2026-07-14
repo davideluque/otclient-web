@@ -53,6 +53,8 @@ export interface OtbVersion {
 
 export interface OtbItem {
   flags: number;
+  /** Item node type byte (otserv itemgroup_t): ground 1, container 2, …, door 13. */
+  group: number;
   serverId: number;
   clientId: number;
   speed?: number;
@@ -103,12 +105,12 @@ function parseVersion(bytes: Uint8Array): OtbVersion {
 function parseItem(bytes: Uint8Array): OtbItem {
   const reader = new BinaryReader(bytes.buffer as ArrayBuffer);
 
-  // First byte is node type (item group type), skip it
-  reader.skip(1);
+  // First byte is the node type (otserv itemgroup_t).
+  const group = reader.getU8();
 
   const flags = reader.getU32();
 
-  const item: OtbItem = { flags, serverId: 0, clientId: 0 };
+  const item: OtbItem = { flags, group, serverId: 0, clientId: 0 };
 
   while (reader.position < bytes.length) {
     const attrType = reader.getU8();
@@ -244,14 +246,23 @@ export function floorChangeClientIds(otb: OtbFile): Set<number> {
   return ids;
 }
 
+/** The 7.6 OTB node-type groups this client cares about (itemloader.h). */
+export const OtbGroups = {
+  Door: 13,
+} as const;
+
 /** Client ids of items the server expects to receive through UseItem (0x82).
- * This includes containers/corpses, doors, ladders, levers and grates. */
+ * This includes containers/corpses, doors, ladders, levers and grates.
+ * Doors carry no Useable flag in the 7.6 OTB (the server routes them
+ * through actions.xml, so it never needed one) — their node-type group
+ * marks them instead. */
 export function useableClientIds(otb: OtbFile): Set<number> {
   const ids = new Set<number>();
-  for (const [serverId, flags] of otb.serverIdToFlags) {
-    if ((flags & OtbFlags.Useable) === 0) continue;
-    const clientId = otb.serverToClient.get(serverId);
-    if (clientId !== undefined) ids.add(clientId);
+  for (const item of otb.items) {
+    if (item.clientId <= 0) continue;
+    if ((item.flags & OtbFlags.Useable) !== 0 || item.group === OtbGroups.Door) {
+      ids.add(item.clientId);
+    }
   }
   return ids;
 }

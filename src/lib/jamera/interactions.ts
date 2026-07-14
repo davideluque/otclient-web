@@ -1,6 +1,6 @@
 import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
-import type { WirePosition } from '../net/common/types';
+import type { WalkDirection, WirePosition } from '../net/common/types';
 import type { GameWorld } from '../GameWorld';
 import { DatAttr, type ThingType } from '../dat';
 import { findWalkRoute } from './autowalk';
@@ -73,6 +73,12 @@ export interface InteractionsOptions {
   tapToWalk?: () => boolean;
   /** Select/attack a tapped non-player creature through the combat binding. */
   onCreatureTap?: (creatureId: number) => void;
+  /**
+   * Fires right after a 0x64 route leaves, with the route directions —
+   * the pre-walk prediction chain animates the route from the send
+   * instant (the server sends no per-step packets to hook instead).
+   */
+  onRouteSent?: (route: WalkDirection[]) => void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -432,6 +438,7 @@ export function bindInteractions(
     const route = findWalkRoute(world, datIndex, pos.x, pos.y, opts.floorChangeIds);
     if (!route || route.length === 0) return;
     send(protocol.movement.buildAutoWalk(route));
+    opts.onRouteSent?.(route);
   }
 
   /**

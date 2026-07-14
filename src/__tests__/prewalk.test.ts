@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PREWALK_CATCHUP_MS,
   PREWALK_CONFIRM_GRACE_MS,
+  beginRoute,
   beginStep,
   confirmSelfMoves,
   confirmStep,
@@ -12,6 +13,7 @@ import {
   settlePrewalk,
   type PrewalkState,
 } from '../lib/jamera/prewalk';
+import type { WalkDirection } from '../lib/net/common/types';
 import { Direction } from '../lib/player';
 import { RENDER_DELAY_MS } from '../lib/jamera/renderer';
 
@@ -257,6 +259,78 @@ describe('settlePrewalk', () => {
     const s = prewalkStateAt(pw, 2400 + SLOW_STEP_MS - 1);
     expect(s?.x).toBeGreaterThan(102);
     expect(s?.moving).toBe(true);
+  });
+});
+
+describe('beginRoute (tap-to-walk prediction)', () => {
+  const flatStepMs = (): number => SLOW_STEP_MS;
+  // east, east, south — a plain three-tile tap.
+  const ROUTE: WalkDirection[] = [1, 1, 2];
+
+  it('predicts the whole route as one continuous chained glide', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
+    expect(pw.steps).toHaveLength(3);
+    // Mid-second-step: continuous motion, no per-step sends involved.
+    const mid = prewalkStateAt(pw, 1000 + SLOW_STEP_MS * 1.5);
+    expect(mid?.x).toBeCloseTo(101.5, 5);
+    expect(mid?.moving).toBe(true);
+    // Route end: rests on the tapped tile.
+    expect(prewalkStateAt(pw, 1000 + SLOW_STEP_MS * 3))
+      .toEqual({ x: 102, y: 201, moving: false });
+  });
+
+  it('asks stepMsFrom per departure tile, flagging diagonals', () => {
+    const pw = createPrewalk();
+    const asked: Array<{ x: number; y: number; diagonal: boolean }> = [];
+    // east, then north-east (an escape move in a real route).
+    beginRoute(pw, ANCHOR, [1, 4], 1000, (from, diagonal) => {
+      asked.push({ x: from.x, y: from.y, diagonal });
+      return diagonal ? 2 * SLOW_STEP_MS : SLOW_STEP_MS;
+    });
+    expect(asked).toEqual([
+      { x: 100, y: 200, diagonal: false },
+      { x: 101, y: 200, diagonal: true },
+    ]);
+    // The diagonal lands one tile north-east over its doubled duration.
+    expect(prewalkStateAt(pw, 1000 + SLOW_STEP_MS * 3))
+      .toEqual({ x: 102, y: 199, moving: false });
+  });
+
+  it('a new tap replaces the predicted route like the server replaces the walk', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
+    beginRoute(pw, ANCHOR, [0], 1200, flatStepMs);
+    expect(pw.steps).toHaveLength(1);
+    expect(prewalkStateAt(pw, 1200 + SLOW_STEP_MS))
+      .toEqual({ x: 100, y: 199, moving: false });
+  });
+
+  it('server confirmations retire route steps oldest-first', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
+    confirmSelfMoves(pw, 1, { x: 101, y: 200, z: 7 }, 1700);
+    confirmSelfMoves(pw, 1, { x: 102, y: 200, z: 7 }, 2400);
+    expect(pw.steps.filter((s) => !s.confirmed)).toHaveLength(1);
+  });
+
+  it('a blocked route flushes at the first disagreeing confirmation', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
+    // A monster stepped into the path; the server rerouted us south.
+    confirmSelfMoves(pw, 1, { x: 100, y: 201, z: 7 }, 1700);
+    expect(prewalkStateAt(pw, 1700)).toBeNull();
+  });
+
+  it('a manual step during a route restarts the chain from the anchor', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
+    // The player grabs the keyboard mid-route: the server drops the
+    // route, so the prediction must not chain off the route's tail.
+    beginStep(pw, ANCHOR, 2, 1300, SLOW_STEP_MS);
+    expect(pw.steps).toHaveLength(1);
+    expect(pw.steps[0]).toMatchObject({ fromX: 100, fromY: 200, toX: 100, toY: 201 });
+    expect(pw.fromRoute).toBe(false);
   });
 });
 

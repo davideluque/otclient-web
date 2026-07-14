@@ -177,9 +177,13 @@ export function floorChangeTileAtPointer(
 
         const patX = ((anchorX % frame.numPatternX) + frame.numPatternX) % frame.numPatternX;
         const patY = ((anchorY % frame.numPatternY) + frame.numPatternY) % frame.numPatternY;
-        const hasVisiblePiece = Array.from({ length: frame.layers }, (_, layer) =>
-          frame.spriteIds[spriteIndex(frame, 0, patX, patY, layer, pieceY, pieceX)],
-        ).some(Boolean);
+        let hasVisiblePiece = false;
+        for (let layer = 0; layer < frame.layers; layer++) {
+          if (frame.spriteIds[spriteIndex(frame, 0, patX, patY, layer, pieceY, pieceX)]) {
+            hasVisiblePiece = true;
+            break;
+          }
+        }
         if (hasVisiblePiece) return { x: anchorX, y: anchorY, z: pointedTile.z };
       }
     }

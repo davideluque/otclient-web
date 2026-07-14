@@ -642,12 +642,10 @@ export function bindInteractions(
     dragMarker.style.left = `${clientX}px`;
     dragMarker.style.top = `${clientY}px`;
     const destination = worldTileAtPointer(clientX, clientY);
-    const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    const tile = screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
     const zoom = app.stage?.scale?.x || 1;
     const tilePx = TILE_SIZE * zoom;
-    const centerX = app.screen.width / 2 + (tile.x - world.playerX) * tilePx;
-    const centerY = app.screen.height / 2 + (tile.y - world.playerY) * tilePx;
+    const centerX = app.screen.width / 2 + (destination.x - world.playerX) * tilePx;
+    const centerY = app.screen.height / 2 + (destination.y - world.playerY) * tilePx;
     const rect = canvas.getBoundingClientRect();
     dropMarker.style.left = `${rect.left + centerX * (rect.width / app.screen.width)}px`;
     dropMarker.style.top = `${rect.top + centerY * (rect.height / app.screen.height)}px`;

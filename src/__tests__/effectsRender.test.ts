@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EFFECT_PHASE_MS, effectPhaseAt } from '../lib/jamera/renderer';
+import { EFFECT_PHASE_MS, effectPhaseAt } from '../lib/render/effects';
 import { MAGIC_EFFECT_TTL_MS } from '../lib/GameWorld';
 
 describe('effectPhaseAt', () => {

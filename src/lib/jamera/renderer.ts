@@ -844,12 +844,14 @@ export function bindRenderer(
         // gather below; only ones whose bubble can reach the visible
         // region (light intensity caps at 7 tiles).
         const MAX_LIGHT_REACH = 7;
+        // Floor/light filters run BEFORE the position lookup: renderPosFor
+        // seeds a persistent playback entry per creature, which dark-only
+        // carriers on undrawn floors must not accumulate.
         const extraLights: LightSource[] = world.getAllCreatures()
+          .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0)
           .map((creature) => ({ creature, position: renderPosFor(creature, now) }))
-          .filter(({ creature, position }) =>
-            (drawnBelow.includes(creature.z) || drawnAbove.includes(creature.z))
-            && creature.lightLevel > 0
-            && position.x >= x1 - MAX_LIGHT_REACH && position.x <= x2 + MAX_LIGHT_REACH
+          .filter(({ position }) =>
+            position.x >= x1 - MAX_LIGHT_REACH && position.x <= x2 + MAX_LIGHT_REACH
             && position.y >= y1 - MAX_LIGHT_REACH && position.y <= y2 + MAX_LIGHT_REACH)
           .map(({ creature, position }) => creatureLightSource(creature, position));
         // Every drawn floor feeds ONE merged overlay (design doc:

@@ -3,17 +3,19 @@ const ALLOWED_PROXY_PROTOCOLS = new Set(['ws:', 'wss:']);
 /**
  * Default WebSocket bridge URL when no `?proxy=` override is given.
  *
- * Dev builds talk to a local bridge on :8090. Production defaults to the
- * SAME ORIGIN as the page (wss:// on an https page) so no deployment host
- * is ever baked into the shipped bundle — the reverse proxy in front of
- * the page forwards `/login` and `/game` on the same host. `isDev` is a
- * parameter (not read inline) so the behaviour is unit-testable.
+ * Dev builds talk to a bridge on :8090 of the page's own host — localhost on
+ * your machine, or the LAN IP when a phone loads the Vite `--host` server, so
+ * LAN testing needs no `?proxy=` override. Production defaults to the SAME
+ * ORIGIN as the page (wss:// on an https page) so no deployment host is ever
+ * baked into the shipped bundle — the reverse proxy in front of the page
+ * forwards `/login` and `/game` on the same host. `isDev` is a parameter (not
+ * read inline) so the behaviour is unit-testable.
  */
 export function defaultProxyUrl(
-  pageLocation: Pick<Location, 'protocol' | 'host'> = window.location,
+  pageLocation: Pick<Location, 'protocol' | 'host' | 'hostname'> = window.location,
   isDev: boolean = import.meta.env.DEV,
 ): string {
-  if (isDev) return 'ws://localhost:8090';
+  if (isDev) return `ws://${pageLocation.hostname}:8090`;
   const scheme = pageLocation.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${scheme}//${pageLocation.host}`;
 }

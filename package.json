@@ -14,12 +14,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "proxy": "npx tsx proxy/server.ts",
-    "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts"
+    "proxy:jamera": "cross-env OT_GAME_PORT=7171 npx tsx proxy/server.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.3",
     "@types/ws": "^8.18.1",
+    "cross-env": "^10.1.0",
     "eslint": "^10.7.0",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.10.6",

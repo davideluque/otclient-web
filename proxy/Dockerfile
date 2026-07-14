@@ -16,6 +16,10 @@ COPY proxy/ ./proxy/
 # / OT_GAME_PORT) and WS_ALLOWED_ORIGINS are supplied at runtime by the
 # deployment (see the compose file); server.ts carries sane localhost defaults.
 ENV WS_PORT=8090
+# Telemetry (dev tooling) appends to this file; default it under /tmp so the
+# non-root user can write it even with a read-only root filesystem. Production
+# never proxies /telemetry, so this stays empty there.
+ENV TELEMETRY_FILE=/tmp/telemetry.jsonl
 EXPOSE 8090
 
 # Run as the image's built-in unprivileged user.

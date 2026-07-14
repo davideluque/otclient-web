@@ -49,9 +49,8 @@ Override the target with env vars when needed: `OT_HOST`, `OT_LOGIN_PORT`,
 
 ## Playing from your phone (same Wi‑Fi)
 
-By default both Vite and the client's proxy URL point at `localhost`, which on
-your phone means *the phone itself*. To reach your computer instead, bind Vite
-to your LAN and pass the proxy explicitly.
+In dev the client points its bridge at `:8090` of **whatever host loaded the
+page**, so once you serve over the LAN there's no URL to hand-edit.
 
 1. Start the bridge and the LAN dev server (two terminals):
 
@@ -69,14 +68,15 @@ to your LAN and pass the proxy explicitly.
 
 3. On the phone's browser (same Wi‑Fi), open — replacing `<LAN-IP>`:
 
-   ```
-   http://<LAN-IP>:5173/jamera.html?proxy=ws://<LAN-IP>:8090
+   ```text
+   http://<LAN-IP>:5173/jamera.html
    ```
 
-   The `?proxy=` override is required: it's only honoured for loopback or a
-   host matching the page, so pointing it at your computer's IP (the same host
-   serving the page) is allowed. Make sure the OT server (e.g. the Docker
-   stack) is running, and that your firewall permits inbound `5173` and `8090`.
+   The client derives `ws://<LAN-IP>:8090` for the bridge automatically. Make
+   sure the OT server (e.g. the Docker stack) is running, and that your
+   firewall permits inbound `5173` and `8090`. To point at a bridge on a
+   *different* host, append `?proxy=ws://<other-host>:8090` (honoured only for
+   loopback or a host matching the page).
 
 ## Project structure
 

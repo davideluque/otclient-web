@@ -31,15 +31,24 @@ describe('resolveProxyOverride', () => {
 });
 
 describe('defaultProxyUrl', () => {
-  it('uses the local bridge in dev regardless of page origin', () => {
-    expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example' }, true)).toBe('ws://localhost:8090');
+  it('uses the page host bridge on :8090 in dev (so LAN testing needs no override)', () => {
+    expect(defaultProxyUrl({ protocol: 'http:', host: 'localhost:5173', hostname: 'localhost' }, true)).toBe(
+      'ws://localhost:8090',
+    );
+    expect(defaultProxyUrl({ protocol: 'http:', host: '192.168.1.5:5173', hostname: '192.168.1.5' }, true)).toBe(
+      'ws://192.168.1.5:8090',
+    );
   });
 
   it('defaults to the same origin over wss on an https production page', () => {
-    expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example' }, false)).toBe('wss://tibia.example');
+    expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example', hostname: 'tibia.example' }, false)).toBe(
+      'wss://tibia.example',
+    );
   });
 
   it('preserves a non-default port and falls back to ws on a plain-http page', () => {
-    expect(defaultProxyUrl({ protocol: 'http:', host: 'box.local:8080' }, false)).toBe('ws://box.local:8080');
+    expect(defaultProxyUrl({ protocol: 'http:', host: 'box.local:8080', hostname: 'box.local' }, false)).toBe(
+      'ws://box.local:8080',
+    );
   });
 });

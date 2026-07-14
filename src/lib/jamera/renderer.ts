@@ -490,6 +490,7 @@ export function bindRenderer(
       if (state.moving) movingIds.push(c.id);
       if (playbackT < p.samples[p.samples.length - 1].at) anyWalking = true;
     }
+    movingIds.sort((a, b) => a - b);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
     // (expiresAt comes from Date.now()), and the layer updates every
     // call — including ones the tile short-circuit below skips.

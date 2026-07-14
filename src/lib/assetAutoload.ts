@@ -14,13 +14,16 @@ import { cacheAvailable, clearCached, consumeEvictionNotice, getCached } from '.
 
 export type FileKey = keyof CompleteLoadedFiles;
 
-interface Manifest {
-  files: Record<FileKey, string>;
+interface Manifest<K extends FileKey = FileKey> {
+  files: Record<K, string>;
 }
 
 const FILE_KEYS: readonly FileKey[] = ['dat', 'spr', 'otb', 'otbm'] as const;
 
-function isValidManifest(value: unknown, fileKeys: readonly FileKey[]): value is Manifest {
+function isValidManifest<K extends FileKey>(
+  value: unknown,
+  fileKeys: readonly K[],
+): value is Manifest<K> {
   if (!value || typeof value !== 'object') return false;
   const files = (value as { files?: unknown }).files;
   if (!files || typeof files !== 'object') return false;
@@ -111,7 +114,7 @@ async function fetchSelectedFiles<K extends FileKey>(
   const base = baseFor(version);
 
   // Probe manifest first. Missing / non-JSON / wrong shape = silent fallback.
-  let manifest: Manifest;
+  let manifest: Manifest<K>;
   try {
     const res = await fetch(`${base}/manifest.json`);
     if (!res.ok) return false;

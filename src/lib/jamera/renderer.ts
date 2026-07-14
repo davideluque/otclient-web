@@ -23,8 +23,9 @@ import { DatAttr } from '../dat';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
 import {
-  confirmSelfMoves, prewalkStateAt, settlePrewalk, type PrewalkState,
+  confirmSelfMoves, prewalkActiveStep, prewalkStateAt, settlePrewalk, type PrewalkState,
 } from './prewalk';
+import { directionFromStepDelta } from '../player';
 import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
 import { VIEWPORT_EVENT } from './viewport';
@@ -639,6 +640,21 @@ export function bindRenderer(
         confirmSelfMoves(prewalk, delta, { x: world.playerX, y: world.playerY, z: world.playerZ }, now);
       }
       settlePrewalk(prewalk, now, RENDER_DELAY_MS);
+      // Face the predicted step as it happens. The server only turns
+      // the creature at confirmation — a full step after the glide
+      // began, which reads as moonwalking on every direction change.
+      // Same value syncSelfCreature will write when the step confirms.
+      const active = prewalkActiveStep(prewalk, now);
+      if (active) {
+        const self = world.getCreature(world.playerCreatureId);
+        if (self) {
+          self.direction = directionFromStepDelta(
+            active.toX - active.fromX,
+            active.toY - active.fromY,
+            self.direction,
+          );
+        }
+      }
     }
     const motionStates = new Map<number, PlaybackState>();
     const movingIds: number[] = [];

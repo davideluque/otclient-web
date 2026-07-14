@@ -1,9 +1,10 @@
 import { ChatManager } from '../chat/ChatManager';
-import { createChatUI } from '../chat/ChatUI';
-import { createFullChatView, type FullChatViewHandle } from '../chat/FullChatView';
+import { createChatPresentation, type ChatPresentationHandle } from '../chat/ChatPresentation';
+import type { NpcChatContext } from '../chat/npcContext';
 import type { GameClient } from '../net/common/GameClient';
 import { MessageType } from '../net/common/types';
 import { createGameMessageOverlay } from './gameMessageOverlay';
+import { loadSpellSlots, spellByWords } from '../spells';
 
 /**
  * Wires the chat stack to a live game session: server speak packets
@@ -13,15 +14,19 @@ import { createGameMessageOverlay } from './gameMessageOverlay';
  * the client. Registered after registerWireSkips so these handlers
  * override the discard consumers per opcode.
  *
- * On coarse-pointer devices the panel starts collapsed — a 40vh chat
- * overlay on a phone would bury the joystick. Reopening goes through
- * menu → Chat (the old 💬 corner toggle sat on top of the hotkey arc).
+ * Gameplay uses a three-mode presentation: glance (default overlay),
+ * quick (bottom sheet / side panel), and full (menu → Chat). All modes
+ * share one ChatManager — history, channel, draft, and unread state.
  */
 export interface ChatBindingHandle {
   /** The live ChatManager — the renderer reads speech bubbles from it. */
   manager: ChatManager;
   /** Full-screen chat interface (menu → Chat) sharing the same manager. */
-  fullView: FullChatViewHandle;
+  fullView: ChatPresentationHandle['fullView'];
+  /** Presentation controller — mode transitions and NPC context. */
+  presentation: ChatPresentationHandle;
+  /** Activate NPC quick-reply chips in quick-chat mode. */
+  setNpcContext(ctx: NpcChatContext | null): void;
   destroy(): void;
 }
 
@@ -40,6 +45,8 @@ export interface ChatBindingOptions {
 /** 7.6 TextMessage class for advance/event lines (enums.h MSG_EVENT_ADVANCE). */
 const MSG_EVENT_ADVANCE = 0x13;
 
+const EMERGENCY_SPELL_LIMIT = 3;
+
 export function bindChat(
   client: GameClient,
   parent: HTMLElement = document.body,
@@ -49,25 +56,6 @@ export function bindChat(
   const manager = new ChatManager();
   const gameMessages = createGameMessageOverlay(parent);
 
-  // Declared ahead of createChatUI so the onClose closure never touches
-  // a temporal dead zone; the real applyOpen is assigned once `ui` exists.
-  let open = !window.matchMedia('(pointer: coarse)').matches;
-  let applyOpen: () => void = () => {};
-
-  const chatUi = createChatUI(manager, protocol, (packet) => {
-    try {
-      client.send(packet);
-    } catch (e) {
-      console.warn('[jamera] chat send failed:', e instanceof Error ? e.message : e);
-    }
-  }, {
-    onClose: () => { open = false; applyOpen(); },
-  });
-  const ui = chatUi.el;
-  parent.appendChild(ui);
-
-  // Second interface over the same manager — shared history/channels;
-  // both stay in sync through ChatManager.subscribe.
   const send = (packet: Parameters<GameClient['send']>[0]): void => {
     try {
       client.send(packet);
@@ -75,11 +63,24 @@ export function bindChat(
       console.warn('[jamera] chat send failed:', e instanceof Error ? e.message : e);
     }
   };
-  const fullView = createFullChatView(manager, protocol, send, parent);
 
-  // Interfaces subscribe to the manager (ChatManager.subscribe), so
-  // handler registration order no longer matters — kept after UI
-  // creation for readability.
+  const presentation = createChatPresentation({
+    chatManager: manager,
+    protocol,
+    sendPacket: send,
+    parent,
+    getEmergencySpells: () => loadSpellSlots()
+      .slice(0, EMERGENCY_SPELL_LIMIT)
+      .map((words) => {
+        const def = spellByWords(words);
+        return {
+          id: words,
+          label: def?.name ?? words,
+          onCast: () => send(protocol.chat.buildSay(words)),
+        };
+      }),
+  });
+
   const dispatcher = client.getDispatcher();
   const op = protocol.serverOpcodes;
   dispatcher.on(op.CreatureSpeak, (p) => {
@@ -97,15 +98,12 @@ export function bindChat(
     const text = p.getString();
     gameMessages.show(messageClass, text);
     if (messageClass === MSG_EVENT_ADVANCE && text === 'You are dead.') {
-      // A throwing UI callback must not kill the dispatcher mid-frame —
-      // the rest of the batched packets (and this message) still parse.
       try {
         opts.onDeathMessage?.();
       } catch (e) {
         console.warn('[jamera] death handler failed:', e instanceof Error ? e.message : e);
       }
     }
-    // The death line still flows to chat — it's part of the log too.
     manager.handleMessage({
       senderName: 'Server',
       messageType: MessageType.Say,
@@ -114,25 +112,17 @@ export function bindChat(
     });
   });
 
-  // The ChatUI stylesheet sets display:flex on #chat-ui, so visibility
-  // is driven via style.display (the [hidden] attribute loses that
-  // specificity fight — same pitfall as the login overlay). Closing
-  // lives on ChatUI's explicit ✕ (the onClose above).
-  applyOpen = () => {
-    ui.style.display = open ? 'flex' : 'none';
-  };
-  applyOpen();
-
   return {
     manager,
-    fullView,
+    fullView: presentation.fullView,
+    presentation,
+    setNpcContext: (ctx) => presentation.setNpcContext(ctx),
     destroy: () => {
       dispatcher.off(op.CreatureSpeak);
       dispatcher.off(op.ChannelOpen);
       dispatcher.off(op.ChannelClose);
       dispatcher.off(op.TextMessage);
-      fullView.destroy();
-      chatUi.destroy();
+      presentation.destroy();
       gameMessages.destroy();
     },
   };

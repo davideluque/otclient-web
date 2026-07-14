@@ -2,10 +2,8 @@ import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
 import { OutputPacket } from '../net/common/OutputPacket';
 import { ClientOp } from '../net/7.6/opcodes';
-import { tryAutoloadFiles } from '../assetAutoload';
-import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
-import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
+import type { SpriteAtlas } from '../spriteAtlas';
 import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
 import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
@@ -43,9 +41,8 @@ import { resolveSelfMotionMode } from '../render/motion/selfMotion';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
-import { setItemWireFlags } from '../net/common/itemFlags';
-import { DatAttr, parseDat } from '../dat';
-import { parseOtb, floorChangeClientIds, moveableClientIds, useableClientIds } from '../otb';
+import { DatAttr } from '../dat';
+import { createAssetPipeline } from './assetPipeline';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
 import { bindScreenWakeLock, loadKeepScreenAwake, type ScreenWakeLockHandle } from './screenWakeLock';
@@ -88,11 +85,11 @@ mountLoginScreen(root, {
   autoLogin,
   // Gate game entry on the asset bundle: the first map packet lands
   // milliseconds after game login and needs the .dat-derived wire flags.
-  // Calling loadAssetsForRendering here also makes the gate self-retrying
+  // Calling assetPipeline.load() here also makes the gate self-retrying
   // after a failed attempt.
   waitForReady: () => {
-    loadAssetsForRendering();
-    return assetsReady;
+    assetPipeline.load();
+    return assetPipeline.ready();
   },
   onLeaveGame: () => {
     // Disconnect/kick: drop the per-session surfaces instead of leaving
@@ -177,7 +174,7 @@ mountLoginScreen(root, {
     };
     client.getDispatcher().on(client.getProtocol().serverOpcodes.ReloginWindow, onDeath);
     startPingLoop(client);
-    loadAssetsForRendering();
+    assetPipeline.load();
     const world = bindGameWorld(client);
     bindMovementInput(client, world);
     teardownCombat?.destroy();
@@ -189,8 +186,8 @@ mountLoginScreen(root, {
       // Lazy atlas read: the bundle may still be loading when the pane
       // binds; slots re-render on every 0x78, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => jameraAtlas
-        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+      renderThumb: (id) => assetPipeline.atlas
+        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
         : null,
       // Late-bound: interactions mount with the renderer (after the
       // atlas), later than this binding — the optional chain no-ops in
@@ -203,8 +200,8 @@ mountLoginScreen(root, {
       // Same lazy atlas read as the inventory pane above: windows
       // re-render on every container packet, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => jameraAtlas
-        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+      renderThumb: (id) => assetPipeline.atlas
+        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
         : null,
       // Drop target: the tile under the player, read at selection time.
       playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
@@ -214,7 +211,7 @@ mountLoginScreen(root, {
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
-    teardownMinimap = bindMinimap(world, () => jameraAtlas?.datIndex ?? null);
+    teardownMinimap = bindMinimap(world, () => assetPipeline.atlas?.datIndex ?? null);
     teardownBattle?.destroy();
     teardownBattle = bindBattleList(world, () => teardownCombat);
     teardownBattle.setVisible(false); // opt-in from the menu
@@ -227,14 +224,14 @@ mountLoginScreen(root, {
     teardownTextWindows?.destroy();
     teardownTextWindows = bindTextWindows(client, document.body, {
       isWritable: (id) => {
-        const attrs = jameraAtlas?.datIndex.get(id)?.attrs;
+        const attrs = assetPipeline.atlas?.datIndex.get(id)?.attrs;
         return attrs?.has(DatAttr.Writable) === true || attrs?.has(DatAttr.WritableOnce) === true;
       },
     });
     teardownTrade?.destroy();
     teardownTrade = bindTrade(client, document.body, {
-      renderThumb: (id) => jameraAtlas
-        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+      renderThumb: (id) => assetPipeline.atlas
+        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
         : null,
     });
     // Per-session: the toggles adapt the live combat binding; reading
@@ -449,12 +446,11 @@ function bindGameWorld(client: GameClient): GameWorld {
  * doesn't leak into the new stage.
  *
  * Atlas may arrive before or after this mount runs:
- *   - Already cached (re-login): `jameraAtlas` is set, bind immediately.
+ *   - Already cached (re-login): the pipeline fires the waiter immediately.
  *   - Still loading: register a one-shot callback that the asset-load
  *     path fires once the atlas finishes building.
  */
 let teardownRenderer: (() => void) | null = null;
-let onAtlasReady: ((atlas: SpriteAtlas) => void) | null = null;
 // Monotonic mount generation. Every mountRenderer call claims a new epoch;
 // any continuation (post-await resume, queued atlas callback) belonging to
 // an older epoch is stale and must not bind. Without this, a re-login during
@@ -467,7 +463,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
   teardownRenderer?.();
   teardownRenderer = null;
   // Cancel a waiter queued by a previous session — its world is dead.
-  onAtlasReady = null;
+  assetPipeline.onAtlasReady(null);
 
   let app: Application;
   try {
@@ -489,9 +485,9 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         // Client-chosen window id for 0x82: the first free one, so a
         // second container opens beside the first instead of over it.
         nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
-        floorChangeIds: jameraFloorChangeIds ?? undefined,
-        useableIds: jameraUseableIds ?? undefined,
-        moveableIds: jameraMoveableIds ?? undefined,
+        floorChangeIds: assetPipeline.floorChangeIds ?? undefined,
+        useableIds: assetPipeline.useableIds ?? undefined,
+        moveableIds: assetPipeline.moveableIds ?? undefined,
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
         // The camera renders the predicted position; taps must decode
         // against it, not the confirmed tile a route runs ahead of
@@ -524,142 +520,16 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
     console.info('[jamera] renderer bound to GameWorld');
   };
 
-  if (jameraAtlas) {
-    mount(jameraAtlas);
-  } else {
-    onAtlasReady = mount;
-  }
+  // Fires immediately when the atlas is already cached (re-login).
+  assetPipeline.onAtlasReady(mount);
 }
 
 /**
- * Background-load the renderer's required assets (.dat / .spr / .otb).
- * Uses `tryAutoloadFiles` so the Jamera flow shares the offline demo's
- * source-of-truth resolution (`?version=…` + `public/assets/<version>/`)
- * without downloading the unused full-map .otbm file.
- *
- * Module-scoped guards prevent re-fetching the (large) bundle on every
- * re-login or overlapping in-flight requests — assets only need to load
- * once per page load.
- *
- * No fallback drag-drop UI here — if auto-load fails we just log it and
- * let the renderer PR decide what to surface. The drag-drop fallback is
- * its own tiny follow-up PR.
+ * Page-lifetime asset pipeline (.dat / .spr / .otb → wire flags, OTB id
+ * sets, sprite atlas). Assets don't change between re-logins, so the
+ * expensive sprite-decode + GPU upload only runs once per tab.
  */
-let assetsLoading = false;
-let assetsLoaded = false;
-// Resolved once the wire flags exist (the .dat parsed); replaced with a
-// fresh pending promise when a load attempt fails so a retry can gate on
-// the new attempt instead of inheriting the old rejection.
-let assetsReadyResolve: (() => void) | null = null;
-let assetsReadyReject: ((err: Error) => void) | null = null;
-let assetsReady = new Promise<void>((resolve, reject) => {
-  assetsReadyResolve = resolve;
-  assetsReadyReject = reject;
-});
-// Rejections are consumed on demand via waitForReady — don't let an
-// unobserved failure trip the global unhandled-rejection handler.
-assetsReady.catch(() => { /* observed lazily */ });
-// Page-lifetime cache: assets don't change between re-logins, so the
-// expensive sprite-decode + GPU upload only runs once per tab.
-let jameraAtlas: SpriteAtlas | null = null;
-// Client ids that floor-change (stairs, ramps, holes) — OTB knowledge
-// the walkability checks need (those ids are NotWalkable in the .dat).
-let jameraFloorChangeIds: Set<number> | null = null;
-// Client ids handled by a tap as UseItem: corpses/containers, doors,
-// ladders, levers and grates. Like floor changes, this comes from OTB.
-let jameraUseableIds: Set<number> | null = null;
-// Client ids safe to address through ThrowItem when a world drag completes.
-let jameraMoveableIds: Set<number> | null = null;
-
-type JameraLoadedFiles = Pick<CompleteLoadedFiles, 'dat' | 'spr' | 'otb'>;
-const JAMERA_FILE_KEYS = ['dat', 'spr', 'otb'] as const;
-
-function loadAssetsForRendering(): void {
-  if (assetsLoaded || assetsLoading) return;
-  assetsLoading = true;
-  void tryAutoloadAssets();
-}
-
-async function tryAutoloadAssets(): Promise<void> {
-  const loadStartedAt = performance.now();
-  await tryAutoloadFiles(JAMERA_FILE_KEYS, {
-    onStatus: (msg, isError) => {
-      if (isError) console.warn('[jamera-assets]', msg);
-      else console.info('[jamera-assets]', msg);
-    },
-    addFileToList: (name) => console.info('[jamera-assets] loaded', name),
-    startApp: async (loaded: JameraLoadedFiles) => {
-      const bytes = loaded.dat.byteLength + loaded.spr.byteLength + loaded.otb.byteLength;
-      telemetry('assets-loaded', {
-        ms: Math.round(performance.now() - loadStartedAt),
-        bytes,
-        files: JAMERA_FILE_KEYS.length,
-      });
-      console.info('[jamera] assets ready (dat/spr/otb)');
-      // Wire-format item knowledge: which client IDs carry a count byte.
-      // Must be set before the first map packet parses — stackables
-      // misalign the stream otherwise. Cheap (one .dat parse) and safe
-      // to repeat on retries.
-      setItemWireFlags(parseDat(loaded.dat));
-      const parsedOtb = parseOtb(loaded.otb);
-      jameraFloorChangeIds = floorChangeClientIds(parsedOtb);
-      jameraUseableIds = useableClientIds(parsedOtb);
-      jameraMoveableIds = moveableClientIds(parsedOtb);
-      assetsReadyResolve?.();
-      try {
-        const atlasStartedAt = performance.now();
-        jameraAtlas = buildSpriteAtlas(loaded.dat, loaded.spr);
-        telemetry('atlas-ready', { ms: Math.round(performance.now() - atlasStartedAt) });
-        // Only flip `assetsLoaded` once the atlas exists — otherwise a
-        // build failure here would permanently short-circuit the guard
-        // in `loadAssetsForRendering`, and a re-login could never retry.
-        assetsLoaded = true;
-        console.info(
-          `[jamera] atlas cache ready (${jameraAtlas.atlasTextures.pages.size} page(s), ${jameraAtlas.layout.size} sprites)`,
-        );
-        // Notify any renderer mount that was waiting for the atlas.
-        // Consumed exactly once — re-logins re-register from scratch.
-        const pending = onAtlasReady;
-        onAtlasReady = null;
-        pending?.(jameraAtlas);
-      } catch (err) {
-        // Leave `assetsLoaded` false so the next in_game transition gets
-        // another shot. Still expose `jameraAssets` below — the raw
-        // buffers are useful for diagnosing the failure in DevTools.
-        // `instanceof Error` because JS allows throwing anything; the
-        // cast-and-`.message` form crashes if a non-Error is thrown.
-        console.warn('[jamera] atlas build failed:', err instanceof Error ? err.message : err);
-      }
-      if (import.meta.env.DEV) {
-        // Dev-only DevTools hooks so the renderer PR can poke at the
-        // parsed assets + atlas while it's being built. Not exposed in
-        // prod for the same reason as window.jameraClient.
-        (window as unknown as { jameraAssets: JameraLoadedFiles }).jameraAssets = loaded;
-        if (jameraAtlas) {
-          (window as unknown as { jameraAtlas: SpriteAtlas }).jameraAtlas = jameraAtlas;
-        }
-      }
-    },
-  })
-    .catch((err) => {
-      console.warn('[jamera] asset auto-load failed:', err instanceof Error ? err.message : err);
-    })
-    .finally(() => {
-      assetsLoading = false;
-    });
-
-  if (!assetsLoaded) {
-    // The attempt failed (missing manifest, fetch error, atlas build
-    // failure): reject the gate so character-select surfaces an error,
-    // then re-arm a fresh promise for the retry the next gate call kicks.
-    assetsReadyReject?.(new Error('Game assets failed to load — check public/assets/<version>/ and retry.'));
-    assetsReady = new Promise<void>((resolve, reject) => {
-      assetsReadyResolve = resolve;
-      assetsReadyReject = reject;
-    });
-    assetsReady.catch(() => { /* consumed via waitForReady when retried */ });
-  }
-}
+const assetPipeline = createAssetPipeline();
 
 /**
  * Keep-alive + end-to-end send() smoke test. Tibia 7.6 servers expect
@@ -725,7 +595,7 @@ function parseClientVersion(raw: string | null): number | undefined {
 // wire-format parsing (item count bytes), so it should be ready long
 // before a human finishes typing credentials. onEnterGame calls this
 // again, which retries if this first attempt failed and no-ops otherwise.
-loadAssetsForRendering();
+assetPipeline.load();
 
 /**
  * Movement input: joystick (coarse-pointer devices) + keyboard feed a
@@ -754,8 +624,8 @@ function selfStepMsFrom(
 ): number {
   const speed = world.getCreature(world.playerCreatureId)?.speed ?? 0;
   const groundId = world.getTile(from.x, from.y, from.z)?.items[0]?.id;
-  const groundAttr = groundId !== undefined && jameraAtlas
-    ? jameraAtlas.datIndex.get(groundId)?.attrs.get(DatAttr.Ground)
+  const groundAttr = groundId !== undefined && assetPipeline.atlas
+    ? assetPipeline.atlas.datIndex.get(groundId)?.attrs.get(DatAttr.Ground)
     : undefined;
   return expectedStepMs(speed, typeof groundAttr === 'number' ? groundAttr : 0, diagonal);
 }

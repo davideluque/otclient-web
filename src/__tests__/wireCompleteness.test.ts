@@ -73,7 +73,9 @@ describe('registerWireSkips frame integrity', () => {
     { name: 'LoginQueue', opcode: op.LoginQueue, write: (o) => { o.addString('Queue position 3'); o.addU8(10); } },
     { name: 'ReloginWindow', opcode: op.ReloginWindow, write: () => {} },
     { name: 'ContainerOpen', opcode: op.ContainerOpen, write: (o) => {
-      o.addU8(1); o.addU16(PLAIN_ID); o.addString('Backpack'); o.addU8(20); o.addU8(0);
+      // Container header is AddItemId (U16) only, even if that client id
+      // would carry a count byte when it appears as a regular item.
+      o.addU8(1); o.addU16(STACKABLE_ID); o.addString('Backpack'); o.addU8(20); o.addU8(0);
       o.addU8(2); o.addU16(PLAIN_ID); o.addU16(STACKABLE_ID); o.addU8(5);
     } },
     { name: 'ContainerClose', opcode: op.ContainerClose, write: (o) => o.addU8(1) },

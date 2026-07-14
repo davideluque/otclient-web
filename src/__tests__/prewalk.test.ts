@@ -12,10 +12,10 @@ import {
   prewalkStateAt,
   settlePrewalk,
   type PrewalkState,
-} from '../lib/jamera/prewalk';
+} from '../lib/render/motion/prewalk';
 import type { WalkDirection } from '../lib/net/common/types';
 import { Direction } from '../lib/player';
-import { RENDER_DELAY_MS } from '../lib/jamera/renderer';
+import { RENDER_DELAY_MS } from '../lib/render/motion/playout';
 
 const ANCHOR = { x: 100, y: 200, z: 7 };
 

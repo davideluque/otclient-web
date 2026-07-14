@@ -22,9 +22,14 @@ import { DISTANCE_SHOT_TTL_MS, type GameWorld, type WorldCreature } from '../Gam
 import { DatAttr } from '../dat';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
+import type { PlaybackSample, PlaybackState, RenderPos } from '../render/motion/types';
+import {
+  RENDER_DELAY_MS, STEP_GLIDE_DEFAULT_MS, appendPlaybackSample, playbackStateAt,
+} from '../render/motion/playout';
+import { expectedStepMs, forwardStateAt } from '../render/motion/forward';
 import {
   confirmSelfMoves, prewalkActiveStep, prewalkStateAt, settlePrewalk, type PrewalkState,
-} from './prewalk';
+} from '../render/motion/prewalk';
 import { directionFromStepDelta } from '../player';
 import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
@@ -34,42 +39,6 @@ import { reportMetric } from './metrics';
 /** Walk frame duration — two alternating walk poses at ~8 fps. */
 const WALK_FRAME_MS = 125;
 
-/**
- * Glide duration bounds. The right duration is the creature's ACTUAL
- * step cadence (Tibia paces ~400ms/tile at base speed, faster with
- * hastes/levels, plus network jitter) — a fixed value either finishes
- * early (visible stop-start between steps) or rubber-bands. The SELF
- * creature's cadence is measured from its confirmation intervals
- * (EMA), so continuous walking renders as one unbroken scroll; every
- * other creature glides forward over its true step duration instead
- * (see forwardStateAt).
- */
-export const STEP_GLIDE_DEFAULT_MS = 380;
-export const STEP_GLIDE_MIN_MS = 150;
-export const STEP_GLIDE_MAX_MS = 650;
-
-/**
- * Bounds for a computed (speed-based) step duration. The ceiling covers
- * the slowest real case — an NPC (base speed 110) crossing swamp — while
- * keeping a glitched speed/ground value from freezing a creature
- * mid-tile; the floor keeps an extreme haste from reading as a teleport.
- */
-export const FORWARD_STEP_MIN_MS = 100;
-export const FORWARD_STEP_MAX_MS = 2500;
-
-/**
- * The server's step duration (otserv Creature::getStepDuration):
- * 1000 × groundSpeed / creatureSpeed, doubled on diagonals. This is the
- * time a creature really spends per tile, so it is the glide duration
- * that renders NPCs ambling and hasted players sprinting — the arrival
- * cadence can't say that (an NPC's think-pauses swamp it).
- */
-export function expectedStepMs(creatureSpeed: number, groundSpeed: number, diagonal: boolean): number {
-  if (creatureSpeed <= 0) return STEP_GLIDE_DEFAULT_MS;
-  const ground = groundSpeed > 0 ? groundSpeed : 150;
-  const dur = ((1000 * ground) / creatureSpeed) * (diagonal ? 2 : 1);
-  return Math.max(FORWARD_STEP_MIN_MS, Math.min(FORWARD_STEP_MAX_MS, Math.round(dur)));
-}
 /**
  * Extra painted tiles beyond the server window on every side: the
  * pursuing camera trails the confirmed position by up to a tile, and
@@ -96,18 +65,6 @@ const TILE_REVISION_THROTTLE_MS = 300;
  * world.onChange).
  */
 export const LIGHT_PREF_EVENT = 'jamera:light-pref';
-
-/**
- * Exponential moving average of a creature's step cadence. Exported for
- * tests. Per the Codex review, only samples in the plausible
- * SERVER-step-duration band feed the estimate — anything longer is
- * network arrival jitter or a standing pause, anything shorter is a
- * delivery burst; neither says how fast the creature walks.
- */
-export function nextStepEma(prevEma: number, sampleMs: number): number {
-  if (sampleMs < STEP_GLIDE_MIN_MS || sampleMs > 500) return prevEma;
-  return Math.max(STEP_GLIDE_MIN_MS, Math.min(STEP_GLIDE_MAX_MS, prevEma * 0.75 + sampleMs * 0.25));
-}
 
 /** Magic-effect animation cadence: 100 ms per .dat phase (OTClient's 7.6 timing). */
 export const EFFECT_PHASE_MS = 100;
@@ -153,147 +110,6 @@ export function missilePattern(dx: number, dy: number): { patX: number; patY: nu
 /** Flight progress 0→1 of a distance shot at `now`, clamped at landing. */
 export function shotProgressAt(now: number, startedAt: number): number {
   return Math.min(1, Math.max(0, (now - startedAt) / DISTANCE_SHOT_TTL_MS));
-}
-
-export interface RenderPos { x: number; y: number }
-
-/**
- * Playout buffer (fixed render delay), the FPS-netcode entity-
- * interpolation pattern Codex recommended over latest-target pursuit:
- * confirmed tiles are buffered as timestamped samples and rendered
- * RENDER_DELAY_MS in the past. For SELF each glide is timed to FINISH
- * exactly at its sample's (delayed) arrival time; other creatures
- * glide forward from it instead (see forwardStateAt). Wi-Fi delivery
- * jitter smaller than the delay reorders nothing on screen — motion
- * plays back as one continuous stream instead of stalling and
- * sprinting.
- */
-export const RENDER_DELAY_MS = 180;
-/** Buffered samples per creature — enough to ride out a delivery burst. */
-const MAX_SAMPLES = 8;
-
-/**
- * Append a confirmed tile to a creature's playout buffer. Same-floor
- * steps queue behind the render delay and glide; a FLOOR CHANGE flushes
- * the buffer to a single backdated sample instead — floor changes are
- * teleports, never glides. The camera and the floor stack snap to the
- * new floor the moment the world publishes it, so playing out the
- * pre-change samples rendered the creature at old-floor coordinates
- * under the new stack for RENDER_DELAY_MS — the "standing behind the
- * stairs, then moved in front" transient on every stair climb.
- */
-export function appendPlaybackSample(
-  p: { samples: PlaybackSample[]; cadence: number; lastArrivalAt?: number },
-  next: { x: number; y: number; z: number; at: number },
-  stepMs: number,
-): void {
-  const last = p.samples[p.samples.length - 1];
-  if (last && last.x === next.x && last.y === next.y && last.z === next.z) return;
-  // Cadence intervals come from TRUE arrival times: the flush below
-  // backdates its sample's render schedule by RENDER_DELAY_MS, and
-  // measuring the next step against that would inflate the EMA by the
-  // render delay (review catch on #299).
-  const prevArrivalAt = p.lastArrivalAt ?? last?.at;
-  p.lastArrivalAt = next.at;
-  if (last && last.z !== next.z) {
-    p.samples.length = 0;
-    p.samples.push({ x: next.x, y: next.y, z: next.z, at: next.at - RENDER_DELAY_MS });
-    return;
-  }
-  if (last && prevArrivalAt !== undefined) p.cadence = nextStepEma(p.cadence, next.at - prevArrivalAt);
-  p.samples.push({ x: next.x, y: next.y, z: next.z, at: next.at, stepMs });
-  if (p.samples.length > MAX_SAMPLES) p.samples.shift();
-}
-
-export interface PlaybackSample {
-  x: number;
-  y: number;
-  z: number;
-  at: number;
-  /** Expected duration of the step INTO this tile (absent on seeds). */
-  stepMs?: number;
-}
-export interface PlaybackState extends RenderPos { moving: boolean }
-
-/**
- * State on the buffered timeline at delayed time `t`. A segment cannot
- * exceed RENDER_DELAY_MS: anything longer would begin before the endpoint
- * sample had arrived and make the next render jump retroactively into the
- * step. Discontinuities hold and snap at the sample timestamp.
- */
-export function playbackStateAt(
-  samples: ReadonlyArray<PlaybackSample>,
-  cadenceMs: number,
-  t: number,
-): PlaybackState {
-  if (samples.length === 0) return { x: 0, y: 0, moving: false };
-  if (t >= samples[samples.length - 1].at) {
-    const last = samples[samples.length - 1];
-    return { x: last.x, y: last.y, moving: false };
-  }
-  // Find the segment [a, b] with a.at <= t < b.at.
-  let i = samples.length - 1;
-  while (i > 0 && samples[i - 1].at > t) i--;
-  const b = samples[i];
-  const a = i > 0 ? samples[i - 1] : b;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const discontinuity = b.z !== a.z || Math.abs(dx) > 1 || Math.abs(dy) > 1;
-  if (discontinuity) return { x: a.x, y: a.y, moving: false };
-  const duration = Math.min(cadenceMs, RENDER_DELAY_MS, Math.max(1, b.at - a.at));
-  const startAt = b.at - duration;
-  const u = Math.min(1, Math.max(0, (t - startAt) / duration));
-  return {
-    x: a.x + dx * u,
-    y: a.y + dy * u,
-    moving: (dx !== 0 || dy !== 0) && t >= startAt && t < b.at,
-  };
-}
-
-export function playbackPosAt(
-  samples: ReadonlyArray<PlaybackSample>,
-  cadenceMs: number,
-  t: number,
-): RenderPos {
-  const { x, y } = playbackStateAt(samples, cadenceMs, t);
-  return { x, y };
-}
-
-/**
- * OTClient-style forward glide, used for every creature but self: the
- * step into sample `b` animates over [b.at, b.at + b.stepMs), i.e. the
- * creature leaves its old tile when the move packet plays and takes its
- * TRUE step duration to cross — an ambling NPC ambles instead of
- * standing then dashing the tile in RENDER_DELAY_MS. Only already-known
- * samples feed the glide, so nothing ever jumps retroactively; a
- * follow-up sample arriving early cuts the glide short at its own
- * timestamp. Discontinuities snap.
- */
-export function forwardStateAt(
-  samples: ReadonlyArray<PlaybackSample>,
-  t: number,
-): PlaybackState {
-  if (samples.length === 0) return { x: 0, y: 0, moving: false };
-  // Latest sample at or before t — the step currently animating.
-  let i = samples.length - 1;
-  while (i > 0 && samples[i].at > t) i--;
-  const b = samples[i];
-  if (i === 0 || t < b.at) return { x: b.x, y: b.y, moving: false };
-  const a = samples[i - 1];
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const step = (dx !== 0 || dy !== 0) && Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && b.z === a.z;
-  if (!step) return { x: b.x, y: b.y, moving: false };
-  let duration = b.stepMs ?? STEP_GLIDE_DEFAULT_MS;
-  if (i + 1 < samples.length) {
-    duration = Math.min(duration, Math.max(1, samples[i + 1].at - b.at));
-  }
-  const u = Math.min(1, (t - b.at) / duration);
-  return {
-    x: a.x + dx * u,
-    y: a.y + dy * u,
-    moving: u < 1,
-  };
 }
 
 function walkPhase(moving: boolean, now: number): number {

@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FORWARD_STEP_MAX_MS,
-  FORWARD_STEP_MIN_MS,
   RENDER_DELAY_MS,
   STEP_GLIDE_DEFAULT_MS,
   STEP_GLIDE_MIN_MS,
-  expectedStepMs,
-  forwardStateAt,
   nextStepEma,
   playbackPosAt,
   playbackStateAt,
   appendPlaybackSample,
-  type PlaybackSample,
-} from '../lib/jamera/renderer';
+} from '../lib/render/motion/playout';
+import {
+  FORWARD_STEP_MAX_MS,
+  FORWARD_STEP_MIN_MS,
+  expectedStepMs,
+  forwardStateAt,
+} from '../lib/render/motion/forward';
+import type { PlaybackSample } from '../lib/render/motion/types';
 import { GameWorld } from '../lib/GameWorld';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 

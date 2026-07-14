@@ -1,5 +1,5 @@
-import type { WalkDirection } from '../net/common/types';
-import type { PlaybackState } from './renderer';
+import type { WalkDirection } from '../../net/common/types';
+import type { PlaybackState } from './types';
 
 /**
  * Client-side walk prediction for SELF (classic Tibia/OTClient pre-walk).

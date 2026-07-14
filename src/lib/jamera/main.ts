@@ -34,7 +34,8 @@ import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { loadBrightness, saveBrightness } from '../lighting';
 import { loadTapToWalk, saveTapToWalk } from './interactionPreferences';
-import { LIGHT_PREF_EVENT } from './renderer';
+import { LIGHT_PREF_EVENT, expectedStepMs } from './renderer';
+import { beginStep, createPrewalk, flushPrewalk } from './prewalk';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -487,7 +488,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
       })
       : null;
-    teardownRenderer = bindRenderer(world, atlas, app, chatManager);
+    teardownRenderer = bindRenderer(world, atlas, app, chatManager, selfPrewalk);
     console.info('[jamera] renderer bound to GameWorld');
   };
 
@@ -702,8 +703,35 @@ loadAssetsForRendering();
  */
 let teardownMovement: (() => void) | null = null;
 
+// Self pre-walk prediction chain. Page-lifetime like the renderer's other
+// cross-binding state, but flushed on every session (re)bind and teardown
+// so a dead session's predictions never render into a new one. Fed by the
+// walk controller (sends), reconciled and drawn by the renderer.
+const selfPrewalk = createPrewalk();
+
+/**
+ * The step duration the server will charge for the NEXT predicted step:
+ * ground speed of the tile the step leaves — the prediction chain's
+ * continuation tile, not the (older) confirmed position — over the
+ * player's current speed. Before the atlas is ready there is no ground
+ * attribute to read; expectedStepMs falls back to its default ground.
+ */
+function predictedSelfStepMs(world: GameWorld): number {
+  const last = selfPrewalk.steps[selfPrewalk.steps.length - 1];
+  const from = last
+    ? { x: last.toX, y: last.toY, z: last.z }
+    : { x: world.playerX, y: world.playerY, z: world.playerZ };
+  const speed = world.getCreature(world.playerCreatureId)?.speed ?? 0;
+  const groundId = world.getTile(from.x, from.y, from.z)?.items[0]?.id;
+  const groundAttr = groundId !== undefined && jameraAtlas
+    ? jameraAtlas.datIndex.get(groundId)?.attrs.get(DatAttr.Ground)
+    : undefined;
+  return expectedStepMs(speed, typeof groundAttr === 'number' ? groundAttr : 0, false);
+}
+
 function bindMovementInput(client: GameClient, world: GameWorld): void {
   teardownMovement?.();
+  flushPrewalk(selfPrewalk);
 
   let joystickDir: Direction | null = null;
   const joystick = createJoystick({ onChange: (dir) => { joystickDir = dir; } });
@@ -718,15 +746,37 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
     client,
     world,
     getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
+    // Pre-walk: predict the step the packet will cause so the renderer
+    // glides from the send instant instead of standing out the
+    // confirmation round-trip (the level-1 step-pause-step stutter).
+    onStepSent: (dir, now) => {
+      beginStep(
+        selfPrewalk,
+        { x: world.playerX, y: world.playerY, z: world.playerZ },
+        dir,
+        now,
+        predictedSelfStepMs(world),
+      );
+      // Wake the renderer: starting from idle there is no armed rAF loop
+      // and no world change until the confirmation — exactly the round
+      // trip the prediction exists to hide (Codex review, #303). The
+      // update pass sees the live chain and keeps itself armed.
+      world.onChange?.();
+    },
   });
   // GameWorld snaps the facing on 0xB5; the controller flushes its
   // pipeline so a rejected step stops the walk instantly. The wire
   // direction pins the suppression to the direction that actually hit
-  // the wall.
-  world.onCancelWalk = (dir) => walker.cancel(dir as Direction);
+  // the wall. The prediction chain flushes with it — its head step is
+  // the one the server just rejected.
+  world.onCancelWalk = (dir) => {
+    walker.cancel(dir as Direction);
+    flushPrewalk(selfPrewalk);
+  };
 
   teardownMovement = () => {
     world.onCancelWalk = null;
+    flushPrewalk(selfPrewalk);
     walker.destroy();
     joystickQuery.removeEventListener('change', applyJoystickVisibility);
     joystick.destroy();

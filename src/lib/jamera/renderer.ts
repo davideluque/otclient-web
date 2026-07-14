@@ -22,6 +22,10 @@ import { DISTANCE_SHOT_TTL_MS, type GameWorld, type WorldCreature } from '../Gam
 import { DatAttr } from '../dat';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
+import {
+  confirmSelfMoves, prewalkActiveStep, prewalkStateAt, settlePrewalk, type PrewalkState,
+} from './prewalk';
+import { directionFromStepDelta } from '../player';
 import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
 import { VIEWPORT_EVENT } from './viewport';
@@ -319,6 +323,7 @@ export function bindRenderer(
   atlas: SpriteAtlas,
   app: Application,
   chatManager?: ChatManager,
+  prewalk?: PrewalkState,
 ): () => void {
   // Persistent scene root (recentered by the camera) holding three
   // layers: tiles (expensive, rebuilt with hysteresis), creatures
@@ -431,6 +436,10 @@ export function bindRenderer(
   // Per-creature playout buffers (see playbackPosAt).
   const playback = new Map<number, { samples: PlaybackSample[]; cadence: number }>();
 
+  // Self position changes seen so far, for attributing new ones to the
+  // pre-walk prediction chain (same counter the walk controller reads).
+  let seenSelfSteps = world.selfSteps;
+
   // The server's formula for the step the creature just took: ground
   // speed of the tile it LEFT over its current speed (0x8F updates keep
   // WorldCreature.speed fresh, so hastes shorten the glide immediately).
@@ -461,13 +470,19 @@ export function bindRenderer(
     return p;
   };
 
-  // Self keeps the finish-at-confirmation playout buffer (the walk
-  // pipeline's cadence is tuned around it); everyone else glides
-  // forward at their true speed.
-  const stateAt = (c: WorldCreature, p: { samples: PlaybackSample[]; cadence: number }, t: number): PlaybackState =>
-    c.id === world.playerCreatureId
-      ? playbackStateAt(p.samples, p.cadence, t)
-      : forwardStateAt(p.samples, t);
+  // Self renders the pre-walk prediction when one is live — the glide
+  // starts at the send, runs the server's expected step duration, and
+  // renders on the wall clock (prediction has no arrival to delay by).
+  // With no prediction (server pushes, floor changes, any flush) self
+  // falls back to the finish-at-confirmation playout buffer; everyone
+  // else glides forward at their true speed.
+  const stateAt = (c: WorldCreature, p: { samples: PlaybackSample[]; cadence: number }, t: number, now: number): PlaybackState => {
+    if (c.id === world.playerCreatureId) {
+      const predicted = prewalk ? prewalkStateAt(prewalk, now) : null;
+      return predicted ?? playbackStateAt(p.samples, p.cadence, t);
+    }
+    return forwardStateAt(p.samples, t);
+  };
 
   /** When this creature's last queued glide fully lands (rAF keep-alive). */
   const settleAt = (c: WorldCreature, p: { samples: PlaybackSample[] }): number => {
@@ -477,7 +492,7 @@ export function bindRenderer(
 
   const playbackStateFor = (c: WorldCreature, now: number): PlaybackState => {
     const p = playbackFor(c);
-    return stateAt(c, p, now - RENDER_DELAY_MS);
+    return stateAt(c, p, now - RENDER_DELAY_MS, now);
   };
 
   const renderPosFor = (c: WorldCreature, now: number): RenderPos => {
@@ -615,17 +630,47 @@ export function bindRenderer(
     // The pose key includes the exact set of moving creatures so starting or
     // finishing a glide repaints the walk/idle frame immediately.
     const playbackT = now - RENDER_DELAY_MS;
+    // Reconcile the pre-walk chain before sampling: attribute any new
+    // self steps to pending predictions, expire overdue ones, and hand
+    // fully-played-out chains back to the playout buffer.
+    if (prewalk) {
+      const delta = world.selfSteps - seenSelfSteps;
+      seenSelfSteps = world.selfSteps;
+      if (delta > 0) {
+        confirmSelfMoves(prewalk, delta, { x: world.playerX, y: world.playerY, z: world.playerZ }, now);
+      }
+      settlePrewalk(prewalk, now, RENDER_DELAY_MS);
+      // Face the predicted step as it happens. The server only turns
+      // the creature at confirmation — a full step after the glide
+      // began, which reads as moonwalking on every direction change.
+      // Same value syncSelfCreature will write when the step confirms.
+      const active = prewalkActiveStep(prewalk, now);
+      if (active) {
+        const self = world.getCreature(world.playerCreatureId);
+        if (self) {
+          self.direction = directionFromStepDelta(
+            active.toX - active.fromX,
+            active.toY - active.fromY,
+            self.direction,
+          );
+        }
+      }
+    }
     const motionStates = new Map<number, PlaybackState>();
     const movingIds: number[] = [];
     let anyWalking = false;
     for (const c of world.getAllCreatures()) {
       if (!drawnBelow.includes(c.z) && !drawnAbove.includes(c.z)) continue;
       const p = playbackFor(c);
-      const state = stateAt(c, p, playbackT);
+      const state = stateAt(c, p, playbackT, now);
       motionStates.set(c.id, state);
       if (state.moving) movingIds.push(c.id);
       if (playbackT < settleAt(c, p)) anyWalking = true;
     }
+    // A live prediction chain keeps the loop armed through its glides,
+    // rest-while-pending waits, and the playout handoff — none of which
+    // the (confirmation-based) settleAt above can see.
+    if (prewalk && prewalk.steps.length > 0) anyWalking = true;
     movingIds.sort((a, b) => a - b);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
     // (expiresAt comes from Date.now()), and the layer updates every

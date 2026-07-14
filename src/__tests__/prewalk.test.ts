@@ -3,6 +3,7 @@ import {
   PREWALK_CATCHUP_MS,
   PREWALK_CONFIRM_GRACE_MS,
   beginStep,
+  confirmSelfMoves,
   confirmStep,
   createPrewalk,
   flushPrewalk,
@@ -185,6 +186,37 @@ describe('prewalkActiveStep', () => {
     beginStep(pw, ANCHOR, Direction.North, 1000, SLOW_STEP_MS);
     expect(prewalkActiveStep(pw, 1300)).toMatchObject({ toX: 100, toY: 199 });
     expect(prewalkActiveStep(pw, 1000 + SLOW_STEP_MS)).toBeNull();
+  });
+});
+
+describe('confirmSelfMoves (batched confirmations)', () => {
+  it('attributes a delivery burst oldest-first when the final position agrees', () => {
+    const pw = createPrewalk();
+    heldWalkEast(pw, 1000, 2);
+    confirmSelfMoves(pw, 2, { x: 102, y: 200, z: 7 }, 2400);
+    expect(pw.steps.every((s) => s.confirmed)).toBe(true);
+    expect(prewalkStateAt(pw, 1300)?.moving).toBe(true);
+  });
+
+  it('flushes when the final position disagrees with the chain', () => {
+    const pw = createPrewalk();
+    heldWalkEast(pw, 1000, 2);
+    confirmSelfMoves(pw, 2, { x: 101, y: 201, z: 7 }, 2400);
+    expect(prewalkStateAt(pw, 2400)).toBeNull();
+  });
+
+  it('flushes when the burst outnumbers the pending pipeline (unexplained move)', () => {
+    const pw = createPrewalk();
+    beginStep(pw, ANCHOR, Direction.East, 1000, SLOW_STEP_MS);
+    confirmSelfMoves(pw, 2, { x: 102, y: 200, z: 7 }, 2400);
+    expect(prewalkStateAt(pw, 2400)).toBeNull();
+  });
+
+  it('a single confirmation behaves exactly like confirmStep', () => {
+    const pw = createPrewalk();
+    beginStep(pw, ANCHOR, Direction.East, 1000, SLOW_STEP_MS);
+    confirmSelfMoves(pw, 1, { x: 101, y: 200, z: 7 }, 1700);
+    expect(pw.steps[0].confirmed).toBe(true);
   });
 });
 

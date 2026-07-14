@@ -36,6 +36,11 @@ export interface WalkControllerOptions {
    */
   stepTimeoutMs?: number;
   tickMs?: number;
+  /**
+   * Fires right after a walk packet leaves, with the send timestamp —
+   * the pre-walk prediction starts its glide here, not at confirmation.
+   */
+  onStepSent?: (dir: Direction, now: number) => void;
 }
 
 export interface WalkControllerHandle {
@@ -129,6 +134,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
     });
     lastSentAt = now;
     lastSentDir = dir;
+    opts.onStepSent?.(dir, now);
   };
 
   const timer = setInterval(tick, tickMs);

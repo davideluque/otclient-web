@@ -172,6 +172,32 @@ function compressLaggingGlide(pw: PrewalkState, step: PrewalkStep, now: number):
 }
 
 /**
+ * Attribute a BATCH of self position changes to pending predictions —
+ * several confirmations can land in one synchronous dispatch (Wi-Fi
+ * delivery burst), and by the time the renderer observes the counter
+ * only the final position survives. Intermediate steps are checked
+ * against their own predicted targets (the batch collapsed the
+ * evidence), the last against the world's actual position; any
+ * shortfall or mismatch flushes.
+ */
+export function confirmSelfMoves(
+  pw: PrewalkState,
+  count: number,
+  finalPos: { x: number; y: number; z: number },
+  now: number,
+): void {
+  for (let k = 0; k < count; k++) {
+    const pending = pw.steps.find((s) => !s.confirmed);
+    if (!pending) {
+      flushPrewalk(pw);
+      return;
+    }
+    const pos = k === count - 1 ? finalPos : { x: pending.toX, y: pending.toY, z: pending.z };
+    if (!confirmStep(pw, pos, now)) return;
+  }
+}
+
+/**
  * Per-frame maintenance, called before sampling. Two jobs:
  *
  * - Expire: a pending step whose confirmation is PREWALK_CONFIRM_GRACE_MS

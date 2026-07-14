@@ -15,6 +15,8 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   { date: '2026-07-14', text: 'Climbing stairs and ladders no longer shows you standing on the stairs for a moment — floor changes land you instantly where you belong.' },
+  { date: '2026-07-14', text: 'Tap-to-walk walks straight across open ground again — diagonal steps are saved for slipping around monsters and corners.' },
+  { date: '2026-07-14', text: 'Fixed the multi-floor shift: stairs and ladders below now line up under their stairwell holes, buildings lean like classic Tibia, and balconies no longer reveal tiles that should be hidden.' },
   { date: '2026-07-14', text: 'Tap-to-walk now takes diagonal shortcuts and can slip around a monster blocking your way.' },
   { date: '2026-07-14', text: 'Fixed ladders and stairwells you click to go up doing nothing — a single tap or click now climbs them.' },
   { date: '2026-07-14', text: 'Repeated door/walk warnings now expire instead of lingering, and duplicate spell speech echoes no longer stack twice.' },

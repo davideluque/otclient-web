@@ -215,14 +215,22 @@ export function findWalkRoute(
       // same rule as the offline pathfinder.
       if (!isGoalTile && tileFloorChanges(world, nextX, nextY, z, floorChangeIds)) continue;
 
-      // A diagonal may go around one occupied/blocked side (the classic
-      // monster-in-front escape), but never squeeze through a completely
-      // closed corner. The server remains authoritative for the destination.
+      // Diagonals are ESCAPE moves only — taken when exactly one flanking
+      // side is blocked (the classic monster-in-front slip, or a wall
+      // corner cut). With both sides open the diagonal is skipped: a
+      // 1.5×-cost diagonal beats two cardinals, so allowing it turned
+      // every open-ground path into a zig-zag; classic clients keep those
+      // straight. Both sides blocked is squeezing through a closed
+      // corner, which the server rejects.
       const isDiagonal = dx !== 0 && dy !== 0;
-      if (isDiagonal
-        && diagonalSideBlocked(world, datIndex, current.node.x + dx, current.node.y, z, floorChangeIds)
-        && diagonalSideBlocked(world, datIndex, current.node.x, current.node.y + dy, z, floorChangeIds)) {
-        continue;
+      if (isDiagonal) {
+        const sideXBlocked = diagonalSideBlocked(
+          world, datIndex, current.node.x + dx, current.node.y, z, floorChangeIds,
+        );
+        const sideYBlocked = diagonalSideBlocked(
+          world, datIndex, current.node.x, current.node.y + dy, z, floorChangeIds,
+        );
+        if (sideXBlocked === sideYBlocked) continue;
       }
 
       const costFromStart = current.node.costFromStart

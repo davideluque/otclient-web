@@ -36,17 +36,33 @@ polarity at the two call sites is [UNCERTAIN]; the degraded-safe form is
 Anti-flicker during glides: compute the probe for BOTH walk endpoints and
 take `max(firstVisible)` (PoC commit fabe172).
 
-### Screen placement
+### Screen placement — the classic perspective (NDIT-204, [VERIFIED])
 
-- **Every floor uses raw world coordinates, with no per-z container
-  offset.** The classic-client perspective is baked into the map data:
-  OTBM mappers place each floor above shifted one tile NW per level
-  (`Position::coveredUp` in otserv is (x-1, y-1, z-1)), and upstream
-  OTClient draws all floors untranslated for the same reason. Applying
-  a container offset on top double-shears the view and shifts stairs
-  and ladders north-west of their actual tile (the earlier "collapses
-  flat without the offset" lesson 3691ea3 was a PoC misdiagnosis). The
-  2.5D illusion comes from tall sprites drawing above their base tile.
+- **Every floor container carries a diagonal offset of `(z − playerZ)`
+  tiles on both axes** (`floorStack.floorLayerOffset`): floors below
+  lean south-east, floors above north-west, one tile per level, and
+  each floor renders its world window shifted the opposite way so the
+  screen stays covered. `screen = (world − cam) + (z − camZ)`.
+- Three independent authorities agree ([VERIFIED] 2026-07-14):
+  the wire format (`GetFloorDescription` reads floor `nz` at offset
+  `camZ − nz`; the 0xBE/0xBF floor-change frames resync west+north /
+  east+south — "moving up a floor makes us out of sync",
+  protocol76.cpp:2683); upstream OTClient (`mapview.h
+  transformPositionTo2D` subtracts `(camZ − z)` on both axes;
+  `position.h coveredUp` is `(x+n, y+n, z−n)` — NOT (x−n, y−n));
+  and the map art itself.
+- **The map does NOT pre-shift floors.** A world.otbm survey found
+  4,925 of 4,936 resolvable holes with their FloorChangeUp item at the
+  SAME (x, y) one floor down (11 diagonal). The visual connection comes
+  from sprite geometry: up-stairs are 64×64 (2×2-tile) sprites anchored
+  bottom-right, leaning up-left — with the SE floor shift their bulk
+  lands exactly on the stairwell hole. Rendering floors raw is what put
+  stairs one tile north-west of the hole (the long-lived z-shift bug).
+- Two earlier lessons are hereby retired as misdiagnoses: 988f86d
+  ("no per-z offset") — the offline viewer's occlusion mask stayed
+  keyed on world (x,y) while the draw shifted, deleting the stair
+  sprite (fix: screen-space, sprite-extent-aware occlusion, below);
+  and #287's "OTClient draws untranslated" (sign-inverted coveredUp).
 
 ### Occlusion + perf policy
 
@@ -55,12 +71,16 @@ much for phones. Policy:
 
 1. **Cap floors below at 3** (offline-viewer precedent) — with the roof
    probe capping floors above naturally.
-2. **Cascading FullGround occlusion** (merged #82 mechanism): per-depth
+2. **Cascading FullGround occlusion in SCREEN space**: per-depth
    occlusion sets, computed shallow→deep, snapshotted before rendering
    (mutating during the loop wrongly hides shallower floors — lesson
-   e66e78c), bit-packed `(x<<16)|y` keys, consumed by `renderTileRegion`'s
-   existing `skipPositions` param. In town, floor 7 occludes nearly
-   everything below.
+   e66e78c), consumed by `renderTileRegion`'s `skipPositions` param.
+   Covered SCREEN cells accumulate across floors; each floor's skip set
+   is translated back to its own world keys. A tile is skippable only
+   when EVERY screen cell its item sprites touch is covered — a 64×64
+   stair whose up-left corner peeks through a hole must still draw
+   (this extent rule is what 988f86d was missing). In town, floor 7
+   occludes nearly everything below.
 3. **Per-floor containers + per-floor dirty tracking**: split the global
    `tileRevision` into per-z revisions so the 300ms-throttled revision
    path rebuilds only touched floors. `movedFar`/`zChanged` still rebuild

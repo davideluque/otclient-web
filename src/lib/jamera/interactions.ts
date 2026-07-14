@@ -64,6 +64,8 @@ export interface InteractionsOptions {
   useableIds?: Set<number>;
   /** Live preference adapter. Defaults to the persisted mobile setting. */
   tapToWalk?: () => boolean;
+  /** Select/attack a tapped non-player creature through the combat binding. */
+  onCreatureTap?: (creatureId: number) => void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -73,6 +75,7 @@ const MOVE_TOLERANCE_PX = 12;
 const SYNTHESIZED_CLICK_MS = 500;
 
 const HINT_STYLE_ID = 'use-with-hint-style';
+const TAP_FEEDBACK_STYLE_ID = 'tap-feedback-style';
 
 function ensureHintStyles(): void {
   if (document.getElementById(HINT_STYLE_ID)) return;
@@ -94,6 +97,36 @@ function ensureHintStyles(): void {
     }
   `;
   document.head.appendChild(style);
+}
+
+type TapFeedbackKind = 'walk' | 'use' | 'attack';
+
+function showTapFeedback(clientX: number, clientY: number, kind: TapFeedbackKind): void {
+  if (!document.getElementById(TAP_FEEDBACK_STYLE_ID)) {
+    const style = document.createElement('style');
+    style.id = TAP_FEEDBACK_STYLE_ID;
+    style.textContent = `
+      .world-tap-feedback {
+        position: fixed; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+        z-index: ${zIndex.hud}; border: 2px solid #eee; border-radius: 50%;
+        pointer-events: none; animation: world-tap-pop 360ms ease-out forwards;
+      }
+      .world-tap-feedback.use { border-color: #ffd45a; }
+      .world-tap-feedback.attack { border-color: #ff5f57; }
+      @keyframes world-tap-pop {
+        from { opacity: 0.95; transform: scale(0.45); }
+        to { opacity: 0; transform: scale(1.45); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  const marker = document.createElement('div');
+  marker.className = `world-tap-feedback ${kind}`;
+  marker.style.left = `${clientX}px`;
+  marker.style.top = `${clientY}px`;
+  document.body.appendChild(marker);
+  marker.addEventListener('animationend', () => marker.remove(), { once: true });
+  setTimeout(() => marker.remove(), 500);
 }
 
 /**
@@ -282,6 +315,18 @@ export function bindInteractions(
     return tile?.items.some((item) => opts.useableIds!.has(item.id)) ?? false;
   }
 
+  function topCreatureAtTile(position: WirePosition): number | null {
+    const tile = world.getTile(position.x, position.y, position.z);
+    if (!tile) return null;
+    for (let i = tile.things.length - 1; i >= 0; i--) {
+      const thing = tile.things[i];
+      if (thing.kind === 'creature' && thing.creature.id !== world.playerCreatureId) {
+        return thing.creature.id;
+      }
+    }
+    return null;
+  }
+
   // Tap/click-to-walk: A* over the known window, sent as one 0x64
   // autowalk — the server walks the route and confirms each step like
   // manual moves. A tap that starts a double-tap still walks first
@@ -308,6 +353,12 @@ export function bindInteractions(
    */
   function smartTouchTap(clientX: number, clientY: number): void {
     const pointed = worldTileAtPointer(clientX, clientY);
+    const creatureId = topCreatureAtTile(pointed);
+    if (creatureId !== null && opts.onCreatureTap) {
+      showTapFeedback(clientX, clientY, 'attack');
+      opts.onCreatureTap(creatureId);
+      return;
+    }
     const floorTarget = datIndex
       ? floorChangeTileAtPointer(world, datIndex, pointed, opts.floorChangeIds)
       : pointed;
@@ -315,14 +366,19 @@ export function bindInteractions(
       || (world.getTile(pointed.x, pointed.y, pointed.z)?.items
         .some((item) => opts.floorChangeIds?.has(item.id)) ?? false);
     if (isFloorChange) {
+      showTapFeedback(clientX, clientY, 'walk');
       walkTo(clientX, clientY);
       return;
     }
     if (tileHasUseableItem(pointed)) {
+      showTapFeedback(clientX, clientY, 'use');
       use(clientX, clientY, opts.useableIds);
       return;
     }
-    if ((opts.tapToWalk ?? loadTapToWalk)()) walkTo(clientX, clientY);
+    if ((opts.tapToWalk ?? loadTapToWalk)()) {
+      showTapFeedback(clientX, clientY, 'walk');
+      walkTo(clientX, clientY);
+    }
   }
 
   // Crosshair (use-with) mode: armed from an action sheet, consumed by

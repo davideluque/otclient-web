@@ -450,6 +450,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
         floorChangeIds: jameraFloorChangeIds ?? undefined,
         useableIds: jameraUseableIds ?? undefined,
+        onCreatureTap: (id) => teardownCombat?.attackTarget(id),
       })
       : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager);

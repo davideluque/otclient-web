@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Your name (and other creatures\u2019 names) no longer disappears when you go down to the underground.' },
   { date: '2026-07-14', text: 'Climbing stairs and ladders no longer shows you standing on the stairs for a moment — floor changes land you instantly where you belong.' },
   { date: '2026-07-14', text: 'Tap-to-walk walks straight across open ground again — diagonal steps are saved for slipping around monsters and corners.' },
   { date: '2026-07-14', text: 'Fixed the multi-floor shift: stairs and ladders below now line up under their stairwell holes, buildings lean like classic Tibia, and balconies no longer reveal tiles that should be hidden.' },

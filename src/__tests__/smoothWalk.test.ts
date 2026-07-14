@@ -4,6 +4,7 @@ import {
   STEP_GLIDE_MIN_MS,
   nextStepEma,
   playbackPosAt,
+  playbackStateAt,
   type PlaybackSample,
 } from '../lib/jamera/renderer';
 import { GameWorld } from '../lib/GameWorld';
@@ -18,10 +19,31 @@ describe('playbackPosAt (playout buffer)', () => {
 
   it('interpolates each segment to land ON the sample at its timestamp', () => {
     expect(playbackPosAt(walk, 400, 1000)).toEqual({ x: 100, y: 200 });
-    expect(playbackPosAt(walk, 400, 1200).x).toBeCloseTo(100.5, 5);
-    expect(playbackPosAt(walk, 400, 1399).x).toBeCloseTo(101, 2);
-    expect(playbackPosAt(walk, 400, 1600).x).toBeCloseTo(101.5, 5);
+    // The 180ms buffer is all the history available when the endpoint
+    // arrives, so a slower cadence must not retroactively start earlier.
+    expect(playbackPosAt(walk, 400, 1219)).toEqual({ x: 100, y: 200 });
+    expect(playbackPosAt(walk, 400, 1310).x).toBeCloseTo(100.5, 5);
+    expect(playbackPosAt(walk, 400, 1399).x).toBeCloseTo(100 + 179 / 180, 5);
+    expect(playbackPosAt(walk, 400, 1710).x).toBeCloseTo(101.5, 5);
     expect(playbackPosAt(walk, 400, 5000)).toEqual({ x: 102, y: 200 }); // drained
+  });
+
+  it('never jumps into a step when its endpoint sample first arrives', () => {
+    const afterPause: PlaybackSample[] = [
+      { x: 100, y: 200, z: 7, at: 1000 },
+      { x: 101, y: 200, z: 7, at: 5000 },
+    ];
+    // At wall-clock 5000 the renderer asks for 5000 - RENDER_DELAY_MS.
+    // Before this fix the default 380ms cadence jumped 53% of a tile here.
+    const state = playbackStateAt(afterPause, 380, 5000 - RENDER_DELAY_MS);
+    expect(state).toEqual({ x: 100, y: 200, moving: true });
+  });
+
+  it('reports walking only for the visual glide, then returns to idle', () => {
+    expect(playbackStateAt(walk, 400, 1219).moving).toBe(false);
+    expect(playbackStateAt(walk, 400, 1220).moving).toBe(true);
+    expect(playbackStateAt(walk, 400, 1399).moving).toBe(true);
+    expect(playbackStateAt(walk, 400, 1400).moving).toBe(false);
   });
 
   it('a delivery burst (samples closer than cadence) still renders continuously', () => {

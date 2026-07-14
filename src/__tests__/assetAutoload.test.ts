@@ -3,7 +3,7 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { tryAutoload, type AutoloadOptions } from '../lib/assetAutoload';
+import { tryAutoload, tryAutoloadFiles, type AutoloadOptions } from '../lib/assetAutoload';
 import { getCached, putCached } from '../lib/assetCache';
 
 const VALID_MANIFEST = {
@@ -122,6 +122,34 @@ describe('tryAutoload', () => {
 
     expect(seenAssetUrls.some(u => u.endsWith('/a.dat'))).toBe(true);
     expect(seenAssetUrls.some(u => u.endsWith('/d.otbm'))).toBe(true);
+  });
+
+  it('fetches only a requested asset selection without consulting the full cache', async () => {
+    await putCached('760', {
+      dat: new Uint8Array([9]).buffer,
+      spr: new Uint8Array([9]).buffer,
+      otb: new Uint8Array([9]).buffer,
+      otbm: new Uint8Array([9]).buffer,
+    });
+    const seenAssetUrls: string[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('manifest.json')) return Promise.resolve(jsonResponse(VALID_MANIFEST));
+      seenAssetUrls.push(url);
+      return Promise.resolve(bufResponse(1));
+    }) as typeof fetch;
+    const startApp = vi.fn().mockResolvedValue(undefined);
+
+    const ok = await tryAutoloadFiles(['dat', 'spr', 'otb'] as const, {
+      onStatus: vi.fn(),
+      addFileToList: vi.fn(),
+      startApp,
+    });
+
+    expect(ok).toBe(true);
+    expect(seenAssetUrls).toHaveLength(3);
+    expect(seenAssetUrls.some(url => url.endsWith('world.otbm'))).toBe(false);
+    expect(startApp.mock.calls[0][0]).not.toHaveProperty('otbm');
   });
 
   it('returns false on partial folder — listed file 404s after manifest succeeds', async () => {

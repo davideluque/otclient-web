@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindInteractions, floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/interactions';
+import { bindInteractions } from '../lib/jamera/interactions';
+import { floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/screenSpace';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from '../lib/net/7.6/actionsProtocol';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { DatAttr } from '../lib/dat';
@@ -538,7 +539,7 @@ describe('long-press pointer tracking', () => {
 
 describe('toCanvasSpace', () => {
   it('compensates canvas offset and CSS scaling', async () => {
-    const { toCanvasSpace } = await import('../lib/jamera/interactions');
+    const { toCanvasSpace } = await import('../lib/jamera/screenSpace');
     const canvas = {
       getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 300 }),
     } as unknown as HTMLCanvasElement;

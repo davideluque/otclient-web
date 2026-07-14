@@ -82,9 +82,10 @@ export class ChatManager {
   }
 
   setDraft(text: string): void {
-    if (this._draft === text) return;
+    // No notifyStateChanged: the draft changes on every keystroke and
+    // views read it when they render/open — notifying would re-render
+    // the whole message list per character typed.
     this._draft = text;
-    this.notifyStateChanged();
   }
 
   get unreadCount(): number {

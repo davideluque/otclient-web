@@ -30,6 +30,12 @@ export interface QuickChatViewOptions {
 export interface QuickChatViewHandle {
   readonly el: HTMLElement;
   render(): void;
+  /**
+   * Refresh tabs and messages for new chat traffic without touching the
+   * scroll position (unless the user is already at the bottom) — render()
+   * is for opening/mode changes and restores the saved channel scroll.
+   */
+  renderIncremental(): void;
   applyLayout(): void;
   focusInput(): void;
   destroy(): void;
@@ -383,11 +389,18 @@ export function createQuickChatView(opts: QuickChatViewOptions): QuickChatViewHa
     applyLayout();
   };
 
+  const renderIncremental = (): void => {
+    syncDraftFromManager();
+    renderTabs();
+    renderMessages(false);
+  };
+
   const unsubViewport = bindVisualViewport(applyLayout);
 
   return {
     el,
     render,
+    renderIncremental,
     applyLayout,
     focusInput: () => inputEl.focus(),
     destroy: () => {

@@ -143,6 +143,55 @@ describe('createChatPresentation', () => {
     presentation.destroy();
   });
 
+  it('keeps scroll position when a message arrives while scrolled up', () => {
+    const { presentation, manager } = mountPresentation();
+    for (let i = 0; i < 30; i++) {
+      manager.handleMessage({
+        senderName: 'A', messageType: MessageType.Say, text: `line ${i}`, timestamp: i,
+      });
+    }
+    presentation.openQuick();
+
+    // happy-dom has no layout, so fake a scrollable pane the user has
+    // scrolled up in (700px above the bottom — well past the 24px snap).
+    const messagesEl = document.querySelector('.quick-chat-messages') as HTMLElement;
+    Object.defineProperty(messagesEl, 'scrollHeight', { get: () => 1000, configurable: true });
+    Object.defineProperty(messagesEl, 'clientHeight', { get: () => 100, configurable: true });
+    let scrollTop = 200;
+    Object.defineProperty(messagesEl, 'scrollTop', {
+      get: () => scrollTop,
+      set: (v: number) => { scrollTop = v; },
+      configurable: true,
+    });
+
+    manager.handleMessage({
+      senderName: 'B', messageType: MessageType.Say, text: 'new while reading', timestamp: 99,
+    });
+    expect(messagesEl.textContent).toContain('new while reading');
+    expect(scrollTop).toBe(200);
+    presentation.destroy();
+  });
+
+  it('typing in the quick input does not rebuild the message list', () => {
+    const { presentation, manager } = mountPresentation();
+    manager.handleMessage({
+      senderName: 'A', messageType: MessageType.Say, text: 'hello', timestamp: 1,
+    });
+    presentation.openQuick();
+
+    const messagesEl = document.querySelector('.quick-chat-messages') as HTMLElement;
+    const firstRow = messagesEl.firstElementChild;
+    expect(firstRow).not.toBeNull();
+
+    const input = document.querySelector('.quick-chat-input-row input') as HTMLInputElement;
+    input.focus();
+    input.value = 'draft text';
+    input.dispatchEvent(new Event('input'));
+
+    expect(messagesEl.firstElementChild).toBe(firstRow);
+    presentation.destroy();
+  });
+
   it('cleans up DOM and listeners on destroy', () => {
     const { presentation } = mountPresentation();
     presentation.openQuick();

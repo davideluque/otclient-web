@@ -84,9 +84,12 @@ export function createChatPresentation(opts: ChatPresentationOptions): ChatPrese
     },
   });
 
+  // New messages/channels must not disturb the reading position, so this
+  // takes the incremental path — full quick.render() restores saved scroll
+  // and belongs to open/mode transitions only.
   const refresh = (): void => {
     if (chatManager.presentationMode === 'glance') glance.render();
-    else if (chatManager.presentationMode === 'quick') quick.render();
+    else if (chatManager.presentationMode === 'quick') quick.renderIncremental();
   };
 
   const unsubMessages = chatManager.subscribe(() => refresh());

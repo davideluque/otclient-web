@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveProxyOverride } from '../lib/jamera/proxyUrl';
+import { defaultProxyUrl, resolveProxyOverride } from '../lib/jamera/proxyUrl';
 
 function page(hostname: string): Pick<Location, 'hostname'> {
   return { hostname };
@@ -26,6 +26,38 @@ describe('resolveProxyOverride', () => {
   it('allows same-host proxy overrides for trusted deployments', () => {
     expect(resolveProxyOverride('wss://official.example:8443', page('official.example'))).toBe(
       'wss://official.example:8443',
+    );
+  });
+});
+
+describe('defaultProxyUrl', () => {
+  it('uses the page host bridge on :8090 in dev (so LAN testing needs no override)', () => {
+    expect(defaultProxyUrl({ protocol: 'http:', host: 'localhost:5173', hostname: 'localhost' }, true)).toBe(
+      'ws://localhost:8090',
+    );
+    expect(defaultProxyUrl({ protocol: 'http:', host: '192.168.1.5:5173', hostname: '192.168.1.5' }, true)).toBe(
+      'ws://192.168.1.5:8090',
+    );
+  });
+
+  it('brackets IPv6 page hosts when building the dev WebSocket URL', () => {
+    expect(defaultProxyUrl({ protocol: 'http:', host: '[::1]:5173', hostname: '::1' }, true)).toBe(
+      'ws://[::1]:8090',
+    );
+    expect(defaultProxyUrl({ protocol: 'http:', host: '[::1]:5173', hostname: '[::1]' }, true)).toBe(
+      'ws://[::1]:8090',
+    );
+  });
+
+  it('defaults to the same origin over wss on an https production page', () => {
+    expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example', hostname: 'tibia.example' }, false)).toBe(
+      'wss://tibia.example',
+    );
+  });
+
+  it('preserves a non-default port and falls back to ws on a plain-http page', () => {
+    expect(defaultProxyUrl({ protocol: 'http:', host: 'box.local:8080', hostname: 'box.local' }, false)).toBe(
+      'ws://box.local:8080',
     );
   });
 });

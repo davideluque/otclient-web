@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  partitionByFloor,
+  partitionByFloor, dirtyFloorsWithBelowOcclusion,
 } from '../lib/render/floorStack';
 
 describe('drawnFloorsBelow', () => {
@@ -150,5 +150,33 @@ describe('dirtyFloors', () => {
   it('preserves the drawn (deepest-first) order for multiple dirty floors', () => {
     expect(dirtyFloors([9, 8, 7], rev([[9, 1], [8, 1], [7, 1]]), rev([[9, 2], [8, 1], [7, 2]])))
       .toEqual([9, 7]);
+  });
+});
+
+describe('dirtyFloorsWithBelowOcclusion', () => {
+  const rev = (entries: Array<[number, number]>): Map<number, number> => new Map(entries);
+
+  it('rebuilds a dirty floor and all deeper floors that depend on its occlusion', () => {
+    expect(dirtyFloorsWithBelowOcclusion(
+      [9, 8, 7],
+      rev([[9, 1], [8, 2], [7, 3]]),
+      rev([[9, 1], [8, 5], [7, 3]]),
+    )).toEqual([9, 8]);
+  });
+
+  it('rebuilds the whole below stack when the shallowest floor changes', () => {
+    expect(dirtyFloorsWithBelowOcclusion(
+      [9, 8, 7],
+      rev([[9, 1], [8, 2], [7, 3]]),
+      rev([[9, 1], [8, 2], [7, 4]]),
+    )).toEqual([9, 8, 7]);
+  });
+
+  it('keeps a deepest-only change scoped to that floor', () => {
+    expect(dirtyFloorsWithBelowOcclusion(
+      [9, 8, 7],
+      rev([[9, 1], [8, 2], [7, 3]]),
+      rev([[9, 2], [8, 2], [7, 3]]),
+    )).toEqual([9]);
   });
 });

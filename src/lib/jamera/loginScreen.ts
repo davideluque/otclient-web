@@ -2,6 +2,7 @@ import { GameClient } from '../net/common/GameClient';
 import type { GameClientState, GameClientEvents } from '../net/common/GameClient';
 import type { CharacterInfo } from '../net/common/types';
 import { GameProtocol } from '../net/7.6/GameProtocol';
+import { defaultProxyUrl } from './proxyUrl';
 // Vite `?raw` import: ships the file contents as a string at build time.
 // Keeps the markup + styles out of the TS source so the file stays readable.
 import templateHtml from './loginScreen.html?raw';
@@ -18,8 +19,9 @@ import templateHtml from './loginScreen.html?raw';
  */
 export interface MountOptions {
   /**
-   * WebSocket proxy that bridges the browser to the OT server. Defaults
-   * to `ws://localhost:8090` to match `proxy/server.ts`'s default port.
+   * WebSocket proxy that bridges the browser to the OT server. When
+   * omitted, `defaultProxyUrl()` picks the local bridge in dev and the
+   * page's own origin (wss://) in production.
    */
   proxyUrl?: string;
 
@@ -70,7 +72,6 @@ export interface MountedScreen {
   unmount(): void;
 }
 
-const DEFAULT_PROXY_URL = 'ws://localhost:8090';
 const DEFAULT_CLIENT_VERSION = 761;
 const MAX_U32_ACCOUNT = 0xffffffff;
 
@@ -94,7 +95,7 @@ export function parseLoginAccount(raw: string): LoginAccount {
 }
 
 export function mountLoginScreen(root: HTMLElement, opts: MountOptions = {}): MountedScreen {
-  const proxyUrl = opts.proxyUrl ?? DEFAULT_PROXY_URL;
+  const proxyUrl = opts.proxyUrl ?? defaultProxyUrl();
   const clientVersion = opts.clientVersion ?? DEFAULT_CLIENT_VERSION;
 
   const protocol = new GameProtocol({ clientVersion });

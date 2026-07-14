@@ -21,6 +21,7 @@ import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindContainers, type ContainerBindingHandle } from './containerBinding';
+import { bindShop, type ShopBindingHandle } from './shopBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindBattleList, type BattleBindingHandle } from './battleBinding';
 import { bindVip, type VipBindingHandle } from './vipBinding';
@@ -98,6 +99,8 @@ mountLoginScreen(root, {
     teardownInventory = null;
     teardownContainers?.destroy();
     teardownContainers = null;
+    teardownShop?.destroy();
+    teardownShop = null;
     // The renderer too: its container and tinted-outfit textures belong
     // to the dead session (mountRenderer also bumps the epoch on the
     // next login, but freeing GPU resources shouldn't wait for one).
@@ -203,6 +206,13 @@ mountLoginScreen(root, {
       // Same late-bound interactions handle as the inventory pane above.
       armUseWith: (from) => teardownInteractions?.armUseWith(from),
       armTrade: (from) => teardownInteractions?.armTrade(from),
+    });
+    teardownShop?.destroy();
+    teardownShop = bindShop(client, document.body, {
+      // Same lazy atlas read as the container pane above.
+      renderThumb: (id) => jameraAtlas
+        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+        : null,
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
@@ -747,6 +757,9 @@ let teardownInventory: InventoryBindingHandle | null = null;
 
 // Per-session container windows (wire state + pane), same lifecycle.
 let teardownContainers: ContainerBindingHandle | null = null;
+
+// Per-session npc shop window (wire state + pane), same lifecycle.
+let teardownShop: ShopBindingHandle | null = null;
 
 // Per-session canvas interactions (look/use), replaced with the renderer.
 let teardownInteractions: InteractionsHandle | null = null;

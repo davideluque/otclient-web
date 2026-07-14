@@ -84,6 +84,15 @@ describe('registerWireSkips frame integrity', () => {
     { name: 'ContainerRemoveItem', opcode: op.ContainerRemoveItem, write: (o) => { o.addU8(1); o.addU8(0); } },
     { name: 'InventorySet', opcode: op.InventorySet, write: (o) => { o.addU8(1); o.addU16(STACKABLE_ID); o.addU8(100); } },
     { name: 'InventoryClear', opcode: op.InventoryClear, write: (o) => o.addU8(1) },
+    { name: 'ShopOpen', opcode: op.ShopOpen, write: (o) => {
+      o.addString('Bashira'); o.addU16(2);
+      o.addU16(2120); o.addU16(3003); o.addU8(0); o.addString('rope'); o.addU32(50); o.addU32(8);
+      o.addU16(2006); o.addU16(2874); o.addU8(11); o.addString('vial of oil'); o.addU32(100); o.addU32(0);
+    } },
+    { name: 'ShopGoods', opcode: op.ShopGoods, write: (o) => {
+      o.addU32(1234); o.addU8(2); o.addU16(2120); o.addU16(3); o.addU16(2554); o.addU16(1);
+    } },
+    { name: 'ShopClose', opcode: op.ShopClose, write: () => {} },
     { name: 'TradeRequest', opcode: op.TradeRequest, write: (o) => { o.addString('Trinity'); o.addU8(1); o.addU16(PLAIN_ID); } },
     { name: 'TradeClose', opcode: op.TradeClose, write: () => {} },
     { name: 'WorldLight', opcode: op.WorldLight, write: (o) => { o.addU8(250); o.addU8(0xd7); } },

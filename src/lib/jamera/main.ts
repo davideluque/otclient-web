@@ -757,6 +757,11 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
         now,
         predictedSelfStepMs(world),
       );
+      // Wake the renderer: starting from idle there is no armed rAF loop
+      // and no world change until the confirmation — exactly the round
+      // trip the prediction exists to hide (Codex review, #303). The
+      // update pass sees the live chain and keeps itself armed.
+      world.onChange?.();
     },
   });
   // GameWorld snaps the facing on 0xB5; the controller flushes its

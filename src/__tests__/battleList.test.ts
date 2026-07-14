@@ -58,3 +58,15 @@ describe('bindBattleList', () => {
     expect(document.querySelector('.battle-list')).toBeNull();
   });
 });
+
+describe('close button', () => {
+  it('renders a ✕ that fires onClose', () => {
+    let closed = 0;
+    const list = createBattleList({ onSelect: () => {}, onClose: () => { closed++; } }, document.body);
+    const btn = document.querySelector('.battle-list [aria-label="Close battle list"]') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    btn.click();
+    expect(closed).toBe(1);
+    list.destroy();
+  });
+});

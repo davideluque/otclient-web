@@ -318,6 +318,14 @@ export function bindRenderer(
   // parents) — same draw position, and the light/effects insertion
   // logic anchors on it.
   const creatureFloorLayers = new Map<number, Container>();
+  // The SELF nameplate rides above everything map (both tile parents and
+  // the light overlay): it hangs a tile above the player's head, which
+  // right under a stairwell opening is exactly where the floor-above
+  // ground paints — per-floor parenting hid the player's own name there.
+  // Always safe on top: drawnAbove is non-empty only when the roof probe
+  // found the player position UNcovered, so nothing legitimately hides
+  // the player (and their name) while above-floors are drawn.
+  let selfPlateLayer: Container | null = null;
   // Bumped whenever tile-layer containers are created or destroyed, so
   // the (cheap) creature pass re-inserts its per-floor siblings against
   // the new stack — a roof change while everyone stands still must not
@@ -611,6 +619,11 @@ export function bindRenderer(
     if (!root) {
       root = new Container();
       app.stage.addChild(root);
+      // Before effectsLayer: tile/creature/light layers all insert
+      // themselves below these, so the final order is tiles → creatures
+      // → aboveTiles → light → self plate → effects.
+      selfPlateLayer = new Container();
+      root.addChild(selfPlateLayer);
       effectsLayer = new Container();
       root.addChild(effectsLayer);
       root.addChild(combatTexts.getContainer());
@@ -789,7 +802,7 @@ export function bindRenderer(
       movables = drawCreatures(
         world, atlas, layers, tintedCache, nameplates,
         (c) => motionStates.get(c.id)?.moving ?? playbackStateFor(c, now).moving,
-        now,
+        now, selfPlateLayer,
       );
       root.addChildAt(nextCreatures, tilesRoot ? 1 : 0);
       for (const old of creatureFloorLayers.values()) {
@@ -918,6 +931,7 @@ export function bindRenderer(
       aboveFloorLayers.clear();
       creatureLayer = null;
       creatureFloorLayers.clear();
+      selfPlateLayer = null;
       effectsLayer = null;
     }
   };
@@ -931,9 +945,13 @@ export function bindRenderer(
  * within each floor so southern creatures overlap the ones behind them,
  * matching the tile painter order. Nameplates go into the SAME per-floor
  * container as their creature — a roof that hides a creature must hide
- * its nameplate too.
+ * its nameplate too. The one exception is the PLAYER's own plate, which
+ * goes into `selfPlateLayer` (above both tile parents): standing under a
+ * stairwell opening, the floor-above ground paints exactly where the
+ * plate hangs, and the player's own name must never vanish while the
+ * player is visible. Exported for tests.
  */
-function drawCreatures(
+export function drawCreatures(
   world: GameWorld,
   atlas: SpriteAtlas,
   layersByZ: ReadonlyMap<number, Container>,
@@ -941,6 +959,7 @@ function drawCreatures(
   nameplates: Map<number, NameplateHandle>,
   isMoving: (creature: WorldCreature) => boolean,
   now: number,
+  selfPlateLayer: Container | null,
 ): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
   const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
   const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
@@ -976,7 +995,10 @@ function drawCreatures(
       }
       plate.container.x = (c.x + 0.5) * TILE_SIZE;
       plate.container.y = c.y * TILE_SIZE - 14;
-      container.addChild(plate.container);
+      const plateParent = c.id === world.playerCreatureId && selfPlateLayer
+        ? selfPlateLayer
+        : container;
+      plateParent.addChild(plate.container);
       movables.push({
         node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c,
       });

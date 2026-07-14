@@ -25,6 +25,8 @@ export interface InventoryBindingOptions extends InventoryPaneOptions {
    * sheet omits Use with… — same convention as containerBinding.
    */
   armUseWith?: (from: ThingRef) => void;
+  /** Arms a trade offer; the next world creature tap chooses the partner. */
+  armTrade?: (from: ThingRef) => void;
 }
 
 export function bindInventory(
@@ -32,7 +34,7 @@ export function bindInventory(
   parent: HTMLElement = document.body,
   opts: InventoryBindingOptions = {},
 ): InventoryBindingHandle {
-  const { armUseWith, ...paneOpts } = opts;
+  const { armUseWith, armTrade, ...paneOpts } = opts;
   const protocol = client.getProtocol();
   const op = protocol.serverOpcodes;
   const dispatcher = client.getDispatcher();
@@ -72,6 +74,14 @@ export function bindInventory(
               // Same stackpos-is-the-slot rule as the unequip move above.
               label: 'Use with…',
               onSelect: () => armUseWith({
+                position: inventorySlotPosition(wireSlot), thingId: itemId, stackPos: wireSlot,
+              }),
+            });
+          }
+          if (armTrade) {
+            actions.push({
+              label: 'Trade with…',
+              onSelect: () => armTrade({
                 position: inventorySlotPosition(wireSlot), thingId: itemId, stackPos: wireSlot,
               }),
             });

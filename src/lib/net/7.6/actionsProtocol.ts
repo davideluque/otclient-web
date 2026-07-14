@@ -76,6 +76,43 @@ export function buildUseItemWithPacket(
   return out;
 }
 
+/** 0x7D — offer one addressed item to a visible player. */
+export function buildRequestTradePacket(
+  from: WirePosition,
+  spriteId: number,
+  stackPos: number,
+  playerId: number,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.RequestTrade);
+  out.addPosition(from.x, from.y, from.z);
+  out.addU16(spriteId);
+  out.addU8(stackPos);
+  out.addU32(playerId);
+  return out;
+}
+
+/** 0x7E — inspect one flattened offer item (0 is the root item). */
+export function buildLookInTradePacket(counterOffer: boolean, index: number): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.LookInTrade);
+  out.addU8(counterOffer ? 1 : 0);
+  out.addU8(index);
+  return out;
+}
+
+export function buildAcceptTradePacket(): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.AcceptTrade);
+  return out;
+}
+
+export function buildCloseTradePacket(): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.CloseTrade);
+  return out;
+}
+
 /** 0x14 — request a clean logout; the server saves and closes. */
 export function buildLogoutPacket(): OutputPacket {
   const out = new OutputPacket();

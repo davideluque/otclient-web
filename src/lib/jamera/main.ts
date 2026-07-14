@@ -29,6 +29,7 @@ import { loadSpellSlots, saveSpellSlots } from '../spells';
 import { bindCombatModes, type CombatModesBindingHandle } from './combatModesBinding';
 import { bindStatus, type StatusBindingHandle } from './statusBinding';
 import { bindTextWindows, type TextWindowBindingHandle } from './textWindowBinding';
+import { bindTrade, type TradeBindingHandle } from './tradeBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { loadBrightness, saveBrightness } from '../lighting';
@@ -121,6 +122,8 @@ mountLoginScreen(root, {
     teardownStatus = null;
     teardownTextWindows?.destroy();
     teardownTextWindows = null;
+    teardownTrade?.destroy();
+    teardownTrade = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
@@ -180,6 +183,7 @@ mountLoginScreen(root, {
       // atlas), later than this binding — the optional chain no-ops in
       // that brief window instead of arming a dead handle.
       armUseWith: (from) => teardownInteractions?.armUseWith(from),
+      armTrade: (from) => teardownInteractions?.armTrade(from),
     });
     teardownContainers?.destroy();
     teardownContainers = bindContainers(client, document.body, {
@@ -193,6 +197,7 @@ mountLoginScreen(root, {
       playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
       // Same late-bound interactions handle as the inventory pane above.
       armUseWith: (from) => teardownInteractions?.armUseWith(from),
+      armTrade: (from) => teardownInteractions?.armTrade(from),
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
@@ -208,6 +213,12 @@ mountLoginScreen(root, {
     teardownStatus = bindStatus(client);
     teardownTextWindows?.destroy();
     teardownTextWindows = bindTextWindows(client);
+    teardownTrade?.destroy();
+    teardownTrade = bindTrade(client, document.body, {
+      renderThumb: (id) => jameraAtlas
+        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
+        : null,
+    });
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
     // current session even across re-logins.
@@ -749,6 +760,7 @@ let settingsPane: SettingsPaneHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownBattle: BattleBindingHandle | null = null;
 let teardownTextWindows: TextWindowBindingHandle | null = null;
+let teardownTrade: TradeBindingHandle | null = null;
 let teardownVip: VipBindingHandle | null = null;
 let spellCustomizer: SpellCustomizerHandle | null = null;
 let teardownCombatModes: CombatModesBindingHandle | null = null;

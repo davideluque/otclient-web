@@ -57,11 +57,11 @@ describe('crosshair (use-with) mode', () => {
     0x00, // at stackpos 0
   ];
 
-  function mount() {
+  function mount(tileOverride?: MapTile) {
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
     document.body.appendChild(canvas);
-    const tile: MapTile = {
+    const tile: MapTile = tileOverride ?? {
       x: 100,
       y: 200,
       z: 7,
@@ -160,6 +160,27 @@ describe('crosshair (use-with) mode', () => {
     expect(hint()).toBeNull();
     expect(canvas.style.cursor).toBe('');
   });
+
+  it('armed trade taps a creature once and sends the offered item plus player id', () => {
+    const playerId = 0x10203040;
+    const tile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [{ kind: 'creature', creature: { id: playerId } as never }],
+      items: [], creatures: [{ id: playerId } as never],
+    };
+    const { handle, sent, tap } = mount(tile);
+    handle.armTrade(ropeFrom);
+    expect(hint()?.textContent).toContain('Tap a player to trade');
+    tap(400, 300);
+    expect(sent).toEqual([[
+      0x7d,
+      0xff, 0xff, 0x42, 0x00, 0x01,
+      0xd7, 0x0b, 0x01,
+      0x40, 0x30, 0x20, 0x10,
+    ]]);
+    expect(hint()).toBeNull();
+    handle.destroy();
+  });
 });
 
 describe('action-sheet arming', () => {
@@ -245,5 +266,21 @@ describe('action-sheet arming', () => {
     bare.dispatcher.dispatch(new InputPacket(set.toArrayBuffer()));
     document.querySelector<HTMLElement>('.inventory-pane .slot.filled')!.click();
     expect(sheetButton('Use with…')).toBeUndefined();
+  });
+
+  it('item sheets expose Trade with… only when a trade arming provider exists', () => {
+    const { client, dispatcher } = makeClient();
+    const armed: ThingRef[] = [];
+    bindInventory(client, document.body, { armTrade: (from) => armed.push(from) });
+    const set = new OutputPacket();
+    set.addU8(0x78);
+    set.addU8(10);
+    set.addU16(BAG_ID);
+    dispatcher.dispatch(new InputPacket(set.toArrayBuffer()));
+    document.querySelector<HTMLElement>('.inventory-pane .slot.filled')!.click();
+    sheetButton('Trade with…')!.click();
+    expect(armed).toEqual([{
+      position: inventorySlotPosition(10), thingId: BAG_ID, stackPos: 10,
+    }]);
   });
 });

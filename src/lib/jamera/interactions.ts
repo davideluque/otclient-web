@@ -35,6 +35,9 @@ export interface InteractionsHandle {
   armUseWith(from: ThingRef): void;
   /** Disarm crosshair mode without sending anything. */
   cancelUseWith(): void;
+  /** Arm trade mode: the next creature tap offers `from` to that player. */
+  armTrade(from: ThingRef): void;
+  cancelTrade(): void;
   destroy(): void;
 }
 
@@ -388,6 +391,7 @@ export function bindInteractions(
   // the next tap/click. A miss (empty tile) still disarms — the tap was
   // the player's one answer to "on what?".
   let armedUseWith: ThingRef | null = null;
+  let armedTrade: ThingRef | null = null;
   let lastTouchTapAt = 0;
   let hint: HTMLElement | null = null;
 
@@ -398,7 +402,15 @@ export function bindInteractions(
     hint = null;
   }
 
+  function cancelTrade(): void {
+    armedTrade = null;
+    canvas.style.cursor = '';
+    hint?.remove();
+    hint = null;
+  }
+
   function armUseWith(from: ThingRef): void {
+    cancelTrade();
     cancelUseWith();
     armedUseWith = from;
     canvas.style.cursor = 'crosshair';
@@ -414,6 +426,38 @@ export function bindInteractions(
     cancel.addEventListener('click', cancelUseWith);
     hint.append(label, cancel);
     document.body.appendChild(hint);
+  }
+
+  function armTrade(from: ThingRef): void {
+    cancelTrade();
+    cancelUseWith();
+    armedTrade = from;
+    canvas.style.cursor = 'crosshair';
+    ensureHintStyles();
+    hint = document.createElement('div');
+    hint.className = 'use-with-hint';
+    const label = document.createElement('span');
+    label.textContent = 'Tap a player to trade…';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.setAttribute('aria-label', 'Cancel trade');
+    cancel.textContent = '✕';
+    cancel.addEventListener('click', cancelTrade);
+    hint.append(label, cancel);
+    document.body.appendChild(hint);
+  }
+
+  function fireTrade(clientX: number, clientY: number): void {
+    const from = armedTrade;
+    const playerId = topCreatureAtTile(worldTileAtPointer(clientX, clientY));
+    cancelTrade();
+    // Jamera allocates players from 0x1..., monsters from 0x4..., and
+    // NPCs from 0x8.... Do not turn an accidental monster tap into a
+    // doomed trade request (or an attack while this mode is armed).
+    if (!from || playerId === null || (playerId & 0xf0000000) !== 0x10000000) return;
+    send(protocol.actions.buildRequestTrade(
+      from.position, from.thingId, from.stackPos, playerId,
+    ));
   }
 
   function fireUseWith(clientX: number, clientY: number): void {
@@ -445,6 +489,10 @@ export function bindInteractions(
     if (pointerType && pointerType !== 'mouse') return;
     if (armedUseWith) {
       fireUseWith(e.clientX, e.clientY);
+      return;
+    }
+    if (armedTrade) {
+      fireTrade(e.clientX, e.clientY);
       return;
     }
     walkTo(e.clientX, e.clientY);
@@ -486,6 +534,10 @@ export function bindInteractions(
         cancelUseWith();
         return;
       }
+      if (armedTrade) {
+        cancelTrade();
+        return;
+      }
       look(pressX, pressY);
     }, LONG_PRESS_MS);
   };
@@ -509,6 +561,7 @@ export function bindInteractions(
     if (!wasTap) return;
     lastTouchTapAt = Date.now();
     if (armedUseWith) fireUseWith(e.clientX, e.clientY);
+    else if (armedTrade) fireTrade(e.clientX, e.clientY);
     else smartTouchTap(e.clientX, e.clientY);
   };
 
@@ -523,8 +576,11 @@ export function bindInteractions(
   return {
     armUseWith,
     cancelUseWith,
+    armTrade,
+    cancelTrade,
     destroy: () => {
       cancelUseWith();
+      cancelTrade();
       cancelPress();
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('contextmenu', onContextMenu);

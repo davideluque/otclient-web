@@ -25,6 +25,8 @@ export interface ContainerBindingOptions {
    * Use with… — same convention as playerPosition/Drop above.
    */
   armUseWith?: (from: ThingRef) => void;
+  /** Arms a trade offer; the next world creature tap chooses the partner. */
+  armTrade?: (from: ThingRef) => void;
 }
 
 /**
@@ -90,6 +92,12 @@ export function bindContainers(
             // tap picks the 0x83 target.
             label: 'Use with…',
             onSelect: () => armUseWith({ position: from, thingId: item.id, stackPos: slot }),
+          });
+        }
+        if (opts.armTrade) {
+          actions.push({
+            label: 'Trade with…',
+            onSelect: () => opts.armTrade?.({ position: from, thingId: item.id, stackPos: slot }),
           });
         }
         const playerPosition = opts.playerPosition;

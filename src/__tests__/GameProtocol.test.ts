@@ -42,6 +42,8 @@ describe('GameProtocol (7.6)', () => {
       expect(clientOpcodes.Say).toBe(0x96);
       expect(clientOpcodes.Ping).toBe(0x1e);
       expect(clientOpcodes.RequestTrade).toBe(0x7d);
+      expect(clientOpcodes.UpdateTextWindow).toBe(0x89);
+      expect(clientOpcodes.UpdateHouseWindow).toBe(0x8a);
     });
   });
 
@@ -57,6 +59,17 @@ describe('GameProtocol (7.6)', () => {
       expect([...protocol.actions.buildLookInTrade(true, 3).toUint8Array()]).toEqual([0x7e, 1, 3]);
       expect([...protocol.actions.buildAcceptTrade().toUint8Array()]).toEqual([0x7f]);
       expect([...protocol.actions.buildCloseTrade().toUint8Array()]).toEqual([0x80]);
+    });
+  });
+
+  describe('editable text windows', () => {
+    const protocol = new GameProtocol();
+
+    it('builds writable-item and house-list replies', () => {
+      expect([...protocol.actions.buildUpdateTextWindow(7, 'Hi').toUint8Array()])
+        .toEqual([0x89, 7, 0, 0, 0, 2, 0, 72, 105]);
+      expect([...protocol.actions.buildUpdateHouseWindow(0, 9, 'Bob').toUint8Array()])
+        .toEqual([0x8a, 0, 9, 0, 0, 0, 3, 0, 66, 111, 98]);
     });
   });
 

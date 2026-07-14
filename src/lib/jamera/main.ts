@@ -39,7 +39,7 @@ import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
 import { setItemWireFlags } from '../net/common/itemFlags';
-import { parseDat } from '../dat';
+import { DatAttr, parseDat } from '../dat';
 import { parseOtb, floorChangeClientIds, useableClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
@@ -212,7 +212,12 @@ mountLoginScreen(root, {
     teardownStatus?.destroy();
     teardownStatus = bindStatus(client);
     teardownTextWindows?.destroy();
-    teardownTextWindows = bindTextWindows(client);
+    teardownTextWindows = bindTextWindows(client, document.body, {
+      isWritable: (id) => {
+        const attrs = jameraAtlas?.datIndex.get(id)?.attrs;
+        return attrs?.has(DatAttr.Writable) === true || attrs?.has(DatAttr.WritableOnce) === true;
+      },
+    });
     teardownTrade?.destroy();
     teardownTrade = bindTrade(client, document.body, {
       renderThumb: (id) => jameraAtlas

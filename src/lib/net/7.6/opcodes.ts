@@ -43,6 +43,8 @@ export const ClientOp = {
   LookInTrade: 0x7e,
   AcceptTrade: 0x7f,
   CloseTrade: 0x80,
+  UpdateTextWindow: 0x89,
+  UpdateHouseWindow: 0x8a,
   SetFightModes: 0xa0,
   AddVip: 0xdc,
   RemoveVip: 0xdd,

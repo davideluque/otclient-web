@@ -151,6 +151,22 @@ describe('ChatManager', () => {
     expect(chat.speechBubbles).toHaveLength(2);
   });
 
+  it('drops an immediate duplicate spell echo but keeps a later genuine cast', () => {
+    const t = Date.now();
+    const spell = {
+      senderName: 'Player', messageType: MessageType.Say, text: 'exura',
+      position: { x: 100, y: 200, z: 7 },
+    };
+    chat.handleMessage(makeMsg({ ...spell, timestamp: t }));
+    chat.handleMessage(makeMsg({ ...spell, timestamp: t + 20 }));
+    expect(chat.getChannel(ChannelId.Default)?.messages).toHaveLength(1);
+    expect(chat.speechBubbles[0].text).toBe('exura');
+
+    chat.handleMessage(makeMsg({ ...spell, timestamp: t + 2000 }));
+    expect(chat.getChannel(ChannelId.Default)?.messages).toHaveLength(2);
+    expect(chat.speechBubbles[0].text).toBe('exura\nexura');
+  });
+
   it('caps stacked lines at 10 and never shortens the remaining display time', () => {
     const t = Date.now();
     for (let i = 0; i < 14; i++) {

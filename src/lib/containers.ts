@@ -14,7 +14,7 @@ export interface OpenContainer {
 
 /** The server rejects window ids above 0x0F (player.cpp addContainer). */
 export const MAX_CONTAINER_ID = 0x0f;
-const PENDING_OPEN_TTL_MS = 10_000;
+const PENDING_OPEN_TTL_MS = 5_000;
 
 /**
  * Client-side mirror of the player's open containers. Bindings feed it

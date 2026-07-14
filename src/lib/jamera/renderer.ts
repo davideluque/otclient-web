@@ -11,8 +11,8 @@ import {
 import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
-  drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  partitionByFloor,
+  drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
+  glideEndpoints, coveringRevisionKey, partitionByFloor,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -26,8 +26,6 @@ import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
 import { VIEWPORT_EVENT } from './viewport';
 import { reportMetric } from './metrics';
 
-/** How long after a confirmed step a creature keeps its walk pose. */
-const WALK_ANIM_MS = 400;
 /** Walk frame duration — two alternating walk poses at ~8 fps. */
 const WALK_FRAME_MS = 125;
 
@@ -143,22 +141,23 @@ export const RENDER_DELAY_MS = 180;
 const MAX_SAMPLES = 8;
 
 export interface PlaybackSample { x: number; y: number; z: number; at: number }
+export interface PlaybackState extends RenderPos { moving: boolean }
 
 /**
- * Position on the buffered timeline at (delayed) time `t`. Pure;
- * exported for tests. Each segment glides over min(cadence, gap) so the
- * render position lands ON the sample at its timestamp; discontinuities
- * (non-adjacent tiles, floor changes) hold then snap at the sample time.
+ * State on the buffered timeline at delayed time `t`. A segment cannot
+ * exceed RENDER_DELAY_MS: anything longer would begin before the endpoint
+ * sample had arrived and make the next render jump retroactively into the
+ * step. Discontinuities hold and snap at the sample timestamp.
  */
-export function playbackPosAt(
+export function playbackStateAt(
   samples: ReadonlyArray<PlaybackSample>,
   cadenceMs: number,
   t: number,
-): RenderPos {
-  if (samples.length === 0) return { x: 0, y: 0 };
+): PlaybackState {
+  if (samples.length === 0) return { x: 0, y: 0, moving: false };
   if (t >= samples[samples.length - 1].at) {
     const last = samples[samples.length - 1];
-    return { x: last.x, y: last.y };
+    return { x: last.x, y: last.y, moving: false };
   }
   // Find the segment [a, b] with a.at <= t < b.at.
   let i = samples.length - 1;
@@ -168,16 +167,28 @@ export function playbackPosAt(
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const discontinuity = b.z !== a.z || Math.abs(dx) > 1 || Math.abs(dy) > 1;
-  if (discontinuity) return { x: a.x, y: a.y }; // snaps when t reaches b.at
-  const duration = Math.min(cadenceMs, Math.max(1, b.at - a.at));
-  const u = Math.min(1, Math.max(0, (t - (b.at - duration)) / duration));
-  return { x: a.x + dx * u, y: a.y + dy * u };
+  if (discontinuity) return { x: a.x, y: a.y, moving: false };
+  const duration = Math.min(cadenceMs, RENDER_DELAY_MS, Math.max(1, b.at - a.at));
+  const startAt = b.at - duration;
+  const u = Math.min(1, Math.max(0, (t - startAt) / duration));
+  return {
+    x: a.x + dx * u,
+    y: a.y + dy * u,
+    moving: (dx !== 0 || dy !== 0) && t >= startAt && t < b.at,
+  };
 }
 
-function walkPhase(c: WorldCreature, now: number): number {
-  // performance.now() starts near 0, so an undefined stamp must mean
-  // idle explicitly rather than defaulting to 0 and looking recent.
-  if (c.lastMoveAt === undefined || now - c.lastMoveAt >= WALK_ANIM_MS) return 0;
+export function playbackPosAt(
+  samples: ReadonlyArray<PlaybackSample>,
+  cadenceMs: number,
+  t: number,
+): RenderPos {
+  const { x, y } = playbackStateAt(samples, cadenceMs, t);
+  return { x, y };
+}
+
+function walkPhase(moving: boolean, now: number): number {
+  if (!moving) return 0;
   // Phases 1..n-1 are the walk cycle (renderPlayer clamps to the
   // outfit's actual phase count).
   return 1 + (Math.floor(now / WALK_FRAME_MS) % 2);
@@ -328,18 +339,14 @@ export function bindRenderer(
     return p;
   };
 
-  /** True while any creature's buffered timeline hasn't played out. */
-  const anyBufferedMotion = (now: number): boolean => {
-    const t = now - RENDER_DELAY_MS;
-    for (const p of playback.values()) {
-      if (t < p.samples[p.samples.length - 1].at) return true;
-    }
-    return false;
+  const playbackStateFor = (c: WorldCreature, now: number): PlaybackState => {
+    const p = playbackFor(c);
+    return playbackStateAt(p.samples, p.cadence, now - RENDER_DELAY_MS);
   };
 
   const renderPosFor = (c: WorldCreature, now: number): RenderPos => {
-    const p = playbackFor(c);
-    return playbackPosAt(p.samples, p.cadence, now - RENDER_DELAY_MS);
+    const { x, y } = playbackStateFor(c, now);
+    return { x, y };
   };
 
   const glide = (now: number): void => {
@@ -468,16 +475,22 @@ export function bindRenderer(
       || world.animatedTexts.length > 0
       || world.distanceShots.length > 0
       || world.targetSquare !== null;
-    // While anything is mid-walk-animation the key changes every walk
-    // frame, and a rAF loop keeps ticking until everyone is idle again.
-    // Any DRAWN floor counts — a creature climbing the stairs above the
-    // player animates on screen just like one beside them.
-    const anyWalking = world.getAllCreatures().some(
-      // includes() over two ≤7-entry arrays: membership without the
-      // per-frame Set allocation this loop used to pay.
-      (c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lastMoveAt !== undefined
-        && now - c.lastMoveAt < Math.max(WALK_ANIM_MS, STEP_GLIDE_MAX_MS) + RENDER_DELAY_MS,
-    ) || anyBufferedMotion(now);
+    // Synchronize samples before deciding whether the rAF loop stays armed.
+    // The pose key includes the exact set of moving creatures so starting or
+    // finishing a glide repaints the walk/idle frame immediately.
+    const playbackT = now - RENDER_DELAY_MS;
+    const motionStates = new Map<number, PlaybackState>();
+    const movingIds: number[] = [];
+    let anyWalking = false;
+    for (const c of world.getAllCreatures()) {
+      if (!drawnBelow.includes(c.z) && !drawnAbove.includes(c.z)) continue;
+      const p = playbackFor(c);
+      const state = playbackStateAt(p.samples, p.cadence, playbackT);
+      motionStates.set(c.id, state);
+      if (state.moving) movingIds.push(c.id);
+      if (playbackT < p.samples[p.samples.length - 1].at) anyWalking = true;
+    }
+    movingIds.sort((a, b) => a - b);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
     // (expiresAt comes from Date.now()), and the layer updates every
     // call — including ones the tile short-circuit below skips.
@@ -486,7 +499,9 @@ export function bindRenderer(
       bubbles.update(chatManager, 0, 0, 1, Date.now());
       bubblesActive = chatManager.speechBubbles.length > 0;
     }
-    const walkTick = anyWalking ? Math.floor(now / WALK_FRAME_MS) : -1;
+    const poseKey = movingIds.length > 0
+      ? `${Math.floor(now / WALK_FRAME_MS)}:${movingIds.join(',')}`
+      : 'idle';
     if ((anyWalking || bubblesActive || effectsActive) && rafId === 0) {
       const tick = (): void => {
         rafId = 0;
@@ -518,7 +533,7 @@ export function bindRenderer(
     const revisionDue = revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS;
     if (fullRebuild || roofStateChanged || revisionDue) {
       const belowToRebuild = fullRebuild ? drawnBelow
-        : revisionDue ? dirtyFloors(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
+        : revisionDue ? dirtyFloorsWithBelowOcclusion(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
           : [];
       // The above set is a function of the probe, so a probe change
       // rebuilds that whole (small, sparse) stack; roof-culled means
@@ -642,7 +657,7 @@ export function bindRenderer(
     // against the tile stack, so a stack rebuild (which alone covers a
     // firstVisible change too) forces a re-seat even when no creature
     // moved.
-    const ck = `${world.creatureRevision}:${walkTick}:${world.playerZ}:${world.playerX}:${world.playerY}:${tileLayoutRev}`;
+    const ck = `${world.creatureRevision}:${poseKey}:${world.playerZ}:${world.playerX}:${world.playerY}:${tileLayoutRev}`;
     if (!creatureLayer || ck !== creatureKey) {
       // One container per drawn floor, seated in draw-order position
       // BEFORE drawCreatures fills them. Floors whose tile layer isn't
@@ -672,7 +687,11 @@ export function bindRenderer(
       }
       // Build first, destroy after: drawCreatures reparents persistent
       // nameplates into the new layers, keeping them out of the destroy.
-      movables = drawCreatures(world, atlas, layers, tintedCache, nameplates);
+      movables = drawCreatures(
+        world, atlas, layers, tintedCache, nameplates,
+        (c) => motionStates.get(c.id)?.moving ?? playbackStateFor(c, now).moving,
+        now,
+      );
       root.addChildAt(nextCreatures, tilesRoot ? 1 : 0);
       for (const old of creatureFloorLayers.values()) {
         old.parent?.removeChild(old);
@@ -818,6 +837,8 @@ function drawCreatures(
   layersByZ: ReadonlyMap<number, Container>,
   tintedCache: TintedTextureCache,
   nameplates: Map<number, NameplateHandle>,
+  isMoving: (creature: WorldCreature) => boolean,
+  now: number,
 ): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
   const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
   const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
@@ -827,7 +848,6 @@ function drawCreatures(
 
   const byFloor = partitionByFloor(world.getAllCreatures(), [...layersByZ.keys()]);
 
-  const now = performance.now();
   const seen = new Set<number>();
   for (const [z, container] of layersByZ) {
     const visible = (byFloor.get(z) ?? []).filter((c) =>
@@ -836,7 +856,7 @@ function drawCreatures(
     visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
     for (const c of visible) {
-      const sprite = renderCreature(c, atlas, tintedCache, walkPhase(c, now));
+      const sprite = renderCreature(c, atlas, tintedCache, walkPhase(isMoving(c), now));
       if (sprite) {
         container.addChild(sprite);
         movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });

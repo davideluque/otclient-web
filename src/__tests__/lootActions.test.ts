@@ -71,6 +71,15 @@ function openFrame(cid: number, items: Array<{ id: number; count?: number }>): I
   return new InputPacket(out.toArrayBuffer());
 }
 
+function addItemFrame(cid: number, item: { id: number; count?: number }): InputPacket {
+  const out = new OutputPacket();
+  out.addU8(0x70);
+  out.addU8(cid);
+  out.addU16(item.id);
+  if (item.count !== undefined) out.addU8(item.count);
+  return new InputPacket(out.toArrayBuffer());
+}
+
 function containerCells(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('.container-pane .cell.filled')];
 }
@@ -126,6 +135,22 @@ describe('container item tap → action sheet', () => {
       0x64, 0x00, 0xc8, 0x00, 0x07, // to: the tile under the player
       0x01,
     ]);
+  });
+
+  it('closes a container item sheet when server updates shift container slots', () => {
+    const { client, dispatcher, sent } = makeClient();
+    bindContainers(client, document.body);
+    dispatcher.dispatch(openFrame(2, [{ id: BAG_ID }, { id: STACKABLE_ID, count: 12 }]));
+
+    containerCells()[1].click();
+    expect(document.querySelector('.action-sheet-backdrop')).not.toBeNull();
+
+    // 0x70 prepends at slot 0, so the tapped stackable shifts from slot 1
+    // to slot 2. Keeping the old sheet would loot whatever is now at slot 1.
+    dispatcher.dispatch(addItemFrame(2, { id: BAG_ID }));
+
+    expect(document.querySelector('.action-sheet-backdrop')).toBeNull();
+    expect(sent).toEqual([]);
   });
 
   it('Look sends the existing 0x8C; Drop is omitted without a player-position provider', () => {

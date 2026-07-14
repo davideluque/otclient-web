@@ -154,4 +154,16 @@ describe('ContainerManager', () => {
     manager.close(7);
     expect(manager.nextFreeId()).toBe(7);
   });
+
+  it('reserves ids handed to pending opens until the server answers', () => {
+    const manager = new ContainerManager();
+    expect(manager.nextFreeId()).toBe(0);
+    expect(manager.nextFreeId()).toBe(1);
+
+    manager.open({ containerId: 0, containerItemId: BAG_ID, name: 'Bag', capacity: 8, hasParent: false, items: [] });
+    expect(manager.nextFreeId()).toBe(2);
+
+    manager.open({ containerId: 1, containerItemId: BAG_ID, name: 'Backpack', capacity: 20, hasParent: false, items: [] });
+    expect(manager.list.map((container) => container.id)).toEqual([0, 1]);
+  });
 });

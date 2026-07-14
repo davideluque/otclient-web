@@ -136,6 +136,19 @@ describe('gatherLights', () => {
     expect(lights.map(l => l.intensity).sort()).toEqual([3, 7]);
   });
 
+  it('shifts off-camera-floor sources to their screen cell when cameraZ is given', () => {
+    const tm = makeTileMap([
+      { x: 5, y: 5, z: 7, serverIds: [100] }, // camera floor — unshifted
+      { x: 6, y: 5, z: 6, serverIds: [101] }, // one above — one tile north-west
+      { x: 4, y: 4, z: 8, serverIds: [100] }, // one below — one tile south-east
+    ]);
+    const lights = [...gatherLights(tm, datIndex, 0, 0, 10, 10, [7, 6, 8], 7)];
+    expect(lights).toHaveLength(3);
+    expect(lights[0]).toMatchObject({ x: 5, y: 5 });
+    expect(lights[1]).toMatchObject({ x: 5, y: 4 });
+    expect(lights[2]).toMatchObject({ x: 5, y: 5 });
+  });
+
   it('merges every listed floor into one gather — a torch upstairs lights the view', () => {
     const tm = makeTileMap([
       { x: 5, y: 5, z: 7, serverIds: [100] },

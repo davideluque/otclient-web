@@ -125,8 +125,11 @@ function showTapFeedback(clientX: number, clientY: number, kind: TapFeedbackKind
   marker.style.left = `${clientX}px`;
   marker.style.top = `${clientY}px`;
   document.body.appendChild(marker);
-  marker.addEventListener('animationend', () => marker.remove(), { once: true });
-  setTimeout(() => marker.remove(), 500);
+  const fallbackTimer = setTimeout(() => marker.remove(), 500);
+  marker.addEventListener('animationend', () => {
+    clearTimeout(fallbackTimer);
+    marker.remove();
+  }, { once: true });
 }
 
 /**

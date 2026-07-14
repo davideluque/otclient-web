@@ -203,6 +203,8 @@ describe('long-press pointer tracking', () => {
     expect(onCreatureTap).toHaveBeenCalledWith(77);
     expect(sent).toHaveLength(0);
     expect(document.querySelector('.world-tap-feedback.attack')).not.toBeNull();
+    vi.advanceTimersByTime(600);
+    expect(document.querySelector('.world-tap-feedback.attack')).toBeNull();
     handle.destroy();
   });
 

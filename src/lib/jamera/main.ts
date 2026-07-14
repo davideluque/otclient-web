@@ -288,7 +288,7 @@ mountLoginScreen(root, {
     if (params.get('metrics') === '1') setMetricsVisible(true);
     teardownStats = bindStats(client, document.body, [
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
-      { label: 'Chat', onSelect: () => teardownChat?.fullView.open() },
+      { label: 'Chat', onSelect: () => teardownChat?.presentation.openFull() },
       { label: 'Battle', onSelect: () => teardownBattle?.setVisible(!teardownBattle.visible) },
       { label: 'VIP', onSelect: () => teardownVip?.list.open() },
       {

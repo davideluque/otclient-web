@@ -12,7 +12,7 @@ describe('createFullChatView', () => {
   it('shares history with the manager and renders incoming messages while open', () => {
     const manager = new ChatManager();
     manager.handleMessage({ senderName: 'Early', messageType: MessageType.Say, text: 'before open', timestamp: 1 });
-    const view = createFullChatView(manager, new GameProtocol(), vi.fn());
+    const view = createFullChatView(manager, new GameProtocol(), vi.fn(), document.body, {});
 
     view.open();
     const messages = document.querySelector('.full-chat-messages')!;
@@ -26,7 +26,8 @@ describe('createFullChatView', () => {
   it('renders hostile content as text, sends through parseCommand, closes via ✕/backdrop/Escape', () => {
     const manager = new ChatManager();
     const sent: number[] = [];
-    const view = createFullChatView(manager, new GameProtocol(), (p) => sent.push(p.toUint8Array()[0]));
+    const onClose = vi.fn();
+    const view = createFullChatView(manager, new GameProtocol(), (p) => sent.push(p.toUint8Array()[0]), document.body, { onClose });
     view.open();
 
     manager.handleMessage({
@@ -44,6 +45,7 @@ describe('createFullChatView', () => {
     const el = document.querySelector('.full-chat') as HTMLElement;
     (document.querySelector('.full-chat-close') as HTMLButtonElement).click();
     expect(el.classList.contains('open')).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
     view.open();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(el.classList.contains('open')).toBe(false);

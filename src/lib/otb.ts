@@ -243,3 +243,15 @@ export function floorChangeClientIds(otb: OtbFile): Set<number> {
   }
   return ids;
 }
+
+/** Client ids of items the server expects to receive through UseItem (0x82).
+ * This includes containers/corpses, doors, ladders, levers and grates. */
+export function useableClientIds(otb: OtbFile): Set<number> {
+  const ids = new Set<number>();
+  for (const [serverId, flags] of otb.serverIdToFlags) {
+    if ((flags & OtbFlags.Useable) === 0) continue;
+    const clientId = otb.serverToClient.get(serverId);
+    if (clientId !== undefined) ids.add(clientId);
+  }
+  return ids;
+}

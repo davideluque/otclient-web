@@ -10,13 +10,16 @@ import { TILE_SIZE } from '../../constants';
  * 18×14 window around the player. The player sits off-center in it
  * (8 left / 9 right, 6 up / 7 down), so with the player tile centered
  * on screen the region guaranteed to be painted is the symmetric core:
- * 17 tiles wide, 13 tall. The *cover zoom* scales the stage so that
- * core covers the whole screen in both orientations — anything less
- * leaves bands of page background ("black spaces / purple UI") that
- * the server has no tiles for.
+ * 17 tiles wide, 13 tall. A tall phone cannot both fill its entire screen
+ * from that landscape-shaped packet and retain a useful field of view:
+ * cover-scaling 13 rows onto an iPhone left only ~6 tiles across and made
+ * the game look permanently zoomed in. Portrait therefore targets the
+ * same 11-tile play width as the offline client. Known tiles accumulated
+ * while walking naturally fill more of the tall viewport over time.
  */
 export const GUARANTEED_TILES_X = 2 * Math.min(HALF_W_LEFT, HALF_W_RIGHT) + 1;
 export const GUARANTEED_TILES_Y = 2 * Math.min(HALF_H_TOP, HALF_H_BOTTOM) + 1;
+export const PORTRAIT_PLAY_TILES_X = 11;
 
 /** Fired on window after the app-level handler resizes + rescales. */
 export const VIEWPORT_EVENT = 'jamera:viewport';
@@ -26,15 +29,13 @@ export function computeCoverZoom(screenWidth: number, screenHeight: number): num
   // orientation; Infinity/NaN here would poison every position calc.
   // Negated > comparisons so NaN/undefined fall into the guard too.
   if (!(screenWidth > 0) || !(screenHeight > 0)) return 1;
-  return Math.max(
-    screenWidth / (GUARANTEED_TILES_X * TILE_SIZE),
-    screenHeight / (GUARANTEED_TILES_Y * TILE_SIZE),
-  );
+  const tilesAcross = screenWidth <= screenHeight ? PORTRAIT_PLAY_TILES_X : GUARANTEED_TILES_X;
+  return screenWidth / (tilesAcross * TILE_SIZE);
 }
 
 /**
  * Size the renderer to the *visual* viewport and scale the stage to the
- * cover zoom — now, and again on every resize / orientation change /
+ * mobile play zoom — now, and again on every resize / orientation change /
  * URL-bar reveal. Listeners are debounced over two animation frames:
  * iOS Safari fires `resize` while `innerWidth/innerHeight` are still
  * mid-rotation, and one frame isn't enough on slower devices (the same
@@ -70,6 +71,11 @@ export function bindViewportCover(app: Application): () => void {
     // churn and the downstream recenters when nothing actually changed.
     if (!sizeChanged && !positionChanged && zoom === app.stage.scale.x) return;
     if (sizeChanged) app.renderer.resize(w, h);
+    // Keep the HiDPI backing store (canvas.width/height) mapped onto the
+    // visual viewport in CSS pixels. This is explicit because renderer.resize
+    // does not restore a CSS size that a host style previously removed.
+    app.canvas.style.width = `${w}px`;
+    app.canvas.style.height = `${h}px`;
     // visualViewport dimensions describe the visible rectangle, but its
     // origin can be displaced from the layout viewport after Safari focuses
     // (and auto-zooms around) a login input. Keep the fixed canvas over that

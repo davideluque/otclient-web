@@ -87,7 +87,12 @@ describe('long-press pointer tracking', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  function mount(tile?: MapTile, opts?: { nextContainerId?: () => number }) {
+  function mount(tile?: MapTile, opts?: {
+    nextContainerId?: () => number;
+    floorChangeIds?: Set<number>;
+    useableIds?: Set<number>;
+    tapToWalk?: () => boolean;
+  }) {
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
     document.body.appendChild(canvas);
@@ -138,6 +143,35 @@ describe('long-press pointer tracking', () => {
     vi.advanceTimersByTime(600); // long-press must NOT also fire
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual([0x64, 2, 1, 1]); // count 2, east east
+    handle.destroy();
+  });
+
+  it('a single touch tap uses a corpse/container instead of relying on iOS dblclick', () => {
+    const { handle, sent, touch } = mount(undefined, { useableIds: new Set([1987]) });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 400, 300);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0][0]).toBe(0x82); // UseItem
+    handle.destroy();
+  });
+
+  it('keeps object taps active when tap-to-walk is disabled', () => {
+    const { handle, sent, touch } = mount(undefined, {
+      useableIds: new Set([1987]),
+      tapToWalk: () => false,
+    });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 400, 300);
+    expect(sent[0][0]).toBe(0x82);
+    handle.destroy();
+  });
+
+  it('does not walk ordinary ground when tap-to-walk is disabled', () => {
+    const { handle, sent, touch } = mount(undefined, { tapToWalk: () => false });
+    touch('pointerdown', 1, 464, 300);
+    touch('pointerup', 1, 464, 300);
+    expect(sent).toHaveLength(0);
     handle.destroy();
   });
 

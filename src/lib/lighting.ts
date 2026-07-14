@@ -29,7 +29,7 @@ export interface LightingOptions {
 
 /** localStorage key + default for the player's brightness preference. */
 const BRIGHTNESS_KEY = 'jamera.brightness';
-export const DEFAULT_BRIGHTNESS = 25;
+export const DEFAULT_BRIGHTNESS = 100;
 
 // In-memory cache: loadBrightness is on the render path (per repaint),
 // and localStorage.getItem is synchronous blocking I/O.
@@ -68,17 +68,17 @@ export function resetBrightnessCache(): void {
 
 /**
  * Effective ambient color for the overlay: the server's world light
- * (0x82 level 0–255 scaling its palette color) blended toward full
- * white by the brightness preference — Tibia's classic ambient-light
- * option. 0% honors the server exactly, 100% ignores darkness.
+ * (0x82 level 0–255 scaling its palette color) multiplied by the user's
+ * brightness. The old implementation blended toward white, which made
+ * 0% look fully bright whenever the server reported daylight—the exact
+ * opposite of what a brightness control promises.
  */
 export function computeAmbient(level: number, colorIndex: number, brightnessPct: number): number {
   const server = tibiaColorToHex(colorIndex);
   const scale = Math.max(0, Math.min(255, level)) / 255;
-  const t = Math.max(0, Math.min(100, brightnessPct)) / 100;
+  const brightness = Math.max(0, Math.min(100, brightnessPct)) / 100;
   const blend = (c: number): number => {
-    const fromServer = c * scale;
-    return Math.round(fromServer + (255 - fromServer) * t);
+    return Math.round(c * scale * brightness);
   };
   const r = blend((server >> 16) & 0xff);
   const g = blend((server >> 8) & 0xff);

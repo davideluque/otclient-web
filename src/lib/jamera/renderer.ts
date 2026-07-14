@@ -711,15 +711,14 @@ export function bindRenderer(
 
     // ── Light overlay: server world light × brightness preference ──
     const brightness = loadBrightness();
-    const lk = brightness >= 100 ? 'off'
-      : `${paintedTileRevision}:${creatureKey}:${world.worldLight.level}:${world.worldLight.color}:${brightness}`;
+    const lk = `${paintedTileRevision}:${creatureKey}:${world.worldLight.level}:${world.worldLight.color}:${brightness}`;
     if (lk !== lightKey) {
       if (lightLayer) {
         root.removeChild(lightLayer);
         lightLayer.destroy();
         lightLayer = null;
       }
-      if (lk !== 'off') {
+      {
         const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
         const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
         const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;

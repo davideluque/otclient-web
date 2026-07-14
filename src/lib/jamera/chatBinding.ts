@@ -3,6 +3,7 @@ import { createChatUI } from '../chat/ChatUI';
 import { createFullChatView, type FullChatViewHandle } from '../chat/FullChatView';
 import type { GameClient } from '../net/common/GameClient';
 import { MessageType } from '../net/common/types';
+import { createGameMessageOverlay } from './gameMessageOverlay';
 
 /**
  * Wires the chat stack to a live game session: server speak packets
@@ -46,6 +47,7 @@ export function bindChat(
 ): ChatBindingHandle {
   const protocol = client.getProtocol();
   const manager = new ChatManager();
+  const gameMessages = createGameMessageOverlay(parent);
 
   // Declared ahead of createChatUI so the onClose closure never touches
   // a temporal dead zone; the real applyOpen is assigned once `ui` exists.
@@ -93,6 +95,7 @@ export function bindChat(
   dispatcher.on(op.TextMessage, (p) => {
     const messageClass = p.getU8(); // styling can use it later
     const text = p.getString();
+    gameMessages.show(messageClass, text);
     if (messageClass === MSG_EVENT_ADVANCE && text === 'You are dead.') {
       // A throwing UI callback must not kill the dispatcher mid-frame —
       // the rest of the batched packets (and this message) still parse.
@@ -130,6 +133,7 @@ export function bindChat(
       dispatcher.off(op.TextMessage);
       fullView.destroy();
       chatUi.destroy();
+      gameMessages.destroy();
     },
   };
 }

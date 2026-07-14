@@ -52,6 +52,7 @@ describe('bindChat', () => {
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
     expect(document.querySelector('#chat-messages')!.textContent).toContain('Welcome to Jamera!');
+    expect(document.querySelector('.game-message-overlay')!.textContent).toContain('Welcome to Jamera!');
   });
 
   it('keeps messages for channels opened by the server', () => {

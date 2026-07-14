@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   GUARANTEED_TILES_X,
   GUARANTEED_TILES_Y,
+  PORTRAIT_PLAY_TILES_X,
   VIEWPORT_EVENT,
   computeCoverZoom,
   bindViewportCover,
@@ -17,20 +18,18 @@ describe('computeCoverZoom', () => {
     expect(GUARANTEED_TILES_Y).toBe(13);
   });
 
-  it('portrait phones are height-bound', () => {
-    // 390×844: the 13 guaranteed rows must stretch over 844px.
-    expect(computeCoverZoom(390, 844)).toBeCloseTo(844 / (13 * TILE_SIZE), 5);
+  it('portrait phones retain an 11-tile-wide field of view', () => {
+    expect(computeCoverZoom(390, 844)).toBeCloseTo(390 / (PORTRAIT_PLAY_TILES_X * TILE_SIZE), 5);
   });
 
-  it('landscape phones are width-bound', () => {
+  it('landscape phones show the full guaranteed packet width', () => {
     expect(computeCoverZoom(844, 390)).toBeCloseTo(844 / (17 * TILE_SIZE), 5);
   });
 
-  it('never returns less than full coverage on either axis', () => {
+  it('does not crop the server packet horizontally', () => {
     for (const [w, h] of [[320, 568], [1920, 1080], [768, 1024]]) {
       const zoom = computeCoverZoom(w, h);
       expect(zoom * GUARANTEED_TILES_X * TILE_SIZE).toBeGreaterThanOrEqual(w - 1e-6);
-      expect(zoom * GUARANTEED_TILES_Y * TILE_SIZE).toBeGreaterThanOrEqual(h - 1e-6);
     }
   });
 
@@ -61,6 +60,8 @@ describe('bindViewportCover', () => {
     const unbind = bindViewportCover(app);
     expect(resize).toHaveBeenCalledWith(window.innerWidth, window.innerHeight);
     expect(scale.x).toBeCloseTo(computeCoverZoom(window.innerWidth, window.innerHeight), 5);
+    expect(app.canvas.style.width).toBe(`${window.innerWidth}px`);
+    expect(app.canvas.style.height).toBe(`${window.innerHeight}px`);
     expect(events.length).toBeGreaterThan(0);
 
     unbind();

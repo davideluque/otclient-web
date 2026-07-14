@@ -7,6 +7,7 @@ import { findWalkRoute } from './autowalk';
 import { spriteIndex } from '../tileRenderer';
 import { TILE_SIZE } from '../../constants';
 import { font, radius, space, surface, zIndex } from '../ui/tokens';
+import { loadTapToWalk } from './interactionPreferences';
 
 /**
  * World-interaction input on the game canvas:
@@ -59,6 +60,10 @@ export interface InteractionsOptions {
    * target them and going up/down by tap silently does nothing.
    */
   floorChangeIds?: Set<number>;
+  /** OTB Useable ids: containers/corpses, doors, ladders and levers. */
+  useableIds?: Set<number>;
+  /** Live preference adapter. Defaults to the persisted mobile setting. */
+  tapToWalk?: () => boolean;
 }
 
 const LONG_PRESS_MS = 500;
@@ -228,13 +233,13 @@ export function bindInteractions(
     };
   }
 
-  function topStackItemAtTile(position: WirePosition): ThingRef | null {
+  function topStackItemAtTile(position: WirePosition, ids?: Set<number>): ThingRef | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
 
     for (let stackPos = tile.things.length - 1; stackPos >= 0; stackPos--) {
       const thing = tile.things[stackPos];
-      if (thing.kind === 'item') {
+      if (thing.kind === 'item' && (!ids || ids.has(thing.item.id))) {
         return { position, thingId: thing.item.id, stackPos };
       }
     }
@@ -259,8 +264,8 @@ export function bindInteractions(
     send(protocol.actions.buildLookAt(target.position, target.thingId, target.stackPos));
   }
 
-  function use(clientX: number, clientY: number): void {
-    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
+  function use(clientX: number, clientY: number, ids?: Set<number>): void {
+    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY), ids);
     if (!target) return;
     // The byte is always sent, but only real containers should reserve an
     // id; doors/ladders/ropes may also use 0x82 and never answer with 0x6E.
@@ -269,6 +274,12 @@ export function bindInteractions(
       target.position, target.thingId, target.stackPos,
       containerId,
     ));
+  }
+
+  function tileHasUseableItem(position: WirePosition): boolean {
+    if (!opts.useableIds?.size) return false;
+    const tile = world.getTile(position.x, position.y, position.z);
+    return tile?.items.some((item) => opts.useableIds!.has(item.id)) ?? false;
   }
 
   // Tap/click-to-walk: A* over the known window, sent as one 0x64
@@ -287,6 +298,31 @@ export function bindInteractions(
     const route = findWalkRoute(world, datIndex, pos.x, pos.y, opts.floorChangeIds);
     if (!route || route.length === 0) return;
     send(protocol.movement.buildAutoWalk(route));
+  }
+
+  /**
+   * Mobile's primary gesture. Floor-change artwork is always a walk target;
+   * an OTB-useable item is used in place; ordinary ground walks only while
+   * Tap to walk is enabled. This avoids depending on iOS WebKit to synthesize
+   * dblclick after a double-tap (it frequently does not).
+   */
+  function smartTouchTap(clientX: number, clientY: number): void {
+    const pointed = worldTileAtPointer(clientX, clientY);
+    const floorTarget = datIndex
+      ? floorChangeTileAtPointer(world, datIndex, pointed, opts.floorChangeIds)
+      : pointed;
+    const isFloorChange = floorTarget.x !== pointed.x || floorTarget.y !== pointed.y
+      || (world.getTile(pointed.x, pointed.y, pointed.z)?.items
+        .some((item) => opts.floorChangeIds?.has(item.id)) ?? false);
+    if (isFloorChange) {
+      walkTo(clientX, clientY);
+      return;
+    }
+    if (tileHasUseableItem(pointed)) {
+      use(clientX, clientY, opts.useableIds);
+      return;
+    }
+    if ((opts.tapToWalk ?? loadTapToWalk)()) walkTo(clientX, clientY);
   }
 
   // Crosshair (use-with) mode: armed from an action sheet, consumed by
@@ -414,7 +450,7 @@ export function bindInteractions(
     if (!wasTap) return;
     lastTouchTapAt = Date.now();
     if (armedUseWith) fireUseWith(e.clientX, e.clientY);
-    else walkTo(e.clientX, e.clientY);
+    else smartTouchTap(e.clientX, e.clientY);
   };
 
   canvas.addEventListener('click', onClick);

@@ -42,7 +42,7 @@ import type { OtbFile } from './lib/otb';
 import type { OtbmFile, OtbmRegion, Position } from './lib/otbm';
 import type { CompleteLoadedFiles } from './lib/fileLoader';
 import { expansionRegionForDestination, expansionRegionForViewportEdge } from './lib/regionExpansion';
-import { TILE_SIZE } from './constants';
+import { TILE_SIZE, tilePositionKey } from './constants';
 
 // --- File loading UI ---
 
@@ -416,7 +416,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
           for (const item of tile.items) {
             const tt = datIndex.get(item.clientId);
             if (tt?.attrs.has(DatAttr.FullGround)) {
-              cumulative.add((tile.x << 16) | tile.y);
+              cumulative.add(tilePositionKey(tile.x, tile.y));
               break;
             }
           }

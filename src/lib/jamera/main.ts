@@ -31,13 +31,14 @@ import { bindStatus, type StatusBindingHandle } from './statusBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { loadBrightness, saveBrightness } from '../lighting';
+import { loadTapToWalk, saveTapToWalk } from './interactionPreferences';
 import { LIGHT_PREF_EVENT } from './renderer';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
 import { setItemWireFlags } from '../net/common/itemFlags';
 import { parseDat } from '../dat';
-import { parseOtb, floorChangeClientIds } from '../otb';
+import { parseOtb, floorChangeClientIds, useableClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
 
@@ -228,9 +229,16 @@ mountLoginScreen(root, {
         set: (on) => setMetricsVisible(on),
       },
       {
+        kind: 'toggle',
+        label: 'Tap to walk',
+        hint: 'Off: move with the joystick; taps still open and use objects.',
+        get: () => loadTapToWalk(),
+        set: (on) => saveTapToWalk(on),
+      },
+      {
         kind: 'slider',
         label: 'Brightness',
-        hint: '0% follows the server’s day/night fully; 100% ignores darkness.',
+        hint: '0% is dark; 100% shows the server’s full day/night light.',
         min: 0,
         max: 100,
         step: 5,
@@ -336,7 +344,14 @@ function ensurePixiApp(): Promise<Application> {
         // event-system error storms. Keep ?renderer=webgpu for explicit A/Bs.
         preference: rendererPreference,
       });
-      app.canvas.style.cssText = 'position:fixed;left:0;top:0;z-index:0;';
+      // Pixi's autoDensity writes the CSS size that maps its HiDPI backing
+      // buffer back to viewport pixels. Assigning cssText here used to erase
+      // that width/height, so an iPhone DPR=3 canvas became three times wider
+      // and taller than the screen and looked severely zoomed/cropped.
+      app.canvas.style.position = 'fixed';
+      app.canvas.style.left = '0';
+      app.canvas.style.top = '0';
+      app.canvas.style.zIndex = '0';
       document.body.appendChild(app.canvas);
       // Cover-zoom + debounced resize/orientation tracking; the app is a
       // page-lifetime singleton so the binding never needs tearing down.
@@ -434,6 +449,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         // second container opens beside the first instead of over it.
         nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
         floorChangeIds: jameraFloorChangeIds ?? undefined,
+        useableIds: jameraUseableIds ?? undefined,
       })
       : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager);
@@ -481,6 +497,9 @@ let jameraAtlas: SpriteAtlas | null = null;
 // Client ids that floor-change (stairs, ramps, holes) — OTB knowledge
 // the walkability checks need (those ids are NotWalkable in the .dat).
 let jameraFloorChangeIds: Set<number> | null = null;
+// Client ids handled by a tap as UseItem: corpses/containers, doors,
+// ladders, levers and grates. Like floor changes, this comes from OTB.
+let jameraUseableIds: Set<number> | null = null;
 
 type JameraLoadedFiles = Pick<CompleteLoadedFiles, 'dat' | 'spr' | 'otb'>;
 const JAMERA_FILE_KEYS = ['dat', 'spr', 'otb'] as const;
@@ -512,7 +531,9 @@ async function tryAutoloadAssets(): Promise<void> {
       // misalign the stream otherwise. Cheap (one .dat parse) and safe
       // to repeat on retries.
       setItemWireFlags(parseDat(loaded.dat));
-      jameraFloorChangeIds = floorChangeClientIds(parseOtb(loaded.otb));
+      const parsedOtb = parseOtb(loaded.otb);
+      jameraFloorChangeIds = floorChangeClientIds(parsedOtb);
+      jameraUseableIds = useableClientIds(parsedOtb);
       assetsReadyResolve?.();
       try {
         const atlasStartedAt = performance.now();

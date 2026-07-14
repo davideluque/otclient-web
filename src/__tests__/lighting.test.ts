@@ -165,25 +165,18 @@ describe('gatherLights', () => {
 });
 
 describe('computeAmbient', () => {
-  it('full day at 0% brightness is the server color at full level', () => {
-    // level 255, white palette index 215 → pure white regardless of slider.
-    expect(computeAmbient(255, 215, 0)).toBe(0xffffff);
+  it('0% is dark even when the server reports full daylight', () => {
+    expect(computeAmbient(255, 215, 0)).toBe(0x000000);
   });
 
-  it('0% brightness honors the server: darkness scales the color down', () => {
-    // level 0 → black framebuffer (lights are the only illumination).
-    expect(computeAmbient(0, 215, 0)).toBe(0x000000);
-    // half level → half-gray.
-    expect(computeAmbient(128, 215, 0)).toBe(0x808080);
+  it('100% preserves the server day/night level', () => {
+    expect(computeAmbient(255, 215, 100)).toBe(0xffffff);
+    expect(computeAmbient(128, 215, 100)).toBe(0x808080);
+    expect(computeAmbient(0, 215, 100)).toBe(0x000000);
   });
 
-  it('100% brightness ignores darkness entirely', () => {
-    expect(computeAmbient(0, 215, 100)).toBe(0xffffff);
-    expect(computeAmbient(40, 0, 100)).toBe(0xffffff);
-  });
-
-  it('blends toward white in between', () => {
-    // Night (level 0) at 50%: halfway to white.
-    expect(computeAmbient(0, 215, 50)).toBe(0x808080);
+  it('scales the server light at intermediate brightness', () => {
+    expect(computeAmbient(255, 215, 50)).toBe(0x808080);
+    expect(computeAmbient(128, 215, 50)).toBe(0x404040);
   });
 });

@@ -19,6 +19,7 @@ import { CombatTextRenderer } from './combatText';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
 import type { ChatManager } from '../chat/ChatManager';
 import { DISTANCE_SHOT_TTL_MS, type GameWorld, type WorldCreature } from '../GameWorld';
+import { DatAttr } from '../dat';
 import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
 import { TILE_SIZE } from '../../constants';
@@ -33,13 +34,38 @@ const WALK_FRAME_MS = 125;
  * Glide duration bounds. The right duration is the creature's ACTUAL
  * step cadence (Tibia paces ~400ms/tile at base speed, faster with
  * hastes/levels, plus network jitter) — a fixed value either finishes
- * early (visible stop-start between steps) or rubber-bands. Each
+ * early (visible stop-start between steps) or rubber-bands. The SELF
  * creature's cadence is measured from its confirmation intervals
- * (EMA), so continuous walking renders as one unbroken scroll.
+ * (EMA), so continuous walking renders as one unbroken scroll; every
+ * other creature glides forward over its true step duration instead
+ * (see forwardStateAt).
  */
 export const STEP_GLIDE_DEFAULT_MS = 380;
 export const STEP_GLIDE_MIN_MS = 150;
 export const STEP_GLIDE_MAX_MS = 650;
+
+/**
+ * Bounds for a computed (speed-based) step duration. The ceiling covers
+ * the slowest real case — an NPC (base speed 110) crossing swamp — while
+ * keeping a glitched speed/ground value from freezing a creature
+ * mid-tile; the floor keeps an extreme haste from reading as a teleport.
+ */
+export const FORWARD_STEP_MIN_MS = 100;
+export const FORWARD_STEP_MAX_MS = 2500;
+
+/**
+ * The server's step duration (otserv Creature::getStepDuration):
+ * 1000 × groundSpeed / creatureSpeed, doubled on diagonals. This is the
+ * time a creature really spends per tile, so it is the glide duration
+ * that renders NPCs ambling and hasted players sprinting — the arrival
+ * cadence can't say that (an NPC's think-pauses swamp it).
+ */
+export function expectedStepMs(creatureSpeed: number, groundSpeed: number, diagonal: boolean): number {
+  if (creatureSpeed <= 0) return STEP_GLIDE_DEFAULT_MS;
+  const ground = groundSpeed > 0 ? groundSpeed : 150;
+  const dur = ((1000 * ground) / creatureSpeed) * (diagonal ? 2 : 1);
+  return Math.max(FORWARD_STEP_MIN_MS, Math.min(FORWARD_STEP_MAX_MS, Math.round(dur)));
+}
 /**
  * Extra painted tiles beyond the server window on every side: the
  * pursuing camera trails the confirmed position by up to a tile, and
@@ -131,16 +157,25 @@ export interface RenderPos { x: number; y: number }
  * Playout buffer (fixed render delay), the FPS-netcode entity-
  * interpolation pattern Codex recommended over latest-target pursuit:
  * confirmed tiles are buffered as timestamped samples and rendered
- * RENDER_DELAY_MS in the past, each glide timed to FINISH exactly at
- * its sample's (delayed) arrival time. Wi-Fi delivery jitter smaller
- * than the delay reorders nothing on screen — motion plays back as one
- * continuous stream instead of stalling and sprinting.
+ * RENDER_DELAY_MS in the past. For SELF each glide is timed to FINISH
+ * exactly at its sample's (delayed) arrival time; other creatures
+ * glide forward from it instead (see forwardStateAt). Wi-Fi delivery
+ * jitter smaller than the delay reorders nothing on screen — motion
+ * plays back as one continuous stream instead of stalling and
+ * sprinting.
  */
 export const RENDER_DELAY_MS = 180;
 /** Buffered samples per creature — enough to ride out a delivery burst. */
 const MAX_SAMPLES = 8;
 
-export interface PlaybackSample { x: number; y: number; z: number; at: number }
+export interface PlaybackSample {
+  x: number;
+  y: number;
+  z: number;
+  at: number;
+  /** Expected duration of the step INTO this tile (absent on seeds). */
+  stepMs?: number;
+}
 export interface PlaybackState extends RenderPos { moving: boolean }
 
 /**
@@ -185,6 +220,43 @@ export function playbackPosAt(
 ): RenderPos {
   const { x, y } = playbackStateAt(samples, cadenceMs, t);
   return { x, y };
+}
+
+/**
+ * OTClient-style forward glide, used for every creature but self: the
+ * step into sample `b` animates over [b.at, b.at + b.stepMs), i.e. the
+ * creature leaves its old tile when the move packet plays and takes its
+ * TRUE step duration to cross — an ambling NPC ambles instead of
+ * standing then dashing the tile in RENDER_DELAY_MS. Only already-known
+ * samples feed the glide, so nothing ever jumps retroactively; a
+ * follow-up sample arriving early cuts the glide short at its own
+ * timestamp. Discontinuities snap.
+ */
+export function forwardStateAt(
+  samples: ReadonlyArray<PlaybackSample>,
+  t: number,
+): PlaybackState {
+  if (samples.length === 0) return { x: 0, y: 0, moving: false };
+  // Latest sample at or before t — the step currently animating.
+  let i = samples.length - 1;
+  while (i > 0 && samples[i].at > t) i--;
+  const b = samples[i];
+  if (i === 0 || t < b.at) return { x: b.x, y: b.y, moving: false };
+  const a = samples[i - 1];
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const step = (dx !== 0 || dy !== 0) && Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && b.z === a.z;
+  if (!step) return { x: b.x, y: b.y, moving: false };
+  let duration = b.stepMs ?? STEP_GLIDE_DEFAULT_MS;
+  if (i + 1 < samples.length) {
+    duration = Math.min(duration, Math.max(1, samples[i + 1].at - b.at));
+  }
+  const u = Math.min(1, (t - b.at) / duration);
+  return {
+    x: a.x + dx * u,
+    y: a.y + dy * u,
+    moving: u < 1,
+  };
 }
 
 function walkPhase(moving: boolean, now: number): number {
@@ -246,6 +318,14 @@ export function bindRenderer(
   // parents) — same draw position, and the light/effects insertion
   // logic anchors on it.
   const creatureFloorLayers = new Map<number, Container>();
+  // The SELF nameplate rides above everything map (both tile parents and
+  // the light overlay): it hangs a tile above the player's head, which
+  // right under a stairwell opening is exactly where the floor-above
+  // ground paints — per-floor parenting hid the player's own name there.
+  // Always safe on top: drawnAbove is non-empty only when the roof probe
+  // found the player position UNcovered, so nothing legitimately hides
+  // the player (and their name) while above-floors are drawn.
+  let selfPlateLayer: Container | null = null;
   // Bumped whenever tile-layer containers are created or destroyed, so
   // the (cheap) creature pass re-inserts its per-floor siblings against
   // the new stack — a roof change while everyone stands still must not
@@ -318,6 +398,19 @@ export function bindRenderer(
   // Per-creature playout buffers (see playbackPosAt).
   const playback = new Map<number, { samples: PlaybackSample[]; cadence: number }>();
 
+  // The server's formula for the step the creature just took: ground
+  // speed of the tile it LEFT over its current speed (0x8F updates keep
+  // WorldCreature.speed fresh, so hastes shorten the glide immediately).
+  const stepMsFor = (c: WorldCreature, from: PlaybackSample): number => {
+    const groundId = world.getTile(from.x, from.y, from.z)?.items[0]?.id;
+    const groundAttr = groundId !== undefined
+      ? atlas.datIndex.get(groundId)?.attrs.get(DatAttr.Ground)
+      : undefined;
+    const groundSpeed = typeof groundAttr === 'number' ? groundAttr : 0;
+    const diagonal = from.x !== c.x && from.y !== c.y;
+    return expectedStepMs(c.speed, groundSpeed, diagonal);
+  };
+
   const playbackFor = (c: WorldCreature): { samples: PlaybackSample[]; cadence: number } => {
     let p = playback.get(c.id);
     if (!p) {
@@ -333,15 +426,29 @@ export function bindRenderer(
     if (last.x !== c.x || last.y !== c.y || last.z !== c.z) {
       const at = c.lastMoveAt ?? performance.now();
       p.cadence = nextStepEma(p.cadence, at - last.at);
-      p.samples.push({ x: c.x, y: c.y, z: c.z, at });
+      p.samples.push({ x: c.x, y: c.y, z: c.z, at, stepMs: stepMsFor(c, last) });
       if (p.samples.length > MAX_SAMPLES) p.samples.shift();
     }
     return p;
   };
 
+  // Self keeps the finish-at-confirmation playout buffer (the walk
+  // pipeline's cadence is tuned around it); everyone else glides
+  // forward at their true speed.
+  const stateAt = (c: WorldCreature, p: { samples: PlaybackSample[]; cadence: number }, t: number): PlaybackState =>
+    c.id === world.playerCreatureId
+      ? playbackStateAt(p.samples, p.cadence, t)
+      : forwardStateAt(p.samples, t);
+
+  /** When this creature's last queued glide fully lands (rAF keep-alive). */
+  const settleAt = (c: WorldCreature, p: { samples: PlaybackSample[] }): number => {
+    const last = p.samples[p.samples.length - 1];
+    return c.id === world.playerCreatureId ? last.at : last.at + (last.stepMs ?? 0);
+  };
+
   const playbackStateFor = (c: WorldCreature, now: number): PlaybackState => {
     const p = playbackFor(c);
-    return playbackStateAt(p.samples, p.cadence, now - RENDER_DELAY_MS);
+    return stateAt(c, p, now - RENDER_DELAY_MS);
   };
 
   const renderPosFor = (c: WorldCreature, now: number): RenderPos => {
@@ -485,10 +592,10 @@ export function bindRenderer(
     for (const c of world.getAllCreatures()) {
       if (!drawnBelow.includes(c.z) && !drawnAbove.includes(c.z)) continue;
       const p = playbackFor(c);
-      const state = playbackStateAt(p.samples, p.cadence, playbackT);
+      const state = stateAt(c, p, playbackT);
       motionStates.set(c.id, state);
       if (state.moving) movingIds.push(c.id);
-      if (playbackT < p.samples[p.samples.length - 1].at) anyWalking = true;
+      if (playbackT < settleAt(c, p)) anyWalking = true;
     }
     movingIds.sort((a, b) => a - b);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
@@ -512,6 +619,11 @@ export function bindRenderer(
     if (!root) {
       root = new Container();
       app.stage.addChild(root);
+      // Before effectsLayer: tile/creature/light layers all insert
+      // themselves below these, so the final order is tiles → creatures
+      // → aboveTiles → light → self plate → effects.
+      selfPlateLayer = new Container();
+      root.addChild(selfPlateLayer);
       effectsLayer = new Container();
       root.addChild(effectsLayer);
       root.addChild(combatTexts.getContainer());
@@ -690,7 +802,7 @@ export function bindRenderer(
       movables = drawCreatures(
         world, atlas, layers, tintedCache, nameplates,
         (c) => motionStates.get(c.id)?.moving ?? playbackStateFor(c, now).moving,
-        now,
+        now, selfPlateLayer,
       );
       root.addChildAt(nextCreatures, tilesRoot ? 1 : 0);
       for (const old of creatureFloorLayers.values()) {
@@ -821,6 +933,7 @@ export function bindRenderer(
       aboveFloorLayers.clear();
       creatureLayer = null;
       creatureFloorLayers.clear();
+      selfPlateLayer = null;
       effectsLayer = null;
     }
   };
@@ -834,9 +947,13 @@ export function bindRenderer(
  * within each floor so southern creatures overlap the ones behind them,
  * matching the tile painter order. Nameplates go into the SAME per-floor
  * container as their creature — a roof that hides a creature must hide
- * its nameplate too.
+ * its nameplate too. The one exception is the PLAYER's own plate, which
+ * goes into `selfPlateLayer` (above both tile parents): standing under a
+ * stairwell opening, the floor-above ground paints exactly where the
+ * plate hangs, and the player's own name must never vanish while the
+ * player is visible. Exported for tests.
  */
-function drawCreatures(
+export function drawCreatures(
   world: GameWorld,
   atlas: SpriteAtlas,
   layersByZ: ReadonlyMap<number, Container>,
@@ -844,6 +961,7 @@ function drawCreatures(
   nameplates: Map<number, NameplateHandle>,
   isMoving: (creature: WorldCreature) => boolean,
   now: number,
+  selfPlateLayer: Container | null,
 ): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
   const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
   const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
@@ -879,7 +997,10 @@ function drawCreatures(
       }
       plate.container.x = (c.x + 0.5) * TILE_SIZE;
       plate.container.y = c.y * TILE_SIZE - 14;
-      container.addChild(plate.container);
+      const plateParent = c.id === world.playerCreatureId && selfPlateLayer
+        ? selfPlateLayer
+        : container;
+      plateParent.addChild(plate.container);
       movables.push({
         node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c,
       });

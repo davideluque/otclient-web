@@ -64,10 +64,11 @@ export interface InteractionsOptions {
    * target them and going up/down by tap silently does nothing.
    */
   floorChangeIds?: Set<number>;
-  /** OTB Useable ids: containers/corpses, doors and levers. Items the
-   *  OTB misses but the .dat flags ForceUse (ladders) are always tap-
-   *  useable on top of this set. */
+  /** OTB Useable ids: containers/corpses, doors and levers. DAT metadata
+   *  fills gaps in old OTB files for ladders, switches and fixed objects. */
   useableIds?: Set<number>;
+  /** OTB Moveable ids eligible for press-drag between world tiles. */
+  moveableIds?: Set<number>;
   /** Live preference adapter. Defaults to the persisted mobile setting. */
   tapToWalk?: () => boolean;
   /** Select/attack a tapped non-player creature through the combat binding. */
@@ -82,6 +83,26 @@ const SYNTHESIZED_CLICK_MS = 500;
 
 const HINT_STYLE_ID = 'use-with-hint-style';
 const TAP_FEEDBACK_STYLE_ID = 'tap-feedback-style';
+const DRAG_FEEDBACK_STYLE_ID = 'world-drag-feedback-style';
+
+function ensureDragStyles(): void {
+  if (document.getElementById(DRAG_FEEDBACK_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = DRAG_FEEDBACK_STYLE_ID;
+  style.textContent = `
+    .world-item-drag, .world-item-drop {
+      position: fixed; pointer-events: none; z-index: ${zIndex.hud};
+      width: 32px; height: 32px; margin: -16px 0 0 -16px;
+      border-radius: ${radius.sm}px;
+    }
+    .world-item-drag {
+      border: 2px solid #ffd45a; background: rgb(255 212 90 / 22%);
+      box-shadow: 0 2px 10px rgb(0 0 0 / 55%);
+    }
+    .world-item-drop { border: 2px dashed rgb(255 255 255 / 80%); }
+  `;
+  document.head.appendChild(style);
+}
 
 function ensureHintStyles(): void {
   if (document.getElementById(HINT_STYLE_ID)) return;
@@ -291,6 +312,23 @@ export function bindInteractions(
     return null;
   }
 
+  function topMoveableItemAtTile(position: WirePosition): (ThingRef & { count: number }) | null {
+    const tile = world.getTile(position.x, position.y, position.z);
+    if (!tile || !opts.moveableIds) return null;
+    for (let stackPos = tile.things.length - 1; stackPos >= 0; stackPos--) {
+      const thing = tile.things[stackPos];
+      if (thing.kind === 'item' && opts.moveableIds.has(thing.item.id)) {
+        return {
+          position,
+          thingId: thing.item.id,
+          stackPos,
+          count: thing.item.count ?? 1,
+        };
+      }
+    }
+    return null;
+  }
+
   function isContainerTarget(target: ThingRef): boolean {
     return datIndex?.get(target.thingId)?.attrs.has(DatAttr.Container) ?? false;
   }
@@ -328,8 +366,28 @@ export function bindInteractions(
     return datIndex?.get(itemId)?.attrs.has(DatAttr.ForceUse) ?? false;
   }
 
+  /**
+   * Old 7.6 OTB files do not consistently mark world actions as Useable.
+   * In Jamera that includes the base lever sprites and the blueberry bush.
+   * The DAT still gives us the original client's interaction hints:
+   * LensHelp 1103 identifies switches, while fixed blocking bottom objects
+   * cover harvestable scenery such as berry bushes. A no-op use on ordinary
+   * fixed scenery is harmless and preferable to treating its tap as a walk
+   * target that pathfinding can never enter.
+   */
+  function itemLooksDirectUse(itemId: number): boolean {
+    const attrs = datIndex?.get(itemId)?.attrs;
+    if (!attrs) return false;
+    return attrs.get(DatAttr.LensHelp) === 1103
+      || (attrs.has(DatAttr.OnBottom)
+        && attrs.has(DatAttr.NotWalkable)
+        && attrs.has(DatAttr.NotMoveable));
+  }
+
   function isTapUseable(itemId: number): boolean {
-    return (opts.useableIds?.has(itemId) ?? false) || itemForcesUse(itemId);
+    return (opts.useableIds?.has(itemId) ?? false)
+      || itemForcesUse(itemId)
+      || itemLooksDirectUse(itemId);
   }
 
   function tileHasItem(position: WirePosition, accept: (itemId: number) => boolean): boolean {
@@ -513,6 +571,7 @@ export function bindInteractions(
   // duplicate route).
   const onClick = (e: MouseEvent): void => {
     if (e.button !== 0) return;
+    if (Date.now() < suppressClickUntil) return;
     // Legacy browsers synthesize a click after a touch tap WITHOUT a
     // pointerType for the guard below to catch. For plain walking that
     // duplicate was benign (same route); with use-with it would walk the
@@ -529,12 +588,16 @@ export function bindInteractions(
       fireTrade(e.clientX, e.clientY);
       return;
     }
-    // ForceUse items (ladders, stairwells) in reach use on a single
-    // click, like the original client — everything else keeps
-    // walk-then-dblclick, so a distant ladder click walks toward it.
+    // FIXED direct-use objects (ladders, levers, closed doors, harvest
+    // scenery) use on a single click when in reach — their tiles are
+    // unwalkable, so the click cannot mean "walk here". Containers and
+    // corpses lie on walkable tiles and keep classic desktop
+    // walk-then-double-click; on touch they stay single-tap (mobile has
+    // the joystick for stepping onto loot).
+    const isFixedDirectUse = (id: number): boolean => itemForcesUse(id) || itemLooksDirectUse(id);
     const pointed = worldTileAtPointer(e.clientX, e.clientY);
-    if (tileHasItem(pointed, itemForcesUse) && isWithinReach(pointed)) {
-      use(e.clientX, e.clientY, itemForcesUse);
+    if (tileHasItem(pointed, isFixedDirectUse) && isWithinReach(pointed)) {
+      use(e.clientX, e.clientY, isFixedDirectUse);
       return;
     }
     walkTo(e.clientX, e.clientY);
@@ -554,6 +617,40 @@ export function bindInteractions(
   let pressX = 0;
   let pressY = 0;
   let activePointerId: number | null = null;
+  let dragPointerId: number | null = null;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragItem: (ThingRef & { count: number }) | null = null;
+  let dragging = false;
+  let suppressClickUntil = 0;
+  let dragMarker: HTMLElement | null = null;
+  let dropMarker: HTMLElement | null = null;
+
+  const clearDrag = (): void => {
+    dragPointerId = null;
+    dragItem = null;
+    dragging = false;
+    canvas.style.cursor = '';
+    dragMarker?.remove();
+    dropMarker?.remove();
+    dragMarker = null;
+    dropMarker = null;
+  };
+
+  const updateDragMarkers = (clientX: number, clientY: number): void => {
+    if (!dragMarker || !dropMarker) return;
+    dragMarker.style.left = `${clientX}px`;
+    dragMarker.style.top = `${clientY}px`;
+    const destination = worldTileAtPointer(clientX, clientY);
+    const zoom = app.stage?.scale?.x || 1;
+    const tilePx = TILE_SIZE * zoom;
+    const centerX = app.screen.width / 2 + (destination.x - world.playerX) * tilePx;
+    const centerY = app.screen.height / 2 + (destination.y - world.playerY) * tilePx;
+    const rect = canvas.getBoundingClientRect();
+    dropMarker.style.left = `${rect.left + centerX * (rect.width / app.screen.width)}px`;
+    dropMarker.style.top = `${rect.top + centerY * (rect.height / app.screen.height)}px`;
+    dropMarker.dataset.position = `${destination.x},${destination.y},${destination.z}`;
+  };
   const cancelPress = (e?: PointerEvent): void => {
     if (e && e.pointerId !== activePointerId) return;
     if (pressTimer !== null) {
@@ -563,6 +660,15 @@ export function bindInteractions(
     activePointerId = null;
   };
   const onPointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
+    if (!armedUseWith && !armedTrade && dragPointerId === null) {
+      dragItem = topMoveableItemAtTile(worldTileAtPointer(e.clientX, e.clientY));
+      if (dragItem) {
+        dragPointerId = e.pointerId;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+      }
+    }
     if (e.pointerType !== 'touch') return;
     if (activePointerId !== null) return; // a press is already in flight
     activePointerId = e.pointerId;
@@ -584,6 +690,27 @@ export function bindInteractions(
     }, LONG_PRESS_MS);
   };
   const onPointerMove = (e: PointerEvent): void => {
+    if (e.pointerId === dragPointerId && dragItem) {
+      const moved = Math.abs(e.clientX - dragStartX) > MOVE_TOLERANCE_PX
+        || Math.abs(e.clientY - dragStartY) > MOVE_TOLERANCE_PX;
+      if (moved && !dragging) {
+        dragging = true;
+        cancelPress(e);
+        ensureDragStyles();
+        dragMarker = document.createElement('div');
+        dragMarker.className = 'world-item-drag';
+        dropMarker = document.createElement('div');
+        dropMarker.className = 'world-item-drop';
+        document.body.append(dragMarker, dropMarker);
+        canvas.style.cursor = 'grabbing';
+        try { canvas.setPointerCapture(e.pointerId); } catch { /* unsupported in test/old WebKit */ }
+      }
+      if (dragging) {
+        e.preventDefault();
+        updateDragMarkers(e.clientX, e.clientY);
+        return;
+      }
+    }
     if (pressTimer === null || e.pointerId !== activePointerId) return;
     if (Math.abs(e.clientX - pressX) > MOVE_TOLERANCE_PX || Math.abs(e.clientY - pressY) > MOVE_TOLERANCE_PX) {
       cancelPress(e);
@@ -594,6 +721,23 @@ export function bindInteractions(
   // walks via the click handler, which ignores synthesized post-touch
   // clicks by pointerType.)
   const onPointerUp = (e: PointerEvent): void => {
+    if (e.pointerId === dragPointerId && dragItem && dragging) {
+      const item = dragItem;
+      const destination = worldTileAtPointer(e.clientX, e.clientY);
+      if (destination.x !== item.position.x
+        || destination.y !== item.position.y
+        || destination.z !== item.position.z) {
+        send(protocol.actions.buildMoveThing(
+          item.position, item.thingId, item.stackPos, destination, item.count,
+        ));
+      }
+      if (e.pointerType === 'touch') lastTouchTapAt = Date.now();
+      else suppressClickUntil = Date.now() + SYNTHESIZED_CLICK_MS;
+      clearDrag();
+      cancelPress(e);
+      return;
+    }
+    if (e.pointerId === dragPointerId) clearDrag();
     const wasTap =
       e.pointerId === activePointerId &&
       pressTimer !== null &&
@@ -606,6 +750,10 @@ export function bindInteractions(
     else if (armedTrade) fireTrade(e.clientX, e.clientY);
     else smartTouchTap(e.clientX, e.clientY);
   };
+  const onPointerCancel = (e: PointerEvent): void => {
+    cancelPress(e);
+    if (e.pointerId === dragPointerId) clearDrag();
+  };
 
   canvas.addEventListener('click', onClick);
   canvas.addEventListener('contextmenu', onContextMenu);
@@ -613,7 +761,7 @@ export function bindInteractions(
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', cancelPress);
+  canvas.addEventListener('pointercancel', onPointerCancel);
 
   return {
     armUseWith,
@@ -624,13 +772,14 @@ export function bindInteractions(
       cancelUseWith();
       cancelTrade();
       cancelPress();
+      clearDrag();
       canvas.removeEventListener('click', onClick);
       canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('dblclick', onDblClick);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', cancelPress);
+      canvas.removeEventListener('pointercancel', onPointerCancel);
     },
   };
 }

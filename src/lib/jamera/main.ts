@@ -40,9 +40,10 @@ import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
 import { setItemWireFlags } from '../net/common/itemFlags';
 import { DatAttr, parseDat } from '../dat';
-import { parseOtb, floorChangeClientIds, useableClientIds } from '../otb';
+import { parseOtb, floorChangeClientIds, moveableClientIds, useableClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
+import { bindScreenWakeLock, loadKeepScreenAwake, type ScreenWakeLockHandle } from './screenWakeLock';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -124,12 +125,16 @@ mountLoginScreen(root, {
     teardownTextWindows = null;
     teardownTrade?.destroy();
     teardownTrade = null;
+    screenWakeLock?.destroy();
+    screenWakeLock = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
     changelogPane?.close();
   },
   onEnterGame: (client) => {
+    screenWakeLock?.destroy();
+    screenWakeLock = bindScreenWakeLock();
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
     // live-map renderer, chat UI, and movement input. Surface the live
     // client on `window` only in dev builds, never in production: the
@@ -255,6 +260,13 @@ mountLoginScreen(root, {
         hint: 'Off: move with the joystick; taps still open and use objects.',
         get: () => loadTapToWalk(),
         set: (on) => saveTapToWalk(on),
+      },
+      {
+        kind: 'toggle',
+        label: 'Keep screen awake',
+        hint: 'Prevents sleep while the game is visible when the browser allows it.',
+        get: () => screenWakeLock?.enabled ?? loadKeepScreenAwake(),
+        set: (on) => screenWakeLock?.setEnabled(on),
       },
       {
         kind: 'slider',
@@ -471,6 +483,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
         floorChangeIds: jameraFloorChangeIds ?? undefined,
         useableIds: jameraUseableIds ?? undefined,
+        moveableIds: jameraMoveableIds ?? undefined,
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
       })
       : null;
@@ -522,6 +535,8 @@ let jameraFloorChangeIds: Set<number> | null = null;
 // Client ids handled by a tap as UseItem: corpses/containers, doors,
 // ladders, levers and grates. Like floor changes, this comes from OTB.
 let jameraUseableIds: Set<number> | null = null;
+// Client ids safe to address through ThrowItem when a world drag completes.
+let jameraMoveableIds: Set<number> | null = null;
 
 type JameraLoadedFiles = Pick<CompleteLoadedFiles, 'dat' | 'spr' | 'otb'>;
 const JAMERA_FILE_KEYS = ['dat', 'spr', 'otb'] as const;
@@ -556,6 +571,7 @@ async function tryAutoloadAssets(): Promise<void> {
       const parsedOtb = parseOtb(loaded.otb);
       jameraFloorChangeIds = floorChangeClientIds(parsedOtb);
       jameraUseableIds = useableClientIds(parsedOtb);
+      jameraMoveableIds = moveableClientIds(parsedOtb);
       assetsReadyResolve?.();
       try {
         const atlasStartedAt = performance.now();
@@ -624,30 +640,6 @@ const PING_INTERVAL_MS = 30_000;
 // Module-scoped so a re-entry into `in_game` (e.g. after a disconnect +
 // re-login) can clear the old timer before starting a new one.
 let pingIntervalId: ReturnType<typeof setInterval> | null = null;
-
-/**
- * Keep the screen on during gameplay — the same Wake Lock treatment the
- * offline client has (src/main.ts). The lock auto-releases when the tab
- * is backgrounded, so it's re-acquired on visibilitychange; a release
- * on logout isn't needed (the login screen wants the screen on too, and
- * the OS reclaims the lock whenever the tab hides). Silently a no-op on
- * unsupported browsers.
- */
-let wakeLock: WakeLockSentinel | null = null;
-
-async function requestWakeLock(): Promise<void> {
-  if (!('wakeLock' in navigator) || wakeLock) return;
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; }, { once: true });
-  } catch {
-    // Permission denied or unsupported — silently ignore.
-  }
-}
-void requestWakeLock();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') void requestWakeLock();
-});
 
 function startPingLoop(client: GameClient): void {
   // Replace any existing loop first — back-to-back in_game transitions
@@ -762,6 +754,7 @@ let teardownInteractions: InteractionsHandle | null = null;
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
+let screenWakeLock: ScreenWakeLockHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownBattle: BattleBindingHandle | null = null;
 let teardownTextWindows: TextWindowBindingHandle | null = null;

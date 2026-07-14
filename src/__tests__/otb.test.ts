@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOtb, OtbAttr } from '../lib/otb';
+import { parseOtb, useableClientIds, OtbAttr, OtbGroups } from '../lib/otb';
 
 const NODE_START = 0xfe;
 const NODE_END = 0xff;
@@ -54,10 +54,10 @@ function escapeBytes(raw: number[]): number[] {
   return escaped;
 }
 
-/** Build an item node with given serverId, clientId, and optional flags. */
-function buildItemNode(serverId: number, clientId: number, flags = 0): number[] {
+/** Build an item node with given serverId, clientId, and optional flags/group. */
+function buildItemNode(serverId: number, clientId: number, flags = 0, group = 0x01): number[] {
   const raw: number[] = [];
-  raw.push(0x01); // node type (item group)
+  raw.push(group); // node type (itemgroup_t)
   pushU32(raw, flags);
 
   // ServerID attr
@@ -76,7 +76,7 @@ function buildItemNode(serverId: number, clientId: number, flags = 0): number[] 
 
 /** Build a complete .otb file buffer. */
 function buildOtb(
-  items: Array<{ serverId: number; clientId: number; flags?: number }>,
+  items: Array<{ serverId: number; clientId: number; flags?: number; group?: number }>,
   opts?: { minorVersion?: number },
 ): ArrayBuffer {
   const bytes: number[] = [];
@@ -90,7 +90,7 @@ function buildOtb(
 
   // Item nodes (children of root)
   for (const item of items) {
-    bytes.push(...buildItemNode(item.serverId, item.clientId, item.flags));
+    bytes.push(...buildItemNode(item.serverId, item.clientId, item.flags, item.group));
   }
 
   // Root node end
@@ -173,5 +173,36 @@ describe('parseOtb', () => {
     // 0xFE = 254
     const otb = parseOtb(buildOtb([{ serverId: 254, clientId: 100 }]));
     expect(otb.items[0].serverId).toBe(254);
+  });
+});
+
+describe('useableClientIds', () => {
+  const useable = 1 << 4;
+
+  it('collects Useable-flagged items by client id', () => {
+    const ids = useableClientIds(parseOtb(buildOtb([
+      { serverId: 2001, clientId: 3050, flags: useable },
+      { serverId: 2002, clientId: 3051 },
+    ])));
+    expect(ids).toEqual(new Set([3050]));
+  });
+
+  it('includes blocking door-group items even without the Useable flag', () => {
+    // The 7.6 OTB never flags doors Useable (the server opens them via
+    // actions.xml) — the node-type group + BlockSolid marks a closed or
+    // locked door. Open (walkable) doors stay walk targets: using one
+    // closes it onto whoever tapped the doorway.
+    const blockSolid = 1 << 0;
+    const ids = useableClientIds(parseOtb(buildOtb([
+      { serverId: 1210, clientId: 1629, group: OtbGroups.Door, flags: blockSolid },
+      { serverId: 1211, clientId: 1630, group: OtbGroups.Door }, // open door
+      { serverId: 2002, clientId: 3051 },
+    ])));
+    expect(ids).toEqual(new Set([1629]));
+  });
+
+  it('parses the node-type group byte', () => {
+    const otb = parseOtb(buildOtb([{ serverId: 1211, clientId: 1630, group: OtbGroups.Door }]));
+    expect(otb.items[0].group).toBe(OtbGroups.Door);
   });
 });

@@ -4,6 +4,7 @@ import type { WirePosition } from '../net/common/types';
 import type { GameWorld } from '../GameWorld';
 import type { ThingType } from '../dat';
 import { findWalkRoute } from './autowalk';
+import { spriteIndex } from '../tileRenderer';
 import { TILE_SIZE } from '../../constants';
 import { font, radius, space, surface, zIndex } from '../ui/tokens';
 
@@ -131,6 +132,66 @@ export function toCanvasSpace(
   };
 }
 
+/**
+ * Resolve a tap on visible floor-change artwork to the item's anchor tile.
+ *
+ * DAT sprites are anchored at their bottom-right tile and may extend up and
+ * left over neighbouring tiles.  A 2x2 stair therefore has only one logical
+ * floor-change tile but four visible tile-sized pieces.  Grid-only hit testing
+ * makes three of those pieces walk to ordinary ground instead of the stair.
+ */
+export function floorChangeTileAtPointer(
+  world: GameWorld,
+  datIndex: Map<number, ThingType>,
+  pointedTile: WirePosition,
+  floorChangeIds?: Set<number>,
+): WirePosition {
+  if (!floorChangeIds || floorChangeIds.size === 0) return pointedTile;
+
+  let maxWidth = 1;
+  let maxHeight = 1;
+  for (const id of floorChangeIds) {
+    const frame = datIndex.get(id)?.frameGroup;
+    if (!frame) continue;
+    maxWidth = Math.max(maxWidth, frame.width);
+    maxHeight = Math.max(maxHeight, frame.height);
+  }
+
+  // Anchors whose sprites cover the pointed tile can only lie down/right of
+  // it. Iterate in reverse render order so overlapping artwork selects the
+  // visually topmost (most south-eastern) stair.
+  for (let anchorY = pointedTile.y + maxHeight - 1; anchorY >= pointedTile.y; anchorY--) {
+    for (let anchorX = pointedTile.x + maxWidth - 1; anchorX >= pointedTile.x; anchorX--) {
+      const tile = world.getTile(anchorX, anchorY, pointedTile.z);
+      if (!tile) continue;
+
+      for (let itemIndex = tile.items.length - 1; itemIndex >= 0; itemIndex--) {
+        const item = tile.items[itemIndex];
+        if (!floorChangeIds.has(item.id)) continue;
+        const frame = datIndex.get(item.id)?.frameGroup;
+        if (!frame) continue;
+
+        const pieceX = anchorX - pointedTile.x;
+        const pieceY = anchorY - pointedTile.y;
+        if (pieceX >= frame.width || pieceY >= frame.height) continue;
+
+        const patX = ((anchorX % frame.numPatternX) + frame.numPatternX) % frame.numPatternX;
+        const patY = ((anchorY % frame.numPatternY) + frame.numPatternY) % frame.numPatternY;
+        let hasVisiblePiece = false;
+        for (let layer = 0; layer < frame.layers; layer++) {
+          if (frame.spriteIds[spriteIndex(frame, 0, patX, patY, layer, pieceY, pieceX)]) {
+            hasVisiblePiece = true;
+            break;
+          }
+        }
+        if (hasVisiblePiece) return { x: anchorX, y: anchorY, z: pointedTile.z };
+      }
+    }
+  }
+
+  return pointedTile;
+}
+
 export function bindInteractions(
   client: GameClient,
   world: GameWorld,
@@ -212,7 +273,12 @@ export function bindInteractions(
   // client does too); a new tap simply replaces the route server-side.
   function walkTo(clientX: number, clientY: number): void {
     if (!datIndex) return;
-    const pos = worldTileAtPointer(clientX, clientY);
+    const pos = floorChangeTileAtPointer(
+      world,
+      datIndex,
+      worldTileAtPointer(clientX, clientY),
+      opts.floorChangeIds,
+    );
     const route = findWalkRoute(world, datIndex, pos.x, pos.y, opts.floorChangeIds);
     if (!route || route.length === 0) return;
     send(protocol.movement.buildAutoWalk(route));

@@ -67,16 +67,11 @@ export function createGameMessageOverlay(parent: HTMLElement = document.body): G
     show: (messageClass, text) => {
       const duplicateKey = `${messageClass}\u0000${text}`;
       const existingCooldown = duplicateCooldowns.get(duplicateKey);
-      if (existingCooldown !== undefined) {
-        clearTimeout(existingCooldown);
-        duplicateCooldowns.set(duplicateKey, setTimeout(() => {
-          duplicateCooldowns.delete(duplicateKey);
-        }, DUPLICATE_COOLDOWN_MS));
-        return;
-      }
+      if (existingCooldown !== undefined) clearTimeout(existingCooldown);
       duplicateCooldowns.set(duplicateKey, setTimeout(() => {
         duplicateCooldowns.delete(duplicateKey);
       }, DUPLICATE_COOLDOWN_MS));
+      if (existingCooldown !== undefined) return;
       const message = document.createElement('div');
       message.className = `message ${classNameFor(messageClass)}`;
       message.textContent = text;

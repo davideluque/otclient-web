@@ -43,7 +43,7 @@ export class ChatManager {
   private _speechBubbles: SpeechBubble[] = [];
   private messageListeners = new Set<(msg: ChatMessage) => void>();
   private channelListeners = new Set<() => void>();
-  private lastSpeech: ChatMessage | null = null;
+  private lastSpeechBySender = new Map<string, ChatMessage>();
 
   constructor() {
     for (const channel of DEFAULT_CHANNELS) {
@@ -137,12 +137,11 @@ export class ChatManager {
 
   private isDuplicateSpeech(msg: ChatMessage): boolean {
     if (!msg.position || !this.hasSpeechBubbleMessageType(msg.messageType)) return false;
-    const previous = this.lastSpeech;
-    this.lastSpeech = msg;
+    const previous = this.lastSpeechBySender.get(msg.senderName);
+    this.lastSpeechBySender.set(msg.senderName, msg);
     if (!previous?.position) return false;
     const elapsed = msg.timestamp - previous.timestamp;
     return elapsed >= 0 && elapsed <= DUPLICATE_SPEECH_MS
-      && msg.senderName === previous.senderName
       && msg.messageType === previous.messageType
       && msg.text === previous.text
       && msg.position.x === previous.position.x

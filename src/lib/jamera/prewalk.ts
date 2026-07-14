@@ -102,9 +102,15 @@ export function beginStep(
   stepMs: number,
 ): void {
   // A manual step during a predicted route: the server drops the route
-  // and walks from its current tile, so the chain's route tail is no
-  // longer where this step continues from — restart from the anchor.
-  if (pw.fromRoute) flushPrewalk(pw);
+  // and walks from its current tile, so the unconfirmed route tail is no
+  // longer where this step continues from. Keep the confirmed steps —
+  // they're guaranteed correct and still playing out, and the manual
+  // step chains smoothly off the last one (review catch on #305);
+  // dropping them too would snap back to the delayed playout buffer.
+  if (pw.fromRoute) {
+    pw.steps = pw.steps.filter((s) => s.confirmed);
+    pw.fromRoute = false;
+  }
   pruneFinishedConfirmed(pw, now);
   if (pw.steps.filter((s) => !s.confirmed).length >= PREWALK_MAX_PENDING) return;
   const last = pw.steps[pw.steps.length - 1];

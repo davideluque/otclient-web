@@ -322,7 +322,7 @@ describe('beginRoute (tap-to-walk prediction)', () => {
     expect(prewalkStateAt(pw, 1700)).toBeNull();
   });
 
-  it('a manual step during a route restarts the chain from the anchor', () => {
+  it('a manual step during an unconfirmed route restarts the chain from the anchor', () => {
     const pw = createPrewalk();
     beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
     // The player grabs the keyboard mid-route: the server drops the
@@ -330,6 +330,19 @@ describe('beginRoute (tap-to-walk prediction)', () => {
     beginStep(pw, ANCHOR, 2, 1300, SLOW_STEP_MS);
     expect(pw.steps).toHaveLength(1);
     expect(pw.steps[0]).toMatchObject({ fromX: 100, fromY: 200, toX: 100, toY: 201 });
+    expect(pw.fromRoute).toBe(false);
+  });
+
+  it('a manual step during a route keeps confirmed steps and chains off them', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, ROUTE, 1000, flatStepMs);
+    confirmSelfMoves(pw, 1, { x: 101, y: 200, z: 7 }, 1100);
+    // Only the unconfirmed tail is stale; the confirmed step is still
+    // playing out and the manual step continues from its target.
+    beginStep(pw, ANCHOR, 2, 1300, SLOW_STEP_MS);
+    expect(pw.steps).toHaveLength(2);
+    expect(pw.steps[0]).toMatchObject({ toX: 101, toY: 200, confirmed: true });
+    expect(pw.steps[1]).toMatchObject({ fromX: 101, fromY: 200, toX: 101, toY: 201, confirmed: false });
     expect(pw.fromRoute).toBe(false);
   });
 });

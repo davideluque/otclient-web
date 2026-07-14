@@ -497,6 +497,10 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
             performance.now(),
             (from, diagonal) => selfStepMsFrom(world, from, diagonal),
           );
+          // Same idle-start wake as onStepSent: a tap from a still
+          // scene arms no rAF loop and gets no world change until the
+          // first confirmation (Codex review, #305).
+          world.onChange?.();
         },
       })
       : null;

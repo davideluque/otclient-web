@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FORWARD_STEP_MAX_MS,
+  FORWARD_STEP_MIN_MS,
   RENDER_DELAY_MS,
+  STEP_GLIDE_DEFAULT_MS,
   STEP_GLIDE_MIN_MS,
+  expectedStepMs,
+  forwardStateAt,
   nextStepEma,
   playbackPosAt,
   playbackStateAt,
@@ -73,6 +78,70 @@ describe('playbackPosAt (playout buffer)', () => {
   it('exposes a sane render delay', () => {
     expect(RENDER_DELAY_MS).toBeGreaterThanOrEqual(120);
     expect(RENDER_DELAY_MS).toBeLessThanOrEqual(250);
+  });
+});
+
+describe('expectedStepMs (server step-duration formula)', () => {
+  it('matches otserv getStepDuration: 1000 × ground / speed', () => {
+    // NPC base speed 110 on grass (ground speed 150) ≈ 1364ms/tile.
+    expect(expectedStepMs(110, 150, false)).toBe(1364);
+    expect(expectedStepMs(220, 150, false)).toBe(682);
+  });
+
+  it('doubles on diagonal steps', () => {
+    expect(expectedStepMs(220, 150, true)).toBe(1364);
+  });
+
+  it('clamps degenerate values instead of freezing or teleporting', () => {
+    expect(expectedStepMs(0, 150, false)).toBe(STEP_GLIDE_DEFAULT_MS);
+    expect(expectedStepMs(10, 150, false)).toBe(FORWARD_STEP_MAX_MS);
+    expect(expectedStepMs(5000, 150, false)).toBe(FORWARD_STEP_MIN_MS);
+  });
+
+  it('falls back to a typical ground speed when the tile is unknown', () => {
+    expect(expectedStepMs(110, 0, false)).toBe(expectedStepMs(110, 150, false));
+  });
+});
+
+describe('forwardStateAt (non-self creatures glide at their true speed)', () => {
+  const npcStep: PlaybackSample[] = [
+    { x: 100, y: 200, z: 7, at: 1000 },
+    { x: 101, y: 200, z: 7, at: 5000, stepMs: 1364 },
+  ];
+
+  it('an NPC step spends its full duration crossing the tile', () => {
+    // Standing at the old tile until the move sample plays...
+    expect(forwardStateAt(npcStep, 4999)).toEqual({ x: 100, y: 200, moving: false });
+    // ...then ambles across over stepMs, not RENDER_DELAY_MS.
+    expect(forwardStateAt(npcStep, 5000)).toEqual({ x: 100, y: 200, moving: true });
+    expect(forwardStateAt(npcStep, 5682).x).toBeCloseTo(100.5, 2);
+    expect(forwardStateAt(npcStep, 6364)).toEqual({ x: 101, y: 200, moving: false });
+  });
+
+  it('a follow-up sample cuts the glide short at its own timestamp', () => {
+    const burst: PlaybackSample[] = [
+      { x: 100, y: 200, z: 7, at: 1000 },
+      { x: 101, y: 200, z: 7, at: 2000, stepMs: 1364 },
+      { x: 102, y: 200, z: 7, at: 2400, stepMs: 1364 },
+    ];
+    // Step into x=101 compresses into the actual 400ms gap.
+    expect(forwardStateAt(burst, 2200).x).toBeCloseTo(100.5, 5);
+    // Then the step into x=102 starts from x=101, no overshoot.
+    expect(forwardStateAt(burst, 2400)).toEqual({ x: 101, y: 200, moving: true });
+  });
+
+  it('holds then snaps across discontinuities (floor change / teleport)', () => {
+    const tele: PlaybackSample[] = [
+      { x: 100, y: 200, z: 7, at: 1000 },
+      { x: 130, y: 220, z: 8, at: 1500, stepMs: 500 },
+    ];
+    expect(forwardStateAt(tele, 1499)).toEqual({ x: 100, y: 200, moving: false });
+    expect(forwardStateAt(tele, 1500)).toEqual({ x: 130, y: 220, moving: false });
+  });
+
+  it('rests at the first sample before the timeline starts, and handles empty', () => {
+    expect(forwardStateAt(npcStep, 500)).toEqual({ x: 100, y: 200, moving: false });
+    expect(forwardStateAt([], 500)).toEqual({ x: 0, y: 0, moving: false });
   });
 });
 

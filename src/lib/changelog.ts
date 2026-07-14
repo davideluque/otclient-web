@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Your character now starts moving the instant you walk or tap instead of waiting for the server \u2014 the step-pause-step stutter at low levels is gone. Add ?selfmotion=playout to the URL to compare against the old behavior.' },
   { date: '2026-07-14', text: 'Skills, Inventory, Battle, and the minimap now close with an \u2715, and the skill panel is compact — it scrolls on its own instead of covering the screen.' },
   { date: '2026-07-14', text: 'Chat comes in three sizes now: recent lines float over the game, tapping \ud83d\udcac opens a compact chat with NPC reply chips, and menu \u2192 Chat is still the full view.' },
   { date: '2026-07-14', text: 'Your name (and other creatures\u2019 names) no longer disappears when you go down to the underground.' },

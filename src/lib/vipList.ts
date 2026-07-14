@@ -2,6 +2,7 @@
  * VIP list — friends with online status (menu → VIP). Pure component:
  * entries in, add/remove intents out; the binding owns the wire.
  */
+import { makeDraggable } from './draggable';
 
 export interface VipEntry {
   guid: number;
@@ -54,7 +55,7 @@ function ensureStyles(): void {
     .vip-list .row {
       display: flex; align-items: center; gap: 8px;
       padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,0.06);
-      font-size: 0.88rem;
+      font-size: 0.82rem;
     }
     .vip-list .row .dot {
       width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
@@ -100,6 +101,10 @@ export function createVipList(opts: VipListOptions, parent: HTMLElement = docume
     </div>
   `;
   parent.appendChild(el);
+
+  const card = el.querySelector('.card') as HTMLElement;
+  const head = el.querySelector('.head') as HTMLElement;
+  const stopDragging = makeDraggable(card, head);
 
   const rowsEl = el.querySelector('.rows') as HTMLElement;
   const inputEl = el.querySelector('.add-row input') as HTMLInputElement;
@@ -171,6 +176,7 @@ export function createVipList(opts: VipListOptions, parent: HTMLElement = docume
     close,
     destroy: () => {
       document.removeEventListener('keydown', onKeyDown);
+      stopDragging();
       el.remove();
     },
   };

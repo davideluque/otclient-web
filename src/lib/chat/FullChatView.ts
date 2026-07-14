@@ -56,7 +56,7 @@ function ensureStyles(): void {
     }
     .full-chat-close:hover, .full-chat-close:active { color: #fff; }
     .full-chat-messages { flex: 1; overflow-y: auto; padding: 10px 12px; }
-    .full-chat-messages .msg { margin: 3px 0; line-height: 1.5; font-size: 0.88rem; }
+    .full-chat-messages .msg { margin: 3px 0; line-height: 1.45; font-size: 0.82rem; }
     .full-chat-messages .msg .timestamp { color: #555; font-size: 0.72rem; margin-right: 6px; }
     .full-chat-messages .msg .sender { color: #bdbdbd; font-weight: bold; }
     .full-chat-messages .msg .text { color: #e6e6e6; }

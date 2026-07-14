@@ -15,6 +15,8 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   { date: '2026-07-14', text: 'Tap a creature on the map to select/attack it directly; red, gold, and white tap rings confirm attacks, uses, and walking.' },
+  { date: '2026-07-14', text: 'Settings, Hotkeys, Changelog, VIP, Skills, and container windows can be dragged by their headers and kept out of the action.' },
+  { date: '2026-07-14', text: 'Panel, menu, and chat text is slightly smaller so more useful information fits on a phone.' },
   { date: '2026-07-14', text: 'Mobile view is no longer magnified by the phone’s pixel density, and portrait mode shows 11 tiles across instead of about six.' },
   { date: '2026-07-14', text: 'A single tap opens corpses and bags and uses doors, ladders, levers, and grates; Settings → Tap to walk can leave movement to the joystick.' },
   { date: '2026-07-14', text: 'Brightness now behaves like brightness: 0% is dark and 100% preserves the server’s full day/night light.' },

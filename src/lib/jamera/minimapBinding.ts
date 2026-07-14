@@ -25,6 +25,7 @@ export function bindMinimap(
   parent: HTMLElement = document.body,
 ): MinimapBindingHandle {
   const colorCache = new Map<number, number | null>();
+  let visible = true;
 
   const itemColor = (id: number): number | null => {
     const cached = colorCache.get(id);
@@ -40,6 +41,12 @@ export function bindMinimap(
   };
 
   const minimap = createMinimap({
+    // Settings' "Show minimap" row reads `visible` back live, so the ✕
+    // and the toggle stay in sync through the same flag.
+    onClose: () => {
+      visible = false;
+      minimap.setVisible(false);
+    },
     getCenter: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
     tileColor: (x, y, z) => {
       const tile = world.getTile(x, y, z);
@@ -53,7 +60,6 @@ export function bindMinimap(
     },
   }, parent);
 
-  let visible = true;
   const timer = setInterval(() => {
     if (visible) minimap.refresh();
   }, REFRESH_MS);

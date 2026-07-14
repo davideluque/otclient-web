@@ -58,3 +58,37 @@ describe('bindBattleList', () => {
     expect(document.querySelector('.battle-list')).toBeNull();
   });
 });
+
+describe('close button', () => {
+  it('renders a ✕ that fires onClose', () => {
+    let closed = 0;
+    const list = createBattleList({ onSelect: () => {}, onClose: () => { closed++; } }, document.body);
+    const btn = document.querySelector('.battle-list [aria-label="Close battle list"]') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    btn.click();
+    expect(closed).toBe(1);
+    list.destroy();
+  });
+
+  it('keeps the header fixed — only the entries scroll (like the skill pane)', () => {
+    const list = createBattleList({ onSelect: () => {} }, document.body);
+    const styles = document.getElementById('battle-list-style')!.textContent!;
+    // The scroll must live on .entries, not the root, or a long list
+    // pushes the drag handle and ✕ out of view.
+    const rootRule = styles.slice(styles.indexOf('.battle-list {'), styles.indexOf('}'));
+    expect(rootRule).not.toContain('overflow-y: auto');
+    expect(rootRule).toContain('overflow: hidden');
+    expect(styles).toMatch(/\.battle-list \.entries \{[^}]*overflow-y: auto/);
+    list.destroy();
+  });
+
+  it('re-showing does not override the flex layout with display:block', () => {
+    const list = createBattleList({ onSelect: () => {} }, document.body);
+    const el = document.querySelector('.battle-list') as HTMLElement;
+    list.setVisible(false);
+    list.setVisible(true);
+    expect(el.style.display).not.toBe('block');
+    expect(el.style.display).not.toBe('none');
+    list.destroy();
+  });
+});

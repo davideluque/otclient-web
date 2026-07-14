@@ -25,6 +25,8 @@ export function bindBattleList(
 ): BattleBindingHandle {
   const list = createBattleList({
     onSelect: (id) => combat()?.attackTarget(id),
+    // The menu toggle reads `visible` back, so ✕ stays in sync for free.
+    onClose: () => list.setVisible(false),
   }, parent);
 
   const refresh = (): void => {

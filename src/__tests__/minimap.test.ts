@@ -46,3 +46,19 @@ describe('bindMinimap', () => {
     expect(document.querySelector('.minimap')).toBeNull();
   });
 });
+
+describe('close button', () => {
+  it('renders a ✕ that fires onClose', () => {
+    let closed = 0;
+    const map = createMinimap({
+      getCenter: () => ({ x: 100, y: 100, z: 7 }),
+      tileColor: () => null,
+      onClose: () => { closed++; },
+    }, document.body);
+    const btn = document.querySelector('[aria-label="Close minimap"]') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    btn.click();
+    expect(closed).toBe(1);
+    map.destroy();
+  });
+});

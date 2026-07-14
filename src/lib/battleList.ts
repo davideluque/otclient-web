@@ -16,6 +16,8 @@ export interface BattleEntry {
 
 export interface BattleListOptions {
   onSelect(id: number): void;
+  /** Called when the header \u2715 is tapped — the owner flips its open state. */
+  onClose?: () => void;
 }
 
 export interface BattleListHandle {
@@ -44,16 +46,24 @@ function ensureStyles(): void {
   style.textContent = `
     .battle-list {
       position: fixed; left: 8px; top: calc(122px + env(safe-area-inset-top, 0px));
-      width: 132px; max-height: 40vh; overflow-y: auto;
+      width: 132px; max-height: 40vh; overflow: hidden;
+      display: flex; flex-direction: column;
       background: rgba(18,18,18,0.92); border: 1px solid #555;
       border-radius: 10px; padding: 6px; z-index: 30;
       font-family: system-ui, sans-serif; font-size: 0.72rem; color: #ddd;
     }
+    .battle-list .entries { overflow-y: auto; min-height: 0; }
     .battle-list .empty { color: #777; text-align: center; padding: 4px 0; }
     .battle-list .drag-handle {
-      color: #999; text-align: center; padding: 1px 0 5px;
+      display: flex; justify-content: space-between; align-items: center;
+      color: #999; padding: 1px 2px 5px;
       border-bottom: 1px solid #333; margin-bottom: 3px;
     }
+    .battle-list .drag-handle button {
+      background: none; border: none; color: #999; font-size: 0.85rem;
+      padding: 0 2px; cursor: pointer; line-height: 1;
+    }
+    .battle-list .drag-handle .spacer { width: 14px; }
     .battle-list .entry {
       display: block; width: 100%; text-align: left;
       background: none; border: 1px solid transparent; border-radius: 6px;
@@ -78,7 +88,16 @@ export function createBattleList(opts: BattleListOptions, parent: HTMLElement = 
   el.className = 'battle-list';
   const dragHandle = document.createElement('div');
   dragHandle.className = 'drag-handle';
-  dragHandle.textContent = 'Battle';
+  const spacer = document.createElement('span');
+  spacer.className = 'spacer';
+  const title = document.createElement('span');
+  title.textContent = 'Battle';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = '\u2715';
+  closeBtn.setAttribute('aria-label', 'Close battle list');
+  closeBtn.addEventListener('click', () => opts.onClose?.());
+  dragHandle.append(spacer, title, closeBtn);
   const entriesEl = document.createElement('div');
   entriesEl.className = 'entries';
   el.append(dragHandle, entriesEl);
@@ -125,7 +144,9 @@ export function createBattleList(opts: BattleListOptions, parent: HTMLElement = 
     get visible() { return visible; },
     setVisible: (v) => {
       visible = v;
-      el.style.display = v ? 'block' : 'none';
+      // '' (not 'block') so the stylesheet's display:flex keeps clipping
+      // the entries scroller — same pitfall as the skill pane.
+      el.style.display = v ? '' : 'none';
     },
     destroy: () => {
       stopDragging();

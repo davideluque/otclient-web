@@ -14,6 +14,8 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Skills, Inventory, Battle, and the minimap now close with an \u2715, and the skill panel is compact — it scrolls on its own instead of covering the screen.' },
+  { date: '2026-07-14', text: 'Chat comes in three sizes now: recent lines float over the game, tapping \ud83d\udcac opens a compact chat with NPC reply chips, and menu \u2192 Chat is still the full view.' },
   { date: '2026-07-14', text: 'Your name (and other creatures\u2019 names) no longer disappears when you go down to the underground.' },
   { date: '2026-07-14', text: 'Climbing stairs and ladders no longer shows you standing on the stairs for a moment — floor changes land you instantly where you belong.' },
   { date: '2026-07-14', text: 'Tap-to-walk walks straight across open ground again — diagonal steps are saved for slipping around monsters and corners.' },

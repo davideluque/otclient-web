@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Trading works: choose Trade with… on an item, tap a nearby player, then review and accept both offers.' },
   { date: '2026-07-14', text: 'Tap a creature on the map to select/attack it directly; red, gold, and white tap rings confirm attacks, uses, and walking.' },
   { date: '2026-07-14', text: 'Books, signs, and house access lists now open in a readable movable window instead of disappearing.' },
   { date: '2026-07-14', text: 'Settings, Hotkeys, Changelog, VIP, Skills, and container windows can be dragged by their headers and kept out of the action.' },

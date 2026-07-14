@@ -22,7 +22,7 @@ import {
 import { parseMapDescription, parsePosition, parseItem, parseTileSlot, parseCreature, parseFloorStream } from './mapParser';
 import { buildMovePacket, buildAutoWalkPacket } from './movementProtocol';
 import { parsePlayerStats, parsePlayerSkills } from './playerProtocol';
-import { buildLookAtPacket, buildUseItemPacket, buildUseItemWithPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket, buildMoveThingPacket } from './actionsProtocol';
+import { buildLookAtPacket, buildUseItemPacket, buildUseItemWithPacket, buildLogoutPacket, buildAttackPacket, buildFightModesPacket, buildAddVipPacket, buildRemoveVipPacket, buildMoveThingPacket, buildRequestTradePacket, buildLookInTradePacket, buildAcceptTradePacket, buildCloseTradePacket } from './actionsProtocol';
 import {
   parseContainerOpen,
   parseContainerClose,
@@ -158,6 +158,10 @@ export class GameProtocol implements GameProtocolSpec {
       buildRemoveVip: buildRemoveVipPacket,
       buildAttack: buildAttackPacket,
       buildMoveThing: buildMoveThingPacket,
+      buildRequestTrade: buildRequestTradePacket,
+      buildLookInTrade: buildLookInTradePacket,
+      buildAcceptTrade: buildAcceptTradePacket,
+      buildCloseTrade: buildCloseTradePacket,
     };
 
     this.containers = {

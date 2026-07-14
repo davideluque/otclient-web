@@ -317,6 +317,14 @@ export interface ActionsProtocol {
    * container/inventory position (virtualPosition.ts).
    */
   buildUseItemWith(from: WirePosition, fromSpriteId: number, fromStackPos: number, to: WirePosition, toSpriteId: number, toStackPos: number): OutputPacket;
+  /** Offer an item to a visible player. */
+  buildRequestTrade(from: WirePosition, spriteId: number, stackPos: number, playerId: number): OutputPacket;
+  /** Inspect an item in either side of the active trade. */
+  buildLookInTrade(counterOffer: boolean, index: number): OutputPacket;
+  /** Accept the currently displayed pair of offers. */
+  buildAcceptTrade(): OutputPacket;
+  /** Cancel the active trade. */
+  buildCloseTrade(): OutputPacket;
 }
 
 /** One open container window, as described by a 0x6E. */
@@ -548,6 +556,10 @@ export interface ClientOpcodes {
   readonly TurnSouth: number;
   readonly TurnWest: number;
   readonly Say: number;
+  readonly RequestTrade: number;
+  readonly LookInTrade: number;
+  readonly AcceptTrade: number;
+  readonly CloseTrade: number;
 }
 
 // ─── Top-level protocol ────────────────────────────────────────────────────

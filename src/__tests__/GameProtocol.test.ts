@@ -41,6 +41,22 @@ describe('GameProtocol (7.6)', () => {
       const { clientOpcodes } = new GameProtocol();
       expect(clientOpcodes.Say).toBe(0x96);
       expect(clientOpcodes.Ping).toBe(0x1e);
+      expect(clientOpcodes.RequestTrade).toBe(0x7d);
+    });
+  });
+
+  describe('trade actions', () => {
+    const protocol = new GameProtocol();
+
+    it('builds request, inspect, accept, and close packets', () => {
+      expect([...protocol.actions.buildRequestTrade(
+        { x: 100, y: 200, z: 7 }, 2853, 4, 0x10203040,
+      ).toUint8Array()]).toEqual([
+        0x7d, 100, 0, 200, 0, 7, 0x25, 0x0b, 4, 0x40, 0x30, 0x20, 0x10,
+      ]);
+      expect([...protocol.actions.buildLookInTrade(true, 3).toUint8Array()]).toEqual([0x7e, 1, 3]);
+      expect([...protocol.actions.buildAcceptTrade().toUint8Array()]).toEqual([0x7f]);
+      expect([...protocol.actions.buildCloseTrade().toUint8Array()]).toEqual([0x80]);
     });
   });
 

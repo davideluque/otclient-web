@@ -36,7 +36,9 @@ import { loadBrightness, saveBrightness } from '../lighting';
 import { loadTapToWalk, saveTapToWalk } from './interactionPreferences';
 import { LIGHT_PREF_EVENT } from './renderer';
 import { expectedStepMs } from '../render/motion/forward';
-import { beginRoute, beginStep, createPrewalk, flushPrewalk } from '../render/motion/prewalk';
+import {
+  beginRoute, beginStep, createPrewalk, flushPrewalk, prewalkContinuation, prewalkStateAt,
+} from '../render/motion/prewalk';
 import { resolveSelfMotionMode } from '../render/motion/selfMotion';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
@@ -491,6 +493,12 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         useableIds: jameraUseableIds ?? undefined,
         moveableIds: jameraMoveableIds ?? undefined,
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
+        // The camera renders the predicted position; taps must decode
+        // against it, not the confirmed tile a route runs ahead of
+        // (Codex review, #305).
+        getSelfRenderPos: selfMotionMode !== 'prewalk'
+          ? undefined
+          : () => prewalkStateAt(selfPrewalk, performance.now()),
         // Tap-to-walk: predict the whole 0x64 route — the server walks
         // it without per-step sends, so this is the only place the
         // prediction chain can learn it.
@@ -755,12 +763,12 @@ function selfStepMsFrom(
 /**
  * Duration for the NEXT held-direction step, which leaves the prediction
  * chain's continuation tile — not the (older) confirmed position.
+ * prewalkContinuation skips a route's unconfirmed tail, which beginStep
+ * is about to drop (Codex review, #305).
  */
 function predictedSelfStepMs(world: GameWorld): number {
-  const last = selfPrewalk.steps[selfPrewalk.steps.length - 1];
-  const from = last
-    ? { x: last.toX, y: last.toY, z: last.z }
-    : { x: world.playerX, y: world.playerY, z: world.playerZ };
+  const from = prewalkContinuation(selfPrewalk)
+    ?? { x: world.playerX, y: world.playerY, z: world.playerZ };
   return selfStepMsFrom(world, from, false);
 }
 

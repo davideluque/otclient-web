@@ -9,6 +9,7 @@ import {
   createPrewalk,
   flushPrewalk,
   prewalkActiveStep,
+  prewalkContinuation,
   prewalkStateAt,
   settlePrewalk,
   type PrewalkState,
@@ -259,6 +260,29 @@ describe('settlePrewalk', () => {
     const s = prewalkStateAt(pw, 2400 + SLOW_STEP_MS - 1);
     expect(s?.x).toBeGreaterThan(102);
     expect(s?.moving).toBe(true);
+  });
+});
+
+describe('prewalkContinuation', () => {
+  it('is null on an empty chain — the next step leaves the anchor', () => {
+    expect(prewalkContinuation(createPrewalk())).toBeNull();
+  });
+
+  it('is the chain tail for held-direction steps', () => {
+    const pw = createPrewalk();
+    heldWalkEast(pw, 1000, 2);
+    expect(prewalkContinuation(pw)).toEqual({ x: 102, y: 200, z: 7 });
+  });
+
+  it('skips the unconfirmed tail of a route — a manual step will drop it', () => {
+    const pw = createPrewalk();
+    beginRoute(pw, ANCHOR, [1, 1, 2], 1000, () => SLOW_STEP_MS);
+    // Nothing confirmed: the interrupting step leaves the anchor, so its
+    // duration must come from the anchor tile, not the route's tail.
+    expect(prewalkContinuation(pw)).toBeNull();
+    confirmSelfMoves(pw, 1, { x: 101, y: 200, z: 7 }, 1100);
+    // One confirmed step: the manual step chains off it.
+    expect(prewalkContinuation(pw)).toEqual({ x: 101, y: 200, z: 7 });
   });
 });
 

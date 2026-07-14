@@ -79,6 +79,13 @@ export interface InteractionsOptions {
    * instant (the server sends no per-step packets to hook instead).
    */
   onRouteSent?: (route: WalkDirection[]) => void;
+  /**
+   * The self position the camera is currently rendering (predicted or
+   * playout), when it differs from the confirmed world.playerX/Y — tap
+   * hit-testing decodes against it. Null/undefined falls back to the
+   * confirmed position.
+   */
+  getSelfRenderPos?: () => { x: number; y: number } | null;
 }
 
 const LONG_PRESS_MS = 500;
@@ -175,15 +182,21 @@ export function screenToWorldTile(
   world: GameWorld,
   clientX: number,
   clientY: number,
+  selfPos?: { x: number; y: number } | null,
 ): { x: number; y: number; z: number } {
   // The stage carries the viewport cover-zoom; one on-screen tile is
   // TILE_SIZE × zoom canvas pixels. (Tests stub `app` without a stage.)
   const zoom = app.stage?.scale?.x || 1;
   const dxTiles = (clientX - app.screen.width / 2) / (TILE_SIZE * zoom);
   const dyTiles = (clientY - app.screen.height / 2) / (TILE_SIZE * zoom);
+  // The camera centers on the RENDERED self position, which a predicted
+  // route can put tiles ahead of world.playerX/Y — decode against what
+  // the player actually sees or a mid-route tap lands on the wrong tile.
+  const anchorX = selfPos?.x ?? world.playerX;
+  const anchorY = selfPos?.y ?? world.playerY;
   return {
-    x: Math.floor(world.playerX + 0.5 + dxTiles),
-    y: Math.floor(world.playerY + 0.5 + dyTiles),
+    x: Math.floor(anchorX + 0.5 + dxTiles),
+    y: Math.floor(anchorY + 0.5 + dyTiles),
     z: world.playerZ,
   };
 }
@@ -280,7 +293,7 @@ export function bindInteractions(
 
   function worldTileAtPointer(clientX: number, clientY: number): WirePosition {
     const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
+    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y, opts.getSelfRenderPos?.());
   }
 
   function topStackThingAtTile(position: WirePosition): ThingRef | null {

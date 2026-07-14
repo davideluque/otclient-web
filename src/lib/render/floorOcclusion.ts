@@ -76,7 +76,10 @@ export function buildOcclusionSets(
 
 /**
  * True when every screen cell any of the tile's item sprites paint —
- * anchor plus the up-left extent of >1-tile frames — is covered.
+ * anchor plus the up-left extent of >1-tile frames — is covered. The
+ * caller has already verified the anchor cell (sx, sy), so 1×1 items
+ * (the vast majority) need no lookup at all and bigger frames skip the
+ * anchor.
  */
 function allSpriteCellsCovered(
   tile: MapTile,
@@ -88,8 +91,10 @@ function allSpriteCellsCovered(
     const frame = datIndex.get(item.id)?.frameGroup;
     const w = frame?.width ?? 1;
     const h = frame?.height ?? 1;
+    if (w === 1 && h === 1) continue;
     for (let i = 0; i < w; i++) {
       for (let j = 0; j < h; j++) {
+        if (i === 0 && j === 0) continue;
         if (!covered.has(tilePositionKey(sx - i, sy - j))) return false;
       }
     }

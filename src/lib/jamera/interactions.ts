@@ -429,6 +429,7 @@ export function bindInteractions(
   }
 
   function armTrade(from: ThingRef): void {
+    cancelTrade();
     cancelUseWith();
     armedTrade = from;
     canvas.style.cursor = 'crosshair';

@@ -62,7 +62,24 @@ describe('bindTrade', () => {
     expect(accept.disabled).toBe(false);
     expect(document.querySelectorAll('.trade-item')).toHaveLength(3);
     accept.click();
+    expect(accept.disabled).toBe(true);
     expect([...send.mock.calls[0][0].toUint8Array()]).toEqual([0x7f]);
+  });
+
+  it('keeps the same pane and its dragged position when the counter-offer arrives', () => {
+    const { client, protocol, dispatcher } = makeClient();
+    bindTrade(client);
+    dispatcher.dispatch(offerFrame(protocol.serverOpcodes.TradeRequest, 'Alice', [2853]));
+    const pane = document.querySelector<HTMLElement>('.trade-pane')!;
+    pane.style.left = '23px';
+    pane.style.top = '41px';
+    pane.style.transform = 'none';
+
+    dispatcher.dispatch(offerFrame(protocol.serverOpcodes.TradeRequestAck, 'Bob', [3031]));
+    expect(document.querySelector('.trade-pane')).toBe(pane);
+    expect(pane.style.left).toBe('23px');
+    expect(pane.style.top).toBe('41px');
+    expect(pane.style.transform).toBe('none');
   });
 
   it('looks at the correct side/index and closes on the server close packet', () => {

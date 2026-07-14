@@ -133,11 +133,17 @@ export function bindTrade(
   };
 
   const render = (): void => {
-    closePane();
-    pane = document.createElement('div');
-    pane.className = 'trade-pane';
-    pane.setAttribute('role', 'dialog');
-    pane.setAttribute('aria-label', 'Trade');
+    const isNew = pane === null;
+    if (!pane) {
+      pane = document.createElement('div');
+      pane.className = 'trade-pane';
+      pane.setAttribute('role', 'dialog');
+      pane.setAttribute('aria-label', 'Trade');
+    } else {
+      stopDrag?.();
+      stopDrag = null;
+      pane.replaceChildren();
+    }
     const head = document.createElement('div');
     head.className = 'trade-head';
     head.textContent = 'Trade';
@@ -155,10 +161,13 @@ export function bindTrade(
     accept.className = 'accept';
     accept.textContent = 'Accept';
     accept.disabled = !own || !counter;
-    accept.addEventListener('click', () => send(protocol.actions.buildAcceptTrade()));
+    accept.addEventListener('click', () => {
+      accept.disabled = true;
+      send(protocol.actions.buildAcceptTrade());
+    });
     actions.append(cancel, accept);
     pane.append(head, offers, actions);
-    parent.appendChild(pane);
+    if (isNew) parent.appendChild(pane);
     stopDrag = makeDraggable(pane, head);
   };
 

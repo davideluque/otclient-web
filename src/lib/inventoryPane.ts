@@ -9,6 +9,7 @@
  * thumbnails need the atlas and arrive with a later renderer pass; the
  * slot semantics and wire plumbing don't have to wait for them.
  */
+import { makeDraggable } from './draggable';
 
 export const INVENTORY_SLOTS = [
   'head', 'necklace', 'backpack', 'armor', 'right',
@@ -47,10 +48,14 @@ function ensureStyles(): void {
     .inventory-pane {
       position: fixed; top: 50%; right: 12px; transform: translateY(-50%);
       display: grid; grid-template-columns: repeat(3, 46px);
-      grid-template-rows: repeat(4, 46px); gap: 4px;
+      grid-template-rows: 22px repeat(4, 46px); gap: 4px;
       padding: 10px; background: rgba(22,22,22,0.95);
       border: 1px solid #9a9a9a; border-radius: 10px;
       font-family: system-ui, sans-serif; z-index: 30; user-select: none;
+    }
+    .inventory-pane .drag-handle {
+      grid-column: 1 / 4; grid-row: 1; color: #9a9a9a;
+      font-size: 0.72rem; line-height: 18px; text-align: center;
     }
     .inventory-pane .slot {
       background: rgba(0,0,0,0.45); border: 1px solid #3a3a55;
@@ -89,6 +94,10 @@ export function createInventoryPane(
 
   const el = document.createElement('div');
   el.className = 'inventory-pane';
+  const dragHandle = document.createElement('div');
+  dragHandle.className = 'drag-handle';
+  dragHandle.textContent = 'Inventory';
+  el.appendChild(dragHandle);
 
   interface SlotState { cell: HTMLElement; label: HTMLElement; count: HTMLElement; itemId: number | null; itemCount?: number }
   const slots = new Map<InventorySlotName, SlotState>();
@@ -97,7 +106,7 @@ export function createInventoryPane(
     const cell = document.createElement('div');
     cell.className = 'slot';
     cell.style.gridColumn = String(col + 1);
-    cell.style.gridRow = String(row + 1);
+    cell.style.gridRow = String(row + 2);
     const label = document.createElement('span');
     label.className = 'label';
     label.textContent = name;
@@ -113,6 +122,7 @@ export function createInventoryPane(
     slots.set(name, state);
   }
   parent.appendChild(el);
+  const stopDragging = makeDraggable(el, dragHandle);
 
   return {
     el,
@@ -140,6 +150,9 @@ export function createInventoryPane(
       }
     },
     setVisible: (visible) => { el.style.display = visible ? 'grid' : 'none'; },
-    destroy: () => el.remove(),
+    destroy: () => {
+      stopDragging();
+      el.remove();
+    },
   };
 }

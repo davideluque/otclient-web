@@ -3,6 +3,7 @@
  * target. Pure component: the host supplies entries and receives tap
  * callbacks; the live binding owns world polling and the combat wire.
  */
+import { makeDraggable } from './draggable';
 
 export interface BattleEntry {
   id: number;
@@ -49,6 +50,10 @@ function ensureStyles(): void {
       font-family: system-ui, sans-serif; font-size: 0.72rem; color: #ddd;
     }
     .battle-list .empty { color: #777; text-align: center; padding: 4px 0; }
+    .battle-list .drag-handle {
+      color: #999; text-align: center; padding: 1px 0 5px;
+      border-bottom: 1px solid #333; margin-bottom: 3px;
+    }
     .battle-list .entry {
       display: block; width: 100%; text-align: left;
       background: none; border: 1px solid transparent; border-radius: 6px;
@@ -71,17 +76,24 @@ export function createBattleList(opts: BattleListOptions, parent: HTMLElement = 
   ensureStyles();
   const el = document.createElement('div');
   el.className = 'battle-list';
+  const dragHandle = document.createElement('div');
+  dragHandle.className = 'drag-handle';
+  dragHandle.textContent = 'Battle';
+  const entriesEl = document.createElement('div');
+  entriesEl.className = 'entries';
+  el.append(dragHandle, entriesEl);
   parent.appendChild(el);
+  const stopDragging = makeDraggable(el, dragHandle);
 
   let visible = true;
 
   const setEntries = (entries: BattleEntry[]): void => {
-    el.replaceChildren();
+    entriesEl.replaceChildren();
     if (entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.textContent = 'No creatures';
-      el.appendChild(empty);
+      entriesEl.appendChild(empty);
       return;
     }
     for (const entry of entries) {
@@ -101,7 +113,7 @@ export function createBattleList(opts: BattleListOptions, parent: HTMLElement = 
       bar.appendChild(fill);
       btn.append(name, bar);
       btn.addEventListener('click', () => opts.onSelect(entry.id));
-      el.appendChild(btn);
+      entriesEl.appendChild(btn);
     }
   };
 
@@ -115,6 +127,9 @@ export function createBattleList(opts: BattleListOptions, parent: HTMLElement = 
       visible = v;
       el.style.display = v ? 'block' : 'none';
     },
-    destroy: () => el.remove(),
+    destroy: () => {
+      stopDragging();
+      el.remove();
+    },
   };
 }

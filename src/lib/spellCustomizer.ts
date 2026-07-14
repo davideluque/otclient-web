@@ -1,4 +1,5 @@
 import { SPELLS, SPELL_SLOT_COUNT, spellByWords, spellIconUrl, type SpellDef } from './spells';
+import { makeDraggable } from './draggable';
 
 /**
  * Hotkeys menu (menu → Hotkeys): the full spell registry behind the
@@ -119,6 +120,10 @@ export function createSpellCustomizer(
     </div>
   `;
   parent.appendChild(el);
+
+  const cardEl = el.querySelector('.card') as HTMLElement;
+  const headEl = el.querySelector('.head') as HTMLElement;
+  const stopDragging = makeDraggable(cardEl, headEl);
 
   const titleEl = el.querySelector('.title') as HTMLElement;
   const rowsEl = el.querySelector('.rows') as HTMLElement;
@@ -246,6 +251,7 @@ export function createSpellCustomizer(
     close,
     destroy: () => {
       document.removeEventListener('keydown', onKeyDown);
+      stopDragging();
       el.remove();
     },
   };

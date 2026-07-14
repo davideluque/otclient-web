@@ -49,7 +49,7 @@ export function createChatUI(
     #chat-ui {
       position: fixed; bottom: 0; left: 0; right: 0;
       background: rgba(0, 0, 0, 0.85); color: #e0e0e0;
-      font-family: system-ui, sans-serif; font-size: 0.8rem;
+      font-family: system-ui, sans-serif; font-size: 0.76rem;
       display: flex; flex-direction: column;
       z-index: 20; border-top: 1px solid #333;
       padding-bottom: env(safe-area-inset-bottom, 0px);

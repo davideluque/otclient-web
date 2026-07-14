@@ -6,6 +6,7 @@
  * (e.g. the combat bar's ⚔ circle). Self-contained component
  * (joystick.ts pattern): injected styles, no page-CSS deps.
  */
+import { makeDraggable } from './draggable';
 
 export interface SettingsToggle {
   kind: 'toggle';
@@ -85,7 +86,7 @@ function ensureStyles(): void {
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .settings-row .text { min-width: 0; }
-    .settings-row .label { font-size: 0.9rem; }
+    .settings-row .label { font-size: 0.84rem; }
     .settings-row .hint { font-size: 0.72rem; color: #888; margin-top: 2px; }
     .settings-switch {
       flex-shrink: 0; width: 46px; height: 26px; border-radius: 13px;
@@ -136,6 +137,7 @@ export function createSettingsPane(
   closeBtn.textContent = '✕';
   closeBtn.setAttribute('aria-label', 'Close settings');
   head.append(title, closeBtn);
+  const stopDragging = makeDraggable(card, head);
 
   const list = document.createElement('div');
   list.className = 'settings-list';
@@ -238,6 +240,7 @@ export function createSettingsPane(
     close,
     destroy: () => {
       document.removeEventListener('keydown', onKeyDown);
+      stopDragging();
       el.remove();
     },
   };

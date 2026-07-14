@@ -1,4 +1,5 @@
 import { CHANGELOG, type ChangelogEntry } from './changelog';
+import { makeDraggable } from './draggable';
 
 /**
  * Changelog pane — a centered overlay listing what's landed on main,
@@ -51,7 +52,7 @@ function ensureStyles(): void {
       margin: 10px 0 4px; text-transform: uppercase;
     }
     .changelog-item {
-      font-size: 0.85rem; line-height: 1.45; margin: 0 0 6px;
+      font-size: 0.8rem; line-height: 1.4; margin: 0 0 6px;
       padding-left: 14px; position: relative;
     }
     .changelog-item::before { content: '•'; position: absolute; left: 2px; color: #666; }
@@ -80,6 +81,7 @@ export function createChangelogPane(
   closeBtn.textContent = '✕';
   closeBtn.setAttribute('aria-label', 'Close changelog');
   head.append(title, closeBtn);
+  const stopDragging = makeDraggable(card, head);
 
   const list = document.createElement('div');
   list.className = 'changelog-list';
@@ -132,6 +134,7 @@ export function createChangelogPane(
     },
     destroy: () => {
       document.removeEventListener('keydown', onKeyDown);
+      stopDragging();
       el.remove();
     },
   };

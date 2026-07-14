@@ -28,6 +28,7 @@ import { createSpellCustomizer, type SpellCustomizerHandle } from '../spellCusto
 import { loadSpellSlots, saveSpellSlots } from '../spells';
 import { bindCombatModes, type CombatModesBindingHandle } from './combatModesBinding';
 import { bindStatus, type StatusBindingHandle } from './statusBinding';
+import { bindTextWindows, type TextWindowBindingHandle } from './textWindowBinding';
 import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { loadBrightness, saveBrightness } from '../lighting';
@@ -118,6 +119,8 @@ mountLoginScreen(root, {
     teardownCombatModes = null;
     teardownStatus?.destroy();
     teardownStatus = null;
+    teardownTextWindows?.destroy();
+    teardownTextWindows = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
@@ -203,6 +206,8 @@ mountLoginScreen(root, {
     teardownCombatModes = bindCombatModes(client);
     teardownStatus?.destroy();
     teardownStatus = bindStatus(client);
+    teardownTextWindows?.destroy();
+    teardownTextWindows = bindTextWindows(client);
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
     // current session even across re-logins.
@@ -743,6 +748,7 @@ let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownBattle: BattleBindingHandle | null = null;
+let teardownTextWindows: TextWindowBindingHandle | null = null;
 let teardownVip: VipBindingHandle | null = null;
 let spellCustomizer: SpellCustomizerHandle | null = null;
 let teardownCombatModes: CombatModesBindingHandle | null = null;

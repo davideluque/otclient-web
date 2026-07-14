@@ -1,4 +1,4 @@
-import { Direction } from '../player';
+import type { WalkDirection } from '../net/common/types';
 import type { PlaybackState } from './renderer';
 
 /**
@@ -40,11 +40,17 @@ export const PREWALK_CONFIRM_GRACE_MS = 800;
  */
 export const PREWALK_CATCHUP_MS = 120;
 
-const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
-  [Direction.North]: { dx: 0, dy: -1 },
-  [Direction.East]: { dx: 1, dy: 0 },
-  [Direction.South]: { dx: 0, dy: 1 },
-  [Direction.West]: { dx: -1, dy: 0 },
+// Wire walk directions (0x64 route bytes and 0x65–0x68 moves share the
+// encoding): 0–3 cardinals N/E/S/W, 4–7 diagonals NE/SE/SW/NW.
+const DIR_DELTA: Record<WalkDirection, { dx: number; dy: number }> = {
+  0: { dx: 0, dy: -1 },
+  1: { dx: 1, dy: 0 },
+  2: { dx: 0, dy: 1 },
+  3: { dx: -1, dy: 0 },
+  4: { dx: 1, dy: -1 },
+  5: { dx: 1, dy: 1 },
+  6: { dx: -1, dy: 1 },
+  7: { dx: -1, dy: -1 },
 };
 
 export interface PrewalkStep {
@@ -66,14 +72,17 @@ export interface PrewalkState {
   steps: PrewalkStep[];
   /** Arrival time of the newest confirmation — times the playout handoff. */
   lastConfirmedAt: number;
+  /** The chain came from a 0x64 route rather than per-step sends. */
+  fromRoute: boolean;
 }
 
 export function createPrewalk(): PrewalkState {
-  return { steps: [], lastConfirmedAt: 0 };
+  return { steps: [], lastConfirmedAt: 0, fromRoute: false };
 }
 
 export function flushPrewalk(pw: PrewalkState): void {
   pw.steps.length = 0;
+  pw.fromRoute = false;
 }
 
 /**
@@ -88,10 +97,20 @@ export function flushPrewalk(pw: PrewalkState): void {
 export function beginStep(
   pw: PrewalkState,
   anchor: { x: number; y: number; z: number },
-  dir: Direction,
+  dir: WalkDirection,
   now: number,
   stepMs: number,
 ): void {
+  // A manual step during a predicted route: the server drops the route
+  // and walks from its current tile, so the unconfirmed route tail is no
+  // longer where this step continues from. Keep the confirmed steps —
+  // they're guaranteed correct and still playing out, and the manual
+  // step chains smoothly off the last one (review catch on #305);
+  // dropping them too would snap back to the delayed playout buffer.
+  if (pw.fromRoute) {
+    pw.steps = pw.steps.filter((s) => s.confirmed);
+    pw.fromRoute = false;
+  }
   pruneFinishedConfirmed(pw, now);
   if (pw.steps.filter((s) => !s.confirmed).length >= PREWALK_MAX_PENDING) return;
   const last = pw.steps[pw.steps.length - 1];
@@ -109,6 +128,47 @@ export function beginStep(
     stepMs,
     confirmed: false,
   });
+}
+
+/**
+ * Predict an entire tap-to-walk route (one 0x64 packet — the server
+ * walks every step itself, so unlike held-direction walking there are
+ * no per-step sends to predict from; the route is all the evidence
+ * there will be). Replaces the current chain the way the server
+ * replaces its current walk. The pending cap doesn't apply: the whole
+ * route is legitimately outstanding server-side, and a mispredicted
+ * tail flushes at the first disagreeing confirmation like any other
+ * mismatch. Step durations come per tile from `stepMsFrom` — ground
+ * changes along the route change the pace.
+ */
+export function beginRoute(
+  pw: PrewalkState,
+  anchor: { x: number; y: number; z: number },
+  route: ReadonlyArray<WalkDirection>,
+  now: number,
+  stepMsFrom: (from: { x: number; y: number; z: number }, diagonal: boolean) => number,
+): void {
+  flushPrewalk(pw);
+  pw.fromRoute = true;
+  let from = anchor;
+  let startAt = now;
+  for (const dir of route) {
+    const { dx, dy } = DIR_DELTA[dir];
+    const diagonal = dx !== 0 && dy !== 0;
+    const stepMs = stepMsFrom(from, diagonal);
+    pw.steps.push({
+      fromX: from.x,
+      fromY: from.y,
+      toX: from.x + dx,
+      toY: from.y + dy,
+      z: from.z,
+      startAt,
+      stepMs,
+      confirmed: false,
+    });
+    from = { x: from.x + dx, y: from.y + dy, z: from.z };
+    startAt += stepMs;
+  }
 }
 
 /**

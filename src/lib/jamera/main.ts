@@ -35,7 +35,7 @@ import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { loadBrightness, saveBrightness } from '../lighting';
 import { loadTapToWalk, saveTapToWalk } from './interactionPreferences';
 import { LIGHT_PREF_EVENT, expectedStepMs } from './renderer';
-import { beginStep, createPrewalk, flushPrewalk } from './prewalk';
+import { beginRoute, beginStep, createPrewalk, flushPrewalk } from './prewalk';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -486,6 +486,22 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         useableIds: jameraUseableIds ?? undefined,
         moveableIds: jameraMoveableIds ?? undefined,
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
+        // Tap-to-walk: predict the whole 0x64 route — the server walks
+        // it without per-step sends, so this is the only place the
+        // prediction chain can learn it.
+        onRouteSent: (route) => {
+          beginRoute(
+            selfPrewalk,
+            { x: world.playerX, y: world.playerY, z: world.playerZ },
+            route,
+            performance.now(),
+            (from, diagonal) => selfStepMsFrom(world, from, diagonal),
+          );
+          // Same idle-start wake as onStepSent: a tap from a still
+          // scene arms no rAF loop and gets no world change until the
+          // first confirmation (Codex review, #305).
+          world.onChange?.();
+        },
       })
       : null;
     teardownRenderer = bindRenderer(world, atlas, app, chatManager, selfPrewalk);
@@ -710,23 +726,34 @@ let teardownMovement: (() => void) | null = null;
 const selfPrewalk = createPrewalk();
 
 /**
- * The step duration the server will charge for the NEXT predicted step:
- * ground speed of the tile the step leaves — the prediction chain's
- * continuation tile, not the (older) confirmed position — over the
- * player's current speed. Before the atlas is ready there is no ground
- * attribute to read; expectedStepMs falls back to its default ground.
+ * The step duration the server will charge for a predicted step leaving
+ * `from`: that tile's ground speed over the player's current speed.
+ * Before the atlas is ready there is no ground attribute to read;
+ * expectedStepMs falls back to its default ground.
+ */
+function selfStepMsFrom(
+  world: GameWorld,
+  from: { x: number; y: number; z: number },
+  diagonal: boolean,
+): number {
+  const speed = world.getCreature(world.playerCreatureId)?.speed ?? 0;
+  const groundId = world.getTile(from.x, from.y, from.z)?.items[0]?.id;
+  const groundAttr = groundId !== undefined && jameraAtlas
+    ? jameraAtlas.datIndex.get(groundId)?.attrs.get(DatAttr.Ground)
+    : undefined;
+  return expectedStepMs(speed, typeof groundAttr === 'number' ? groundAttr : 0, diagonal);
+}
+
+/**
+ * Duration for the NEXT held-direction step, which leaves the prediction
+ * chain's continuation tile — not the (older) confirmed position.
  */
 function predictedSelfStepMs(world: GameWorld): number {
   const last = selfPrewalk.steps[selfPrewalk.steps.length - 1];
   const from = last
     ? { x: last.toX, y: last.toY, z: last.z }
     : { x: world.playerX, y: world.playerY, z: world.playerZ };
-  const speed = world.getCreature(world.playerCreatureId)?.speed ?? 0;
-  const groundId = world.getTile(from.x, from.y, from.z)?.items[0]?.id;
-  const groundAttr = groundId !== undefined && jameraAtlas
-    ? jameraAtlas.datIndex.get(groundId)?.attrs.get(DatAttr.Ground)
-    : undefined;
-  return expectedStepMs(speed, typeof groundAttr === 'number' ? groundAttr : 0, false);
+  return selfStepMsFrom(world, from, false);
 }
 
 function bindMovementInput(client: GameClient, world: GameWorld): void {

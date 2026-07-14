@@ -7,9 +7,9 @@ import type { WalkDirection } from '../net/common/types';
  * Tap-to-walk route finding over the live GameWorld.
  *
  * A* on the player's floor across the tiles the server has described
- * (the ~18×14 window plus whatever walking has accumulated), cardinal
- * steps only — matching the joystick and what `Game::playerAutoWalk`
- * paces best. The route is sent as one 0x64 packet; the server walks
+ * (the ~18×14 window plus whatever walking has accumulated), including
+ * the four diagonal directions supported by Jamera's 7.6 protocol. The
+ * route is sent as one 0x64 packet; the server walks
  * it and confirms every step exactly like manual moves, so position
  * tracking needs nothing new.
  *
@@ -25,7 +25,15 @@ const DIRS: ReadonlyArray<{ dir: WalkDirection; dx: number; dy: number }> = [
   { dir: 1, dx: 1, dy: 0 },  // east
   { dir: 2, dx: 0, dy: 1 },  // south
   { dir: 3, dx: -1, dy: 0 }, // west
+  { dir: 4, dx: 1, dy: -1 }, // north-east
+  { dir: 5, dx: 1, dy: 1 },  // south-east
+  { dir: 6, dx: -1, dy: 1 }, // south-west
+  { dir: 7, dx: -1, dy: -1 }, // north-west
 ];
+
+const CARDINAL_COST = 2;
+// Jamera's Creature::getWalkDelay charges diagonals at 1.5× a cardinal.
+const DIAGONAL_COST = 3;
 
 /** Search cap — the visible window is 18×14, anything past this is junk taps. */
 const MAX_EXPANDED_NODES = 1024;
@@ -80,12 +88,28 @@ function creatureBlocks(world: GameWorld, x: number, y: number, z: number): bool
   return !!tile && tile.creatures.some((c) => c.id !== world.playerCreatureId);
 }
 
+/** True when a tile flanking a diagonal step can't be walked through. */
+function diagonalSideBlocked(
+  world: GameWorld,
+  datIndex: Map<number, ThingType>,
+  x: number, y: number, z: number,
+  floorChangeIds?: Set<number>,
+): boolean {
+  return !isWorldTileWalkable(world, datIndex, x, y, z, floorChangeIds)
+    || creatureBlocks(world, x, y, z)
+    || tileFloorChanges(world, x, y, z, floorChangeIds);
+}
+
 function floorTileKey(x: number, y: number): string {
   return `${x}:${y}`;
 }
 
-function manhattanDistanceToGoal(x: number, y: number, goalX: number, goalY: number): number {
-  return Math.abs(x - goalX) + Math.abs(y - goalY);
+function estimatedCostToGoal(x: number, y: number, goalX: number, goalY: number): number {
+  const dx = Math.abs(x - goalX);
+  const dy = Math.abs(y - goalY);
+  const diagonal = Math.min(dx, dy);
+  const cardinal = Math.max(dx, dy) - diagonal;
+  return diagonal * DIAGONAL_COST + cardinal * CARDINAL_COST;
 }
 
 /**
@@ -160,7 +184,7 @@ export function findWalkRoute(
     x: sx,
     y: sy,
     costFromStart: 0,
-    estimatedTotalCost: manhattanDistanceToGoal(sx, sy, goalX, goalY),
+    estimatedTotalCost: estimatedCostToGoal(sx, sy, goalX, goalY),
   });
   bestCostToTile.set(startKey, 0);
 
@@ -191,7 +215,18 @@ export function findWalkRoute(
       // same rule as the offline pathfinder.
       if (!isGoalTile && tileFloorChanges(world, nextX, nextY, z, floorChangeIds)) continue;
 
-      const costFromStart = current.node.costFromStart + 1;
+      // A diagonal may go around one occupied/blocked side (the classic
+      // monster-in-front escape), but never squeeze through a completely
+      // closed corner. The server remains authoritative for the destination.
+      const isDiagonal = dx !== 0 && dy !== 0;
+      if (isDiagonal
+        && diagonalSideBlocked(world, datIndex, current.node.x + dx, current.node.y, z, floorChangeIds)
+        && diagonalSideBlocked(world, datIndex, current.node.x, current.node.y + dy, z, floorChangeIds)) {
+        continue;
+      }
+
+      const costFromStart = current.node.costFromStart
+        + (isDiagonal ? DIAGONAL_COST : CARDINAL_COST);
       const knownCost = bestCostToTile.get(nextKey);
       if (knownCost !== undefined && costFromStart >= knownCost) continue;
 
@@ -201,7 +236,7 @@ export function findWalkRoute(
         x: nextX,
         y: nextY,
         costFromStart,
-        estimatedTotalCost: costFromStart + manhattanDistanceToGoal(nextX, nextY, goalX, goalY),
+        estimatedTotalCost: costFromStart + estimatedCostToGoal(nextX, nextY, goalX, goalY),
       });
     }
   }

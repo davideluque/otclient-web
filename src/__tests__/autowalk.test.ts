@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { findWalkRoute, isWorldTileWalkable } from '../lib/jamera/autowalk';
-import { buildAutoWalkPacket } from '../lib/net/7.6/movementProtocol';
+import { buildAutoWalkPacket, buildMovePacket } from '../lib/net/7.6/movementProtocol';
 import { DatAttr, type ThingType } from '../lib/dat';
 import type { GameWorld } from '../lib/GameWorld';
 import type { MapTile } from '../lib/net/common/types';
@@ -66,8 +66,8 @@ describe('findWalkRoute', () => {
       '.#.',
       '...',
     ], 0, 0);
-    // 0,0 → blocked east by wall → south, east, east, north to reach 2,0.
-    expect(findWalkRoute(world, datIndex, 2, 0)).toEqual([2, 1, 1, 0]);
+    // Two diagonals go around the wall without squeezing through a closed corner.
+    expect(findWalkRoute(world, datIndex, 2, 0)).toEqual([5, 4]);
   });
 
   it('returns null for unreachable or unknown goals, [] when already there', () => {
@@ -85,17 +85,38 @@ describe('findWalkRoute', () => {
       '.M.',
       '...',
     ], 0, 0);
-    // The rat at 1,0 blocks the direct route; goal 2,0 detours south.
-    expect(findWalkRoute(world, datIndex, 2, 0)).toEqual([2, 1, 1, 0]);
+    // The rat at 1,0 blocks the direct route; goal 2,0 detours diagonally.
+    expect(findWalkRoute(world, datIndex, 2, 0)).toEqual([5, 4]);
     // Walking TO the rat's tile is allowed (server stops adjacent).
     expect(findWalkRoute(world, datIndex, 1, 0)).toEqual([1]);
+  });
+
+  it('uses a diagonal to escape around a monster directly in front', () => {
+    const { world, datIndex } = makeWorld([
+      '...',
+      '.M.',
+    ], 0, 1);
+    expect(findWalkRoute(world, datIndex, 2, 0)).toEqual([4, 1]); // NE, E
+  });
+
+  it('does not squeeze diagonally through two blocked sides', () => {
+    const { world, datIndex } = makeWorld([
+      '.#',
+      '#.',
+    ], 0, 0);
+    expect(findWalkRoute(world, datIndex, 1, 1)).toBeNull();
   });
 });
 
 describe('buildAutoWalkPacket', () => {
-  it('encodes 0x64 + count + server wire dirs (N=3 E=1 S=7 W=5)', () => {
-    const bytes = [...buildAutoWalkPacket([0, 1, 2, 3]).toUint8Array()];
-    expect(bytes).toEqual([0x64, 4, 3, 1, 7, 5]);
+  it('encodes all eight server autowalk direction bytes', () => {
+    const bytes = [...buildAutoWalkPacket([0, 1, 2, 3, 4, 5, 6, 7]).toUint8Array()];
+    expect(bytes).toEqual([0x64, 8, 3, 1, 7, 5, 2, 8, 6, 4]);
+  });
+
+  it('encodes the four diagonal single-step opcodes', () => {
+    expect([4, 5, 6, 7].map((dir) => buildMovePacket(dir as 4 | 5 | 6 | 7).toUint8Array()[0]))
+      .toEqual([0x6a, 0x6b, 0x6c, 0x6d]);
   });
 
   it('caps the route at the U8 count limit', () => {
@@ -119,7 +140,7 @@ describe('floor-change tiles (stairs, holes)', () => {
     // Detour south exists; the direct path through S must be refused.
     const { world, datIndex } = makeWorld(['.S.', '...'], 0, 0);
     const route = findWalkRoute(world, datIndex, 2, 0, FLOOR_CHANGE_IDS);
-    expect(route).toEqual([2, 1, 1, 0]); // S E E N — around, not across
+    expect(route).toEqual([5, 4]); // SE NE — around, not across
   });
 
   it('a boxed-in stair behind walls stays unreachable', () => {

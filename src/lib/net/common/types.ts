@@ -275,11 +275,11 @@ export interface CreatureProtocol {
 }
 
 /**
- * Walk direction on the wire: 0 north, 1 east, 2 south, 3 west —
- * deliberately value-compatible with lib/player's Direction so app code
- * can pass it straight through.
+ * Walk direction used by movement packets. The four cardinal values remain
+ * compatible with lib/player's facing Direction; diagonals are route-only
+ * because 7.6 creature sprites still face east/west during a diagonal step.
  */
-export type WalkDirection = 0 | 1 | 2 | 3;
+export type WalkDirection = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 /** A world coordinate as carried on the wire (U16 x, U16 y, U8 z). */
 export interface WirePosition {

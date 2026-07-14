@@ -34,8 +34,12 @@ import { bindInteractions, type InteractionsHandle } from './interactions';
 import { bindCombat, type CombatBindingHandle } from './combatBinding';
 import { loadBrightness, saveBrightness } from '../lighting';
 import { loadTapToWalk, saveTapToWalk } from './interactionPreferences';
-import { LIGHT_PREF_EVENT, expectedStepMs } from './renderer';
-import { beginRoute, beginStep, createPrewalk, flushPrewalk } from './prewalk';
+import { LIGHT_PREF_EVENT } from './renderer';
+import { expectedStepMs } from '../render/motion/forward';
+import {
+  beginRoute, beginStep, createPrewalk, flushPrewalk, prewalkContinuation, prewalkStateAt,
+} from '../render/motion/prewalk';
+import { resolveSelfMotionMode } from '../render/motion/selfMotion';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -55,6 +59,9 @@ const params = new URLSearchParams(window.location.search);
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
+// Self-movement algorithm A/B switch (see motion/selfMotion.ts):
+// ?selfmotion=playout falls back to the pre-prediction playout buffer.
+const selfMotionMode = resolveSelfMotionMode(params.get('selfmotion'));
 // Dev-server convenience: land straight in the game on every reload so
 // changes are visible immediately. ?autologin=0 opts out (e.g. to test
 // the login form itself); production builds never auto-login.
@@ -486,10 +493,16 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         useableIds: jameraUseableIds ?? undefined,
         moveableIds: jameraMoveableIds ?? undefined,
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
+        // The camera renders the predicted position; taps must decode
+        // against it, not the confirmed tile a route runs ahead of
+        // (Codex review, #305).
+        getSelfRenderPos: selfMotionMode !== 'prewalk'
+          ? undefined
+          : () => prewalkStateAt(selfPrewalk, performance.now()),
         // Tap-to-walk: predict the whole 0x64 route — the server walks
         // it without per-step sends, so this is the only place the
         // prediction chain can learn it.
-        onRouteSent: (route) => {
+        onRouteSent: selfMotionMode !== 'prewalk' ? undefined : (route) => {
           beginRoute(
             selfPrewalk,
             { x: world.playerX, y: world.playerY, z: world.playerZ },
@@ -504,7 +517,10 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         },
       })
       : null;
-    teardownRenderer = bindRenderer(world, atlas, app, chatManager, selfPrewalk);
+    teardownRenderer = bindRenderer(
+      world, atlas, app, chatManager,
+      selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
+    );
     console.info('[jamera] renderer bound to GameWorld');
   };
 
@@ -747,12 +763,12 @@ function selfStepMsFrom(
 /**
  * Duration for the NEXT held-direction step, which leaves the prediction
  * chain's continuation tile — not the (older) confirmed position.
+ * prewalkContinuation skips a route's unconfirmed tail, which beginStep
+ * is about to drop (Codex review, #305).
  */
 function predictedSelfStepMs(world: GameWorld): number {
-  const last = selfPrewalk.steps[selfPrewalk.steps.length - 1];
-  const from = last
-    ? { x: last.toX, y: last.toY, z: last.z }
-    : { x: world.playerX, y: world.playerY, z: world.playerZ };
+  const from = prewalkContinuation(selfPrewalk)
+    ?? { x: world.playerX, y: world.playerY, z: world.playerZ };
   return selfStepMsFrom(world, from, false);
 }
 
@@ -776,7 +792,8 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
     // Pre-walk: predict the step the packet will cause so the renderer
     // glides from the send instant instead of standing out the
     // confirmation round-trip (the level-1 step-pause-step stutter).
-    onStepSent: (dir, now) => {
+    // In playout mode the hook stays unset — no chain is ever seeded.
+    onStepSent: selfMotionMode !== 'prewalk' ? undefined : (dir, now) => {
       beginStep(
         selfPrewalk,
         { x: world.playerX, y: world.playerY, z: world.playerZ },

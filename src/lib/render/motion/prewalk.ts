@@ -1,5 +1,5 @@
-import type { WalkDirection } from '../net/common/types';
-import type { PlaybackState } from './renderer';
+import type { WalkDirection } from '../../net/common/types';
+import type { PlaybackState } from './types';
 
 /**
  * Client-side walk prediction for SELF (classic Tibia/OTClient pre-walk).
@@ -312,6 +312,19 @@ export function prewalkStateAt(pw: PrewalkState, now: number): PlaybackState | n
  * Callers derive the character's facing from it — the server only
  * turns the creature at confirmation, a step too late to look right.
  */
+/**
+ * The tile the NEXT predicted step will leave, or null when it leaves
+ * the anchor. Mirrors beginStep's continuation rule — including the
+ * route interrupt, where the unconfirmed tail is about to be dropped —
+ * so callers computing the step's duration read the ground of the tile
+ * the step actually departs from.
+ */
+export function prewalkContinuation(pw: PrewalkState): { x: number; y: number; z: number } | null {
+  const steps = pw.fromRoute ? pw.steps.filter((s) => s.confirmed) : pw.steps;
+  const last = steps[steps.length - 1];
+  return last ? { x: last.toX, y: last.toY, z: last.z } : null;
+}
+
 export function prewalkActiveStep(pw: PrewalkState, now: number): PrewalkStep | null {
   if (pw.steps.length === 0) return null;
   let i = pw.steps.length - 1;

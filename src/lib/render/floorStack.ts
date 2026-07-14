@@ -40,6 +40,13 @@ export function drawnFloorsAbove(firstVisible: number, playerZ: number): number[
   return floors;
 }
 
+/** Keep every floor aligned to the same raw world-coordinate origin. */
+export function floorLayerOffset(z: number, playerZ: number): { x: number; y: number } {
+  void z;
+  void playerZ;
+  return { x: 0, y: 0 };
+}
+
 export interface GlideEndpoints { fromX: number; fromY: number; toX: number; toY: number }
 
 /**

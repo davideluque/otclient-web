@@ -12,7 +12,7 @@ import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
-  glideEndpoints, coveringRevisionKey, partitionByFloor,
+  floorLayerOffset, glideEndpoints, coveringRevisionKey, partitionByFloor,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -225,12 +225,9 @@ export function bindRenderer(
   // creatures(1) → aboveTiles(2)), the simplest structure where roofs
   // also draw over creatures while creatures still stand on the ground.
   //
-  // Player floor and below sit at RAW world coordinates — no per-z
-  // screen offset (design-doc lesson 988f86d: a +32px/z offset put
-  // stairs one tile off; tall sprites alone carry the 2.5D depth).
-  // Floors ABOVE instead carry the iso offset (z − playerZ)·TILE_SIZE
-  // on both axes, negative → up-left (design-doc lesson 3691ea3:
-  // without it multi-story buildings collapse into a flat silhouette).
+  // Every floor sits at raw world coordinates. Moving an above-floor
+  // container again makes stairs and ladders appear north-west of the tile
+  // they actually occupy.
   let tilesRoot: Container | null = null;
   const tileFloorLayers = new Map<number, Container>();
   let aboveTilesRoot: Container | null = null;
@@ -620,11 +617,8 @@ export function bindRenderer(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
             x1, y1, x2, y2, z,
           );
-          // Iso offset, negative → up-left (design-doc lesson 3691ea3:
-          // without it multi-story buildings collapse flat).
-          nextTiles.position.set(
-            (z - world.playerZ) * TILE_SIZE, (z - world.playerZ) * TILE_SIZE,
-          );
+          const offset = floorLayerOffset(z, world.playerZ);
+          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
           const old = aboveFloorLayers.get(z);
           if (old) {
             aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));

@@ -208,6 +208,9 @@ export function prewalkStateAt(pw: PrewalkState, now: number): PlaybackState | n
   while (i > 0 && pw.steps[i].startAt > now) i--;
   const s = pw.steps[i];
   if (now < s.startAt) return { x: s.fromX, y: s.fromY, moving: false };
+  // Degenerate duration (nothing produces one today, but the module is
+  // generic): treat as an instant step rather than dividing by zero.
+  if (s.stepMs <= 0) return { x: s.toX, y: s.toY, moving: false };
   const u = (now - s.startAt) / s.stepMs;
   if (u >= 1) return { x: s.toX, y: s.toY, moving: false };
   return {

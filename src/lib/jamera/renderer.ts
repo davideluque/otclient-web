@@ -11,8 +11,8 @@ import {
 import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
-  drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  partitionByFloor,
+  drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
+  glideEndpoints, coveringRevisionKey, partitionByFloor,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -533,7 +533,7 @@ export function bindRenderer(
     const revisionDue = revChanged && now - lastTileRebuildAt >= TILE_REVISION_THROTTLE_MS;
     if (fullRebuild || roofStateChanged || revisionDue) {
       const belowToRebuild = fullRebuild ? drawnBelow
-        : revisionDue ? dirtyFloors(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
+        : revisionDue ? dirtyFloorsWithBelowOcclusion(drawnBelow, paintedRevisionByZ, world.tileRevisionByZ)
           : [];
       // The above set is a function of the probe, so a probe change
       // rebuilds that whole (small, sparse) stack; roof-culled means
@@ -711,14 +711,18 @@ export function bindRenderer(
 
     // ── Light overlay: server world light × brightness preference ──
     const brightness = loadBrightness();
-    const lk = `${paintedTileRevision}:${creatureKey}:${world.worldLight.level}:${world.worldLight.color}:${brightness}`;
+    const ambientColor = computeAmbient(world.worldLight.level, world.worldLight.color, brightness);
+    // Multiplying by pure white is a no-op, and additive light bubbles
+    // cannot brighten it further. Skip the render-texture pass in daylight.
+    const lk = ambientColor === 0xffffff ? 'off'
+      : `${paintedTileRevision}:${creatureKey}:${world.worldLight.level}:${world.worldLight.color}:${brightness}`;
     if (lk !== lightKey) {
       if (lightLayer) {
         root.removeChild(lightLayer);
         lightLayer.destroy();
         lightLayer = null;
       }
-      {
+      if (lk !== 'off') {
         const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
         const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
         const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
@@ -746,7 +750,7 @@ export function bindRenderer(
           illuminationTexture, lightSpritePool,
           x1, y1, x2, y2, [...drawnBelow, ...drawnAbove],
           {
-            ambientColor: computeAmbient(world.worldLight.level, world.worldLight.color, brightness),
+            ambientColor,
             enabled: true,
             extraLights,
           },

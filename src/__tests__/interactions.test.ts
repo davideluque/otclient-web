@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindInteractions, floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/interactions';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from '../lib/net/7.6/actionsProtocol';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
+import { DatAttr } from '../lib/dat';
 import type { GameClient } from '../lib/net/common/GameClient';
 import type { Application } from 'pixi.js';
 import type { GameWorld } from '../lib/GameWorld';
@@ -114,8 +115,12 @@ describe('long-press pointer tracking', () => {
       getProtocol: () => new GameProtocol(),
       send: (p: { toUint8Array(): Uint8Array }) => sent.push([...p.toUint8Array()]),
     } as unknown as GameClient;
-    // Every tile is plain walkable ground (id 1987, no blocking attrs).
-    const datIndex = new Map([[1987, { id: 1987, attrs: new Map() }]]) as never;
+    // The default target is a walkable container item (id 1987); tests
+    // that need a non-container target pass id 200 explicitly.
+    const datIndex = new Map([
+      [1987, { id: 1987, attrs: new Map([[DatAttr.Container, true]]) }],
+      [200, { id: 200, attrs: new Map() }],
+    ]) as never;
     const handle = bindInteractions(client, liveWorld, liveApp, datIndex, opts);
     const touch = (type: string, pointerId: number, clientX: number, clientY: number) =>
       canvas.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', pointerId, clientX, clientY, bubbles: true }));
@@ -239,6 +244,25 @@ describe('long-press pointer tracking', () => {
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0xc3, 0x07, 0, 5]);
+    handle.destroy();
+  });
+
+  it('does not reserve a container window id for non-container uses', () => {
+    const nextContainerId = vi.fn(() => 5);
+    const tile: MapTile = {
+      x: 100,
+      y: 200,
+      z: 7,
+      things: [{ kind: 'item', item: { id: 200 } }],
+      items: [{ id: 200 }],
+      creatures: [],
+    };
+    const { canvas, handle, sent } = mount(tile, { nextContainerId });
+    canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 400, clientY: 300, bubbles: true }));
+
+    expect(nextContainerId).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 200, 0, 0, 0]);
     handle.destroy();
   });
 

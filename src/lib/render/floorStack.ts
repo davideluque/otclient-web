@@ -105,3 +105,21 @@ export function dirtyFloors(
 ): number[] {
   return drawn.filter((z) => painted.get(z) !== (current.get(z) ?? 0));
 }
+
+/**
+ * Below-player floors are painted deepest-first, but their occlusion is
+ * determined by shallower FullGround tiles. If a shallower floor changes,
+ * every deeper painted layer must be rebuilt with the new skip set too.
+ */
+export function dirtyFloorsWithBelowOcclusion(
+  drawn: readonly number[],
+  painted: ReadonlyMap<number, number>,
+  current: ReadonlyMap<number, number>,
+): number[] {
+  let lastDirty = -1;
+  for (let i = 0; i < drawn.length; i++) {
+    const z = drawn[i];
+    if (painted.get(z) !== (current.get(z) ?? 0)) lastDirty = i;
+  }
+  return lastDirty === -1 ? [] : drawn.slice(0, lastDirty + 1);
+}

@@ -113,6 +113,29 @@ export function buildCloseTradePacket(): OutputPacket {
   return out;
 }
 
+/** 0x89 — submit text for the server-issued writable-item window id. */
+export function buildUpdateTextWindowPacket(windowId: number, text: string): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.UpdateTextWindow);
+  out.addU32(windowId);
+  out.addString(text);
+  return out;
+}
+
+/** 0x8A — submit a house access list. Jamera uses listId 0 on the wire. */
+export function buildUpdateHouseWindowPacket(
+  listId: number,
+  windowId: number,
+  text: string,
+): OutputPacket {
+  const out = new OutputPacket();
+  out.addU8(ClientOp.UpdateHouseWindow);
+  out.addU8(listId);
+  out.addU32(windowId);
+  out.addString(text);
+  return out;
+}
+
 /** 0x14 — request a clean logout; the server saves and closes. */
 export function buildLogoutPacket(): OutputPacket {
   const out = new OutputPacket();

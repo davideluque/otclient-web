@@ -325,6 +325,10 @@ export interface ActionsProtocol {
   buildAcceptTrade(): OutputPacket;
   /** Cancel the active trade. */
   buildCloseTrade(): OutputPacket;
+  /** Save a writable book/document window. */
+  buildUpdateTextWindow(windowId: number, text: string): OutputPacket;
+  /** Save a house guest/subowner/door access list. */
+  buildUpdateHouseWindow(listId: number, windowId: number, text: string): OutputPacket;
 }
 
 /** One open container window, as described by a 0x6E. */
@@ -560,6 +564,8 @@ export interface ClientOpcodes {
   readonly LookInTrade: number;
   readonly AcceptTrade: number;
   readonly CloseTrade: number;
+  readonly UpdateTextWindow: number;
+  readonly UpdateHouseWindow: number;
 }
 
 // ─── Top-level protocol ────────────────────────────────────────────────────

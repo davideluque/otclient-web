@@ -100,6 +100,12 @@ export function createContainerPane(
     return button;
   };
 
+  let stopWindowDrags: Array<() => void> = [];
+  const clearWindowDrags = (): void => {
+    for (const stop of stopWindowDrags) stop();
+    stopWindowDrags = [];
+  };
+
   const renderCell = (container: OpenContainer, slot: number): HTMLElement => {
     const item = container.items[slot];
     if (!item) {
@@ -140,7 +146,7 @@ export function createContainerPane(
       head.appendChild(headerButton('⬆', () => opts.onUp?.(container.id)));
     }
     head.appendChild(headerButton('✕', () => opts.onClose?.(container.id)));
-    makeDraggable(el, head);
+    stopWindowDrags.push(makeDraggable(el, head));
     const grid = document.createElement('div');
     grid.className = 'grid';
     // A container can overfill past its nominal capacity (server-side
@@ -160,10 +166,14 @@ export function createContainerPane(
       // replaceChildren resets the pane's scroll; a loot tick must not
       // yank the list back to the top mid-scroll.
       const scrollTop = el.scrollTop;
+      clearWindowDrags();
       el.replaceChildren(...sorted.map(renderWindow));
       el.style.display = sorted.length > 0 ? 'flex' : 'none';
       el.scrollTop = scrollTop;
     },
-    destroy: () => el.remove(),
+    destroy: () => {
+      clearWindowDrags();
+      el.remove();
+    },
   };
 }

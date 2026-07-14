@@ -6,6 +6,8 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
   let activePointer: number | null = null;
   let offsetX = 0;
   let offsetY = 0;
+  let panelWidth = 0;
+  let panelHeight = 0;
 
   const viewportBounds = (): { left: number; top: number; width: number; height: number } => ({
     left: window.visualViewport?.offsetLeft ?? 0,
@@ -16,9 +18,8 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
 
   const moveTo = (clientX: number, clientY: number): void => {
     const bounds = viewportBounds();
-    const rect = panel.getBoundingClientRect();
-    const maxLeft = bounds.left + Math.max(0, bounds.width - rect.width);
-    const maxTop = bounds.top + Math.max(0, bounds.height - rect.height);
+    const maxLeft = bounds.left + Math.max(0, bounds.width - panelWidth);
+    const maxTop = bounds.top + Math.max(0, bounds.height - panelHeight);
     panel.style.left = `${Math.min(maxLeft, Math.max(bounds.left, clientX - offsetX))}px`;
     panel.style.top = `${Math.min(maxTop, Math.max(bounds.top, clientY - offsetY))}px`;
   };
@@ -39,12 +40,16 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
   };
 
   const onDown = (event: PointerEvent): void => {
+    if (activePointer !== null) return;
     if (!event.isPrimary || event.button !== 0) return;
-    if ((event.target as Element).closest('button, input, select, textarea, a')) return;
+    if (!(event.target instanceof Element)
+      || event.target.closest('button, input, select, textarea, a')) return;
     const rect = panel.getBoundingClientRect();
     activePointer = event.pointerId;
     offsetX = event.clientX - rect.left;
     offsetY = event.clientY - rect.top;
+    panelWidth = rect.width;
+    panelHeight = rect.height;
     // Convert centered/right-anchored panels to an explicit viewport point.
     panel.style.position = 'fixed';
     panel.style.left = `${rect.left}px`;

@@ -12,7 +12,7 @@ import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
-  glideEndpoints, coveringRevisionKey, partitionByFloor,
+  floorLayerOffset, glideEndpoints, coveringRevisionKey, partitionByFloor,
 } from '../render/floorStack';
 import { createNameplate, type NameplateHandle } from './nameplate';
 import { CombatTextRenderer } from './combatText';
@@ -297,9 +297,12 @@ export function bindRenderer(
   // creatures(1) → aboveTiles(2)), the simplest structure where roofs
   // also draw over creatures while creatures still stand on the ground.
   //
-  // Every floor sits at raw world coordinates. Moving an above-floor
-  // container again makes stairs and ladders appear north-west of the tile
-  // they actually occupy.
+  // Every floor container carries the classic perspective offset
+  // (z − playerZ) tiles on both axes (floorStack.floorLayerOffset):
+  // below floors lean south-east, above floors north-west, one tile per
+  // level — the model the wire format, upstream OTClient, and the map's
+  // 64×64 sprite art all assume (NDIT-204). Each floor renders the world
+  // window shifted the OPPOSITE way so the screen stays exactly covered.
   let tilesRoot: Container | null = null;
   const tileFloorLayers = new Map<number, Container>();
   let aboveTilesRoot: Container | null = null;
@@ -699,13 +702,15 @@ export function bindRenderer(
         // paint — in town, the surface floor blanks out nearly every
         // slot beneath it (see floorOcclusion.ts for the cascade rules).
         const occlusion = buildOcclusionSets(
-          world, atlas.datIndex, x1, y1, x2, y2, [...drawnBelow].reverse(),
+          world, atlas.datIndex, x1, y1, x2, y2, [...drawnBelow].reverse(), world.playerZ,
         );
         for (const z of belowToRebuild) {
+          const offset = floorLayerOffset(z, world.playerZ);
           const { container: nextTiles } = renderTileRegion(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
-            x1, y1, x2, y2, z, occlusion.get(z),
+            x1 - offset.x, y1 - offset.y, x2 - offset.x, y2 - offset.y, z, occlusion.get(z),
           );
+          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
           const old = tileFloorLayers.get(z);
           if (old) {
             tilesRoot.addChildAt(nextTiles, tilesRoot.getChildIndex(old));
@@ -720,20 +725,16 @@ export function bindRenderer(
           paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
         }
         for (const z of aboveToRebuild) {
-          // No skipPositions here: the iso offset shifts every above
-          // floor a tile up-left per z, breaking the same-(x,y)
-          // alignment the FullGround cascade assumes — and above
-          // floors are sparse roof outlines, so there is little to
-          // save anyway.
+          // No skipPositions here: above floors are sparse roof
+          // outlines, so a skip set saves next to nothing.
+          const offset = floorLayerOffset(z, world.playerZ);
           const { container: nextTiles } = renderTileRegion(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
-            x1, y1, x2, y2, z,
+            x1 - offset.x, y1 - offset.y, x2 - offset.x, y2 - offset.y, z,
           );
-          // No container offset: every floor sits at raw world
-          // coordinates. OTBM maps pre-shift upper floors one tile NW
-          // per level (the classic-client perspective is baked into the
-          // map data), so translating the container again displaced
-          // stairs and ladders NW of their true tile.
+          // Iso offset, negative → up-left. Without it multi-story
+          // buildings collapse into a flat silhouette (lesson 3691ea3).
+          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
           const old = aboveFloorLayers.get(z);
           if (old) {
             aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));
@@ -779,6 +780,9 @@ export function bindRenderer(
         const tileLayer = tileFloorLayers.get(z);
         if (!tilesRoot || !tileLayer) continue;
         const layer = new Container();
+        // Same iso offset as the floor's tiles — creatures stand on the
+        // shifted ground.
+        layer.position.copyFrom(tileLayer.position);
         tilesRoot.addChildAt(layer, tilesRoot.getChildIndex(tileLayer) + 1);
         layers.set(z, layer);
       }
@@ -849,7 +853,14 @@ export function bindRenderer(
         // carriers on undrawn floors must not accumulate.
         const extraLights: LightSource[] = world.getAllCreatures()
           .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0)
-          .map((creature) => ({ creature, position: renderPosFor(creature, now) }))
+          .map((creature) => {
+            // Carriers glow at their floor's screen cell — shifted like
+            // its container (floorLayerOffset), so the bubble tracks the
+            // sprite, not the raw world coordinate.
+            const raw = renderPosFor(creature, now);
+            const dz = creature.z - world.playerZ;
+            return { creature, position: { x: raw.x + dz, y: raw.y + dz } };
+          })
           .filter(({ position }) =>
             position.x >= x1 - MAX_LIGHT_REACH && position.x <= x2 + MAX_LIGHT_REACH
             && position.y >= y1 - MAX_LIGHT_REACH && position.y <= y2 + MAX_LIGHT_REACH)
@@ -867,6 +878,7 @@ export function bindRenderer(
             enabled: true,
             extraLights,
           },
+          world.playerZ,
         );
         // Above both tile parents and the creatures — roofs darken
         // with the world too — below the bubble layer.

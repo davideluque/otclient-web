@@ -548,11 +548,16 @@ export function bindInteractions(
       fireTrade(e.clientX, e.clientY);
       return;
     }
-    // Objects advertised as direct-use by either OTB or DAT use on a single
-    // click when in reach. A distant fixed object remains a walk target.
+    // FIXED direct-use objects (ladders, levers, closed doors, harvest
+    // scenery) use on a single click when in reach — their tiles are
+    // unwalkable, so the click cannot mean "walk here". Containers and
+    // corpses lie on walkable tiles and keep classic desktop
+    // walk-then-double-click; on touch they stay single-tap (mobile has
+    // the joystick for stepping onto loot).
+    const isFixedDirectUse = (id: number): boolean => itemForcesUse(id) || itemLooksDirectUse(id);
     const pointed = worldTileAtPointer(e.clientX, e.clientY);
-    if (tileHasItem(pointed, isTapUseable) && isWithinReach(pointed)) {
-      use(e.clientX, e.clientY, isTapUseable);
+    if (tileHasItem(pointed, isFixedDirectUse) && isWithinReach(pointed)) {
+      use(e.clientX, e.clientY, isFixedDirectUse);
       return;
     }
     walkTo(e.clientX, e.clientY);

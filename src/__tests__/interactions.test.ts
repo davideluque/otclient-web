@@ -248,6 +248,23 @@ describe('long-press pointer tracking', () => {
     handle.destroy();
   });
 
+  it('a single desktop click on an adjacent container walks, not opens', () => {
+    // Containers/corpses lie on WALKABLE tiles: desktop click-to-walk
+    // onto the loot tile must survive, use stays on double-click.
+    const containerTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [{ kind: 'item', item: { id: 1987 } }],
+      items: [{ id: 1987 }], creatures: [],
+    };
+    const { canvas, handle, sent } = mount(containerTile, { useableIds: new Set([1987]) });
+    canvas.dispatchEvent(new MouseEvent('click', {
+      button: 0, clientX: 400, clientY: 300, bubbles: true,
+    }));
+
+    expect(sent.some((p) => p[0] === 0x82)).toBe(false);
+    handle.destroy();
+  });
+
   it('walks toward a ForceUse ladder that is out of reach instead of using it', () => {
     const ladderTile: MapTile = {
       x: 102, y: 200, z: 7,

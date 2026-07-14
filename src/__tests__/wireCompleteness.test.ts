@@ -514,6 +514,31 @@ describe('GameWorld floor changes', () => {
     expect([w.playerX, w.playerY, w.playerZ]).toEqual([100, 200, 7]);
     expect(w.selfSteps).toBe(1);
   });
+
+  it('publishes only the final landing after covered-offset and directional slices', async () => {
+    const w = world();
+    const d = dispatcherFor(w);
+    setPos(w, 100, 200, 6);
+    seedSelf(w);
+    const published: Array<[number, number, number]> = [];
+    w.onChange = () => published.push([w.playerX, w.playerY, w.playerZ]);
+
+    const out = new OutputPacket();
+    out.addU8(0xbe);
+    out.addU8(0x68);
+    emptyCells(out, 14 * 8);
+    out.addU8(0x65);
+    emptyCells(out, 18 * 8);
+    out.addU8(0x66);
+    emptyCells(out, 14 * 8);
+
+    d.dispatch(new InputPacket(out.toArrayBuffer()));
+    expect(published).toEqual([]);
+    await Promise.resolve();
+    expect(published).toEqual([[101, 200, 5]]);
+    expect(w.getCreature(7)).toMatchObject({ x: 101, y: 200, z: 5 });
+    expect(w.selfSteps).toBe(1);
+  });
 });
 
 describe('GameWorld lighting packets', () => {

@@ -76,6 +76,9 @@ export interface InteractionsOptions {
 
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 12;
+/** How long after a ForceUse single-click the rest of a double-click
+ *  gesture (second click + dblclick) is swallowed. */
+const FORCE_USE_SUPPRESS_MS = 400;
 /** How long after a touch tap a (legacy, pointerType-less) synthesized
  *  click is still attributed to that tap and dropped. */
 const SYNTHESIZED_CLICK_MS = 500;
@@ -427,6 +430,9 @@ export function bindInteractions(
   let armedUseWith: ThingRef | null = null;
   let armedTrade: ThingRef | null = null;
   let lastTouchTapAt = 0;
+  // Swallows the extra click + dblclick a double-click gesture still
+  // fires after a ForceUse single-click already consumed it.
+  let suppressClicksUntil = 0;
   let hint: HTMLElement | null = null;
 
   function cancelUseWith(): void {
@@ -529,11 +535,16 @@ export function bindInteractions(
       fireTrade(e.clientX, e.clientY);
       return;
     }
+    if (Date.now() < suppressClicksUntil) return;
     // ForceUse items (ladders, stairwells) in reach use on a single
     // click, like the original client — everything else keeps
     // walk-then-dblclick, so a distant ladder click walks toward it.
     const pointed = worldTileAtPointer(e.clientX, e.clientY);
     if (tileHasItem(pointed, itemForcesUse) && isWithinReach(pointed)) {
+      // A double-click gesture fires click, click, dblclick — the first
+      // use consumed the gesture; the rest must not re-use whatever tile
+      // sits under the cursor after the floor change.
+      suppressClicksUntil = Date.now() + FORCE_USE_SUPPRESS_MS;
       use(e.clientX, e.clientY, itemForcesUse);
       return;
     }
@@ -544,6 +555,7 @@ export function bindInteractions(
     look(e.clientX, e.clientY);
   };
   const onDblClick = (e: MouseEvent): void => {
+    if (Date.now() < suppressClicksUntil) return;
     use(e.clientX, e.clientY);
   };
 

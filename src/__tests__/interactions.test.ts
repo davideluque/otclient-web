@@ -202,6 +202,26 @@ describe('long-press pointer tracking', () => {
     handle.destroy();
   });
 
+  it('a double-click gesture on a ladder sends exactly one UseItem', () => {
+    const ladderTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 200 } },
+        { kind: 'item', item: { id: 1948 } },
+      ],
+      items: [{ id: 200 }, { id: 1948 }],
+      creatures: [],
+    };
+    const { canvas, handle, sent } = mount(ladderTile);
+    // Browsers fire click, click, dblclick for one double-click gesture.
+    for (const type of ['click', 'click', 'dblclick']) {
+      canvas.dispatchEvent(new MouseEvent(type, { button: 0, clientX: 400, clientY: 300, bubbles: true }));
+    }
+    expect(sent).toHaveLength(1);
+    expect(sent[0][0]).toBe(0x82);
+    handle.destroy();
+  });
+
   it('walks toward a ForceUse ladder that is out of reach instead of using it', () => {
     const ladderTile: MapTile = {
       x: 102, y: 200, z: 7,

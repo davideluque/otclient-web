@@ -2,7 +2,7 @@ import { Container, Graphics, RenderTexture, Sprite } from 'pixi.js';
 import type { Application } from 'pixi.js';
 import {
   buildIlluminationOverlay, computeAmbient, createLightMaskTexture,
-  loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
+  creatureLightSource, loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
 } from '../lighting';
 import {
   renderTileRegion, renderPlayer, spriteIndex, readPixelDisplacement,
@@ -297,12 +297,9 @@ export function bindRenderer(
   // creatures(1) → aboveTiles(2)), the simplest structure where roofs
   // also draw over creatures while creatures still stand on the ground.
   //
-  // Player floor and below sit at RAW world coordinates — no per-z
-  // screen offset (design-doc lesson 988f86d: a +32px/z offset put
-  // stairs one tile off; tall sprites alone carry the 2.5D depth).
-  // Floors ABOVE instead carry the iso offset (z − playerZ)·TILE_SIZE
-  // on both axes, negative → up-left (design-doc lesson 3691ea3:
-  // without it multi-story buildings collapse into a flat silhouette).
+  // Every floor sits at raw world coordinates. Moving an above-floor
+  // container again makes stairs and ladders appear north-west of the tile
+  // they actually occupy.
   let tilesRoot: Container | null = null;
   const tileFloorLayers = new Map<number, Container>();
   let aboveTilesRoot: Container | null = null;
@@ -732,11 +729,11 @@ export function bindRenderer(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
             x1, y1, x2, y2, z,
           );
-          // Iso offset, negative → up-left (design-doc lesson 3691ea3:
-          // without it multi-story buildings collapse flat).
-          nextTiles.position.set(
-            (z - world.playerZ) * TILE_SIZE, (z - world.playerZ) * TILE_SIZE,
-          );
+          // No container offset: every floor sits at raw world
+          // coordinates. OTBM maps pre-shift upper floors one tile NW
+          // per level (the classic-client perspective is baked into the
+          // map data), so translating the container again displaced
+          // stairs and ladders NW of their true tile.
           const old = aboveFloorLayers.get(z);
           if (old) {
             aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));
@@ -835,24 +832,28 @@ export function bindRenderer(
         lightLayer = null;
       }
       if (lk !== 'off') {
-        const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
-        const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
-        const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
-        const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
+        // Match the tile texture's stable hysteresis center. Centering this
+        // texture on every confirmed step exposes the still-painted trailing
+        // edge as a briefly full-bright strip.
+        const x1 = paintedCenterX - HALF_W_LEFT - GLIDE_PAD;
+        const x2 = paintedCenterX + HALF_W_RIGHT + GLIDE_PAD;
+        const y1 = paintedCenterY - HALF_H_TOP - GLIDE_PAD;
+        const y2 = paintedCenterY + HALF_H_BOTTOM + GLIDE_PAD;
         // Creature-carried lights (the player's glow, torches in hand)
         // — any DRAWN floor's carriers count, matching the tile-light
         // gather below; only ones whose bubble can reach the visible
         // region (light intensity caps at 7 tiles).
         const MAX_LIGHT_REACH = 7;
+        // Floor/light filters run BEFORE the position lookup: renderPosFor
+        // seeds a persistent playback entry per creature, which dark-only
+        // carriers on undrawn floors must not accumulate.
         const extraLights: LightSource[] = world.getAllCreatures()
-          .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0
-            && c.x >= x1 - MAX_LIGHT_REACH && c.x <= x2 + MAX_LIGHT_REACH
-            && c.y >= y1 - MAX_LIGHT_REACH && c.y <= y2 + MAX_LIGHT_REACH)
-          .map((c) => ({
-            x: c.x, y: c.y,
-            intensity: c.lightLevel,
-            color: tibiaColorToHex(c.lightColor),
-          }));
+          .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0)
+          .map((creature) => ({ creature, position: renderPosFor(creature, now) }))
+          .filter(({ position }) =>
+            position.x >= x1 - MAX_LIGHT_REACH && position.x <= x2 + MAX_LIGHT_REACH
+            && position.y >= y1 - MAX_LIGHT_REACH && position.y <= y2 + MAX_LIGHT_REACH)
+          .map(({ creature, position }) => creatureLightSource(creature, position));
         // Every drawn floor feeds ONE merged overlay (design doc:
         // classic behavior, no per-floor light layers) — a torch on the
         // stairs above you lights your view; the sealed cellar's does

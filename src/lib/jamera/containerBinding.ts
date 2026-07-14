@@ -48,6 +48,10 @@ export function bindContainers(
   let pane: ContainerPaneHandle | null = null;
   let unsubscribe: (() => void) | null = null;
   let sheet: ActionSheetHandle | null = null;
+  const closeSheet = (): void => {
+    sheet?.close();
+    sheet = null;
+  };
   if (parent) {
     const send = (packet: Parameters<GameClient['send']>[0]): void => {
       try {
@@ -97,11 +101,16 @@ export function bindContainers(
             )),
           });
         }
-        sheet?.close();
+        closeSheet();
         sheet = showActionSheet({ title: `#${item.id}`, actions, parent });
       },
     });
-    unsubscribe = manager.subscribe(() => pane?.update(manager.list));
+    unsubscribe = manager.subscribe(() => {
+      pane?.update(manager.list);
+      // Container updates can prepend/remove items and shift stack positions.
+      // Force the player to tap the freshly rendered slot before sending.
+      closeSheet();
+    });
   }
 
   dispatcher.on(op.ContainerOpen, (p) => {
@@ -134,7 +143,7 @@ export function bindContainers(
       // The handle exposes `manager` — dropping the subscription keeps a
       // retained manager from pinning the destroyed pane's DOM.
       unsubscribe?.();
-      sheet?.close();
+      closeSheet();
       pane?.destroy();
       manager.clear();
     },

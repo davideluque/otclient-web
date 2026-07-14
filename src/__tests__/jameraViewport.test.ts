@@ -45,9 +45,10 @@ describe('bindViewportCover', () => {
     const screen = { width: 0, height: 0 };
     const scale = { x: 1, y: 1, set: (v: number) => { scale.x = v; scale.y = v; } };
     const resize = vi.fn((w: number, h: number) => { screen.width = w; screen.height = h; });
+    const canvas = document.createElement('canvas');
     return {
-      app: { screen, stage: { scale }, renderer: { resize } } as unknown as Application,
-      screen, scale, resize,
+      app: { canvas, screen, stage: { scale }, renderer: { resize } } as unknown as Application,
+      canvas, screen, scale, resize,
     };
   }
 
@@ -88,6 +89,57 @@ describe('bindViewportCover', () => {
       unbind();
       window.removeEventListener(VIEWPORT_EVENT, onViewport);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tracks visual viewport offsets that change without a resize', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    const originalViewport = Object.getOwnPropertyDescriptor(window, 'visualViewport');
+    let unbind: (() => void) | undefined;
+    let onViewport: (() => void) | undefined;
+    try {
+      const viewport = new EventTarget() as VisualViewport;
+      Object.assign(viewport, {
+        width: 390,
+        height: 700,
+        offsetLeft: 12,
+        offsetTop: 48,
+      });
+      Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+
+      const { app, canvas, resize } = makeApp();
+      let events = 0;
+      onViewport = () => events++;
+      window.addEventListener(VIEWPORT_EVENT, onViewport);
+      unbind = bindViewportCover(app);
+      expect(canvas.style.left).toBe('12px');
+      expect(canvas.style.top).toBe('48px');
+      const resizeCalls = resize.mock.calls.length;
+      const dispatched = events;
+
+      Object.assign(viewport, { offsetLeft: 12.005, offsetTop: 48.005 });
+      viewport.dispatchEvent(new Event('scroll'));
+      vi.advanceTimersToNextFrame();
+      vi.advanceTimersToNextFrame();
+      expect(events).toBe(dispatched);
+
+      Object.assign(viewport, { offsetLeft: 20, offsetTop: 64 });
+      viewport.dispatchEvent(new Event('scroll'));
+      vi.advanceTimersToNextFrame();
+      vi.advanceTimersToNextFrame();
+
+      expect(canvas.style.left).toBe('20px');
+      expect(canvas.style.top).toBe('64px');
+      expect(resize.mock.calls.length).toBe(resizeCalls);
+    } finally {
+      unbind?.();
+      if (onViewport) window.removeEventListener(VIEWPORT_EVENT, onViewport);
+      if (originalViewport) {
+        Object.defineProperty(window, 'visualViewport', originalViewport);
+      } else {
+        Reflect.deleteProperty(window, 'visualViewport');
+      }
       vi.useRealTimers();
     }
   });

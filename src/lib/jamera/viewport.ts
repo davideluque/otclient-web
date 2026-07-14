@@ -49,16 +49,34 @@ export function bindViewportCover(app: Application): () => void {
   let resizeRaf: number | null = null;
 
   const apply = (): void => {
-    const w = window.visualViewport?.width ?? window.innerWidth;
-    const h = window.visualViewport?.height ?? window.innerHeight;
+    const viewport = window.visualViewport;
+    const w = viewport?.width ?? window.innerWidth;
+    const h = viewport?.height ?? window.innerHeight;
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
     if (!(w >= 1) || !(h >= 1)) return; // hidden tab / mid-orientation
     const zoom = computeCoverZoom(w, h);
     const sizeChanged = w !== app.screen.width || h !== app.screen.height;
+    const currentLeft = Number.parseFloat(app.canvas.style.left);
+    const currentTop = Number.parseFloat(app.canvas.style.top);
+    // Browsers may serialize fractional CSS pixels at slightly different
+    // precision than VisualViewport reports them. Ignore sub-hundredth-pixel
+    // noise so a stable viewport cannot trigger endless layout work.
+    const positionChanged = !Number.isFinite(currentLeft) || !Number.isFinite(currentTop)
+      || Math.abs(left - currentLeft) > 0.01
+      || Math.abs(top - currentTop) > 0.01;
     // visualViewport.resize fires liberally (URL-bar reveal, pinch) and
     // the cold-start path applies twice by design — skip the renderer
     // churn and the downstream recenters when nothing actually changed.
-    if (!sizeChanged && zoom === app.stage.scale.x) return;
+    if (!sizeChanged && !positionChanged && zoom === app.stage.scale.x) return;
     if (sizeChanged) app.renderer.resize(w, h);
+    // visualViewport dimensions describe the visible rectangle, but its
+    // origin can be displaced from the layout viewport after Safari focuses
+    // (and auto-zooms around) a login input. Keep the fixed canvas over that
+    // rectangle instead of leaving it at layout (0, 0), which makes the
+    // centered scene appear cropped / zoomed after the login overlay hides.
+    app.canvas.style.left = `${left}px`;
+    app.canvas.style.top = `${top}px`;
     app.stage.scale.set(zoom);
     window.dispatchEvent(new Event(VIEWPORT_EVENT));
   };
@@ -78,6 +96,9 @@ export function bindViewportCover(app: Application): () => void {
   // visualViewport tracks the actually-visible area (excludes the URL
   // bar) on mobile; its resize catches URL-bar reveal/hide and pinch.
   window.visualViewport?.addEventListener('resize', schedule);
+  // Pinch/focus panning can change offsetLeft/offsetTop without changing the
+  // visual viewport's size, in which case only `scroll` fires.
+  window.visualViewport?.addEventListener('scroll', schedule);
 
   apply();
   // Cold-start fixes: iOS (Safari and installed PWAs) can report a
@@ -100,5 +121,6 @@ export function bindViewportCover(app: Application): () => void {
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
     window.visualViewport?.removeEventListener('resize', schedule);
+    window.visualViewport?.removeEventListener('scroll', schedule);
   };
 }

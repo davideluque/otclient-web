@@ -2,7 +2,7 @@ import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
 import { OutputPacket } from '../net/common/OutputPacket';
 import { ClientOp } from '../net/7.6/opcodes';
-import { tryAutoload } from '../assetAutoload';
+import { tryAutoloadFiles } from '../assetAutoload';
 import type { CompleteLoadedFiles } from '../fileLoader';
 import { GameWorld } from '../GameWorld';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
@@ -10,7 +10,7 @@ import { bindRenderer } from './renderer';
 import { bindViewportCover } from './viewport';
 import { createSettingsPane, type SettingsPaneHandle } from '../settingsPane';
 import { createMetricsOverlay, type MetricsOverlayHandle } from './metricsOverlay';
-import { initTelemetry } from './telemetry';
+import { initTelemetry, telemetry } from './telemetry';
 import { renderItemThumbnail } from '../itemThumbnail';
 import { createChangelogPane, type ChangelogPaneHandle } from '../changelogPane';
 import { registerWireSkips } from '../net/7.6/wireSkips';
@@ -49,6 +49,7 @@ if (!root) {
 const params = new URLSearchParams(window.location.search);
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
 const clientVersion = parseClientVersion(params.get('clientVersion'));
+const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
 // Dev-server convenience: land straight in the game on every reload so
 // changes are visible immediately. ?autologin=0 opts out (e.g. to test
 // the login form itself); production builds never auto-login.
@@ -330,15 +331,21 @@ function ensurePixiApp(): Promise<Application> {
         antialias: false,
         resolution: window.devicePixelRatio,
         autoDensity: true,
-        // Match the offline demo's preference — PixiJS falls back to WebGL
-        // automatically if WebGPU init fails or isn't supported.
-        preference: 'webgpu',
+        // Pixi documents WebGPU as experimental and recommends WebGL for
+        // production. The iPhone trace also showed WebGPU render-target and
+        // event-system error storms. Keep ?renderer=webgpu for explicit A/Bs.
+        preference: rendererPreference,
       });
-      app.canvas.style.cssText = 'position:fixed;inset:0;z-index:0;';
+      app.canvas.style.cssText = 'position:fixed;left:0;top:0;z-index:0;';
       document.body.appendChild(app.canvas);
       // Cover-zoom + debounced resize/orientation tracking; the app is a
       // page-lifetime singleton so the binding never needs tearing down.
       bindViewportCover(app);
+      telemetry('renderer-ready', {
+        renderer: app.renderer.name,
+        preference: rendererPreference,
+        resolution: app.renderer.resolution,
+      });
       console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
       if (import.meta.env.DEV) {
         (window as unknown as { jameraPixi: Application }).jameraPixi = app;
@@ -441,11 +448,10 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
 }
 
 /**
- * Background-load the asset bundle (.dat / .spr / .otb / .otbm) the
- * upcoming renderer PR will need. Uses the existing `tryAutoload` from
- * `assetAutoload.ts` so the jamera flow shares the same source-of-truth
- * resolution (`?version=…` + `public/assets/<version>/`) as the offline
- * demo.
+ * Background-load the renderer's required assets (.dat / .spr / .otb).
+ * Uses `tryAutoloadFiles` so the Jamera flow shares the offline demo's
+ * source-of-truth resolution (`?version=…` + `public/assets/<version>/`)
+ * without downloading the unused full-map .otbm file.
  *
  * Module-scoped guards prevent re-fetching the (large) bundle on every
  * re-login or overlapping in-flight requests — assets only need to load
@@ -476,6 +482,9 @@ let jameraAtlas: SpriteAtlas | null = null;
 // the walkability checks need (those ids are NotWalkable in the .dat).
 let jameraFloorChangeIds: Set<number> | null = null;
 
+type JameraLoadedFiles = Pick<CompleteLoadedFiles, 'dat' | 'spr' | 'otb'>;
+const JAMERA_FILE_KEYS = ['dat', 'spr', 'otb'] as const;
+
 function loadAssetsForRendering(): void {
   if (assetsLoaded || assetsLoading) return;
   assetsLoading = true;
@@ -483,14 +492,21 @@ function loadAssetsForRendering(): void {
 }
 
 async function tryAutoloadAssets(): Promise<void> {
-  await tryAutoload({
+  const loadStartedAt = performance.now();
+  await tryAutoloadFiles(JAMERA_FILE_KEYS, {
     onStatus: (msg, isError) => {
       if (isError) console.warn('[jamera-assets]', msg);
       else console.info('[jamera-assets]', msg);
     },
     addFileToList: (name) => console.info('[jamera-assets] loaded', name),
-    startApp: async (loaded: CompleteLoadedFiles) => {
-      console.info('[jamera] assets ready (dat/spr/otb/otbm)');
+    startApp: async (loaded: JameraLoadedFiles) => {
+      const bytes = loaded.dat.byteLength + loaded.spr.byteLength + loaded.otb.byteLength;
+      telemetry('assets-loaded', {
+        ms: Math.round(performance.now() - loadStartedAt),
+        bytes,
+        files: JAMERA_FILE_KEYS.length,
+      });
+      console.info('[jamera] assets ready (dat/spr/otb)');
       // Wire-format item knowledge: which client IDs carry a count byte.
       // Must be set before the first map packet parses — stackables
       // misalign the stream otherwise. Cheap (one .dat parse) and safe
@@ -499,7 +515,9 @@ async function tryAutoloadAssets(): Promise<void> {
       jameraFloorChangeIds = floorChangeClientIds(parseOtb(loaded.otb));
       assetsReadyResolve?.();
       try {
+        const atlasStartedAt = performance.now();
         jameraAtlas = buildSpriteAtlas(loaded.dat, loaded.spr);
+        telemetry('atlas-ready', { ms: Math.round(performance.now() - atlasStartedAt) });
         // Only flip `assetsLoaded` once the atlas exists — otherwise a
         // build failure here would permanently short-circuit the guard
         // in `loadAssetsForRendering`, and a re-login could never retry.
@@ -524,7 +542,7 @@ async function tryAutoloadAssets(): Promise<void> {
         // Dev-only DevTools hooks so the renderer PR can poke at the
         // parsed assets + atlas while it's being built. Not exposed in
         // prod for the same reason as window.jameraClient.
-        (window as unknown as { jameraAssets: CompleteLoadedFiles }).jameraAssets = loaded;
+        (window as unknown as { jameraAssets: JameraLoadedFiles }).jameraAssets = loaded;
         if (jameraAtlas) {
           (window as unknown as { jameraAtlas: SpriteAtlas }).jameraAtlas = jameraAtlas;
         }

@@ -11,11 +11,6 @@ import { itemHasCountByte } from '../common/itemFlags';
 const SKIP_MARKER_HIGH = 0xff00;
 const SKIP_COUNT_MASK = 0x00ff;
 
-type ParsedTileSlot = {
-  skipTiles: number;
-  tile?: MapTile;
-};
-
 /**
  * Known/unknown creature thing markers (Tibia 7.6). Verified against the
  * server's Protocol76::AddCreature: 0x62 is the KNOWN short form (id
@@ -89,9 +84,7 @@ export function parseMapDescription(
         }
         if (packet.bytesLeft < 2) return tiles;
 
-        const parsed = parseNextTileSlot(packet, nx + dz, ny + dz, z);
-        skipTiles = parsed.skipTiles;
-        if (parsed.tile) tiles.push(parsed.tile);
+        skipTiles = parseNextTileSlot(packet, nx + dz, ny + dz, z, tiles);
       }
     }
   }
@@ -99,14 +92,23 @@ export function parseMapDescription(
   return tiles;
 }
 
-function parseNextTileSlot(packet: InputPacket, x: number, y: number, z: number): ParsedTileSlot {
+/**
+ * Consume one tile slot at (x, y, z): either a skip marker for empty
+ * slots, or a full tile (pushed onto `tiles`) with its trailing skip
+ * marker. Returns the skip count to carry into the following slots.
+ */
+function parseNextTileSlot(
+  packet: InputPacket, x: number, y: number, z: number, tiles: MapTile[],
+): number {
   const peek = packet.peekU16();
   if ((peek & SKIP_MARKER_HIGH) === SKIP_MARKER_HIGH) {
-    return { skipTiles: packet.getU16() & SKIP_COUNT_MASK };
+    return packet.getU16() & SKIP_COUNT_MASK;
   }
 
   const tile: MapTile = { x, y, z, things: [], items: [], creatures: [] };
-  return { skipTiles: parseTileSlot(packet, tile), tile };
+  const skipTiles = parseTileSlot(packet, tile);
+  tiles.push(tile);
+  return skipTiles;
 }
 
 /**
@@ -242,9 +244,7 @@ export function parseFloorStream(
           skipTiles--;
           continue;
         }
-        const parsed = parseNextTileSlot(packet, startX + offset + col, startY + offset + row, z);
-        skipTiles = parsed.skipTiles;
-        if (parsed.tile) tiles.push(parsed.tile);
+        skipTiles = parseNextTileSlot(packet, startX + offset + col, startY + offset + row, z, tiles);
       }
     }
   }

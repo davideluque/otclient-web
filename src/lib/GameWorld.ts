@@ -174,6 +174,13 @@ export class GameWorld {
    */
   private snapSelfSync = false;
 
+  /**
+   * A floor-change frame contains temporary perspective corrections before
+   * the trailing movement slices reach the real destination. Rendering any
+   * intermediate position feeds bogus tiles into the movement playout buffer.
+   */
+  private floorChangeNotifyPending = false;
+
   private protocol: GameProtocol;
 
   /** Client-ID → ThingType, for stack-order classification of items. */
@@ -702,7 +709,7 @@ export class GameWorld {
     );
     for (const tile of tiles) this.setTile(tile);
     this.syncSelfCreature(previousPosition.x, previousPosition.y, previousPosition.z);
-    this.onChange?.();
+    if (!this.snapSelfSync) this.onChange?.();
   }
 
   private playerPosition(): TilePosition {
@@ -796,7 +803,14 @@ export class GameWorld {
     // The transition's trailing 0x65–0x68 resync slices arrive in this
     // same synchronous dispatch — none of them are steps to glide.
     this.snapSelfSync = true;
-    queueMicrotask(() => { this.snapSelfSync = false; });
+    if (!this.floorChangeNotifyPending) {
+      this.floorChangeNotifyPending = true;
+      queueMicrotask(() => {
+        this.snapSelfSync = false;
+        this.floorChangeNotifyPending = false;
+        this.onChange?.();
+      });
+    }
     const selfC = this.creatures.get(this.playerCreatureId);
     if (selfC) {
       this.selfSteps++;
@@ -810,7 +824,6 @@ export class GameWorld {
     for (let z = 0; z <= 15; z++) {
       this.tileRevisionByZ.set(z, (this.tileRevisionByZ.get(z) ?? 0) + 1);
     }
-    this.onChange?.();
   }
 
   private handleCreatureMove(packet: InputPacket): void {

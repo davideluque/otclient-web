@@ -10,6 +10,7 @@ import {
   nextStepEma,
   playbackPosAt,
   playbackStateAt,
+  appendPlaybackSample,
   type PlaybackSample,
 } from '../lib/jamera/renderer';
 import { GameWorld } from '../lib/GameWorld';
@@ -191,5 +192,41 @@ describe('floor-change resync slices do not record walk confirmations', () => {
     world.syncSelfCreature(49, 60, 7);
     expect(world.getCreature(7)?.fromX).toBe(49);
     expect(world.selfSteps).toBe(1);
+  });
+});
+
+describe('appendPlaybackSample (floor changes snap)', () => {
+  it('appends same-floor steps, keeping glide history', () => {
+    const p = { samples: [{ x: 100, y: 200, z: 7, at: 1000 }] as PlaybackSample[], cadence: 380 };
+    appendPlaybackSample(p, { x: 101, y: 200, z: 7, at: 1400 }, 400);
+    expect(p.samples).toHaveLength(2);
+    expect(p.samples[1]).toMatchObject({ x: 101, y: 200, z: 7, at: 1400 });
+  });
+
+  it('a floor change flushes the buffer — teleport, never a glide', () => {
+    // Walking north, then the step onto the stairs teleports up a floor.
+    const p = {
+      samples: [
+        { x: 100, y: 209, z: 7, at: 1000 },
+        { x: 100, y: 208, z: 7, at: 1400 },
+      ] as PlaybackSample[],
+      cadence: 380,
+    };
+    appendPlaybackSample(p, { x: 100, y: 206, z: 6, at: 1450 }, 400);
+    expect(p.samples).toHaveLength(1);
+    expect(p.samples[0]).toMatchObject({ x: 100, y: 206, z: 6 });
+    // Backdated past the render delay: the very next frame renders the
+    // landing tile — no 180ms of standing on the old floor "behind the
+    // stairs" while the floor stack has already switched.
+    const selfState = playbackStateAt(p.samples, 380, 1451 - RENDER_DELAY_MS);
+    expect(selfState).toMatchObject({ x: 100, y: 206, moving: false });
+    const otherState = forwardStateAt(p.samples, 1451 - RENDER_DELAY_MS);
+    expect(otherState).toMatchObject({ x: 100, y: 206, moving: false });
+  });
+
+  it('ignores a no-op sync (same tile)', () => {
+    const p = { samples: [{ x: 100, y: 200, z: 7, at: 1000 }] as PlaybackSample[], cadence: 380 };
+    appendPlaybackSample(p, { x: 100, y: 200, z: 7, at: 2000 }, 400);
+    expect(p.samples).toHaveLength(1);
   });
 });

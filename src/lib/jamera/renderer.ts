@@ -168,6 +168,33 @@ export const RENDER_DELAY_MS = 180;
 /** Buffered samples per creature — enough to ride out a delivery burst. */
 const MAX_SAMPLES = 8;
 
+/**
+ * Append a confirmed tile to a creature's playout buffer. Same-floor
+ * steps queue behind the render delay and glide; a FLOOR CHANGE flushes
+ * the buffer to a single backdated sample instead — floor changes are
+ * teleports, never glides. The camera and the floor stack snap to the
+ * new floor the moment the world publishes it, so playing out the
+ * pre-change samples rendered the creature at old-floor coordinates
+ * under the new stack for RENDER_DELAY_MS — the "standing behind the
+ * stairs, then moved in front" transient on every stair climb.
+ */
+export function appendPlaybackSample(
+  p: { samples: PlaybackSample[]; cadence: number },
+  next: { x: number; y: number; z: number; at: number },
+  stepMs: number,
+): void {
+  const last = p.samples[p.samples.length - 1];
+  if (last && last.x === next.x && last.y === next.y && last.z === next.z) return;
+  if (last && last.z !== next.z) {
+    p.samples.length = 0;
+    p.samples.push({ x: next.x, y: next.y, z: next.z, at: next.at - RENDER_DELAY_MS });
+    return;
+  }
+  if (last) p.cadence = nextStepEma(p.cadence, next.at - last.at);
+  p.samples.push({ x: next.x, y: next.y, z: next.z, at: next.at, stepMs });
+  if (p.samples.length > MAX_SAMPLES) p.samples.shift();
+}
+
 export interface PlaybackSample {
   x: number;
   y: number;
@@ -420,12 +447,8 @@ export function bindRenderer(
       playback.set(c.id, p);
     }
     const last = p.samples[p.samples.length - 1];
-    if (last.x !== c.x || last.y !== c.y || last.z !== c.z) {
-      const at = c.lastMoveAt ?? performance.now();
-      p.cadence = nextStepEma(p.cadence, at - last.at);
-      p.samples.push({ x: c.x, y: c.y, z: c.z, at, stepMs: stepMsFor(c, last) });
-      if (p.samples.length > MAX_SAMPLES) p.samples.shift();
-    }
+    const stepMs = last ? stepMsFor(c, last) : 0;
+    appendPlaybackSample(p, { x: c.x, y: c.y, z: c.z, at: c.lastMoveAt ?? performance.now() }, stepMs);
     return p;
   };
 

@@ -637,30 +637,6 @@ const PING_INTERVAL_MS = 30_000;
 // re-login) can clear the old timer before starting a new one.
 let pingIntervalId: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Keep the screen on during gameplay — the same Wake Lock treatment the
- * offline client has (src/main.ts). The lock auto-releases when the tab
- * is backgrounded, so it's re-acquired on visibilitychange; a release
- * on logout isn't needed (the login screen wants the screen on too, and
- * the OS reclaims the lock whenever the tab hides). Silently a no-op on
- * unsupported browsers.
- */
-let wakeLock: WakeLockSentinel | null = null;
-
-async function requestWakeLock(): Promise<void> {
-  if (!('wakeLock' in navigator) || wakeLock) return;
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; }, { once: true });
-  } catch {
-    // Permission denied or unsupported — silently ignore.
-  }
-}
-void requestWakeLock();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') void requestWakeLock();
-});
-
 function startPingLoop(client: GameClient): void {
   // Replace any existing loop first — back-to-back in_game transitions
   // should never stack two timers, and after a disconnect the previous

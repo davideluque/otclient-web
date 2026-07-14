@@ -46,6 +46,7 @@ export function bindScreenWakeLock(
   let requesting = false;
   let sentinel: WakeLockSentinelLike | null = null;
   let destroyed = false;
+  let warnedUnavailable = false;
 
   const request = async (): Promise<void> => {
     if (destroyed || !enabled || requesting || sentinel || doc.visibilityState !== 'visible') return;
@@ -62,7 +63,12 @@ export function bindScreenWakeLock(
         if (sentinel === acquired) sentinel = null;
       }, { once: true });
     } catch (error) {
-      console.info('[jamera] screen wake lock unavailable:', error instanceof Error ? error.message : error);
+      // Every later gesture retries (Low Power Mode can be turned off
+      // mid-session), but only the first failure is worth a log line.
+      if (!warnedUnavailable) {
+        warnedUnavailable = true;
+        console.info('[jamera] screen wake lock unavailable:', error instanceof Error ? error.message : error);
+      }
     } finally {
       requesting = false;
     }

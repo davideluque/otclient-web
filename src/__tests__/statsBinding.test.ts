@@ -67,7 +67,8 @@ describe('bindStats', () => {
     const skillsItem = [...document.querySelectorAll('.game-menu-pane button')]
       .find((b) => b.textContent === 'Skills') as HTMLButtonElement;
     skillsItem.click();
-    expect(pane.style.display).toBe('block');
+    // '' restores the stylesheet display (flex) — 'block' broke the scroll clip.
+    expect(pane.style.display).not.toBe('none');
   });
 
   it('destroy removes HUD, pane, and menu', () => {

@@ -34,3 +34,37 @@ describe('setStats — the character block', () => {
     pane.destroy();
   });
 });
+
+describe('close button + compact scroll', () => {
+  it('renders a ✕ that fires onClose', () => {
+    let closed = 0;
+    const pane = createSkillPane(document.body, { onClose: () => { closed++; } });
+    const btn = document.querySelector('.skill-pane [aria-label="Close skills"]') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    btn.click();
+    expect(closed).toBe(1);
+    pane.destroy();
+  });
+
+  it('scrolls its content inside a capped pane — stats and skills together', () => {
+    const pane = createSkillPane(document.body);
+    const scroll = document.querySelector('.skill-pane .skill-scroll') as HTMLElement;
+    expect(scroll).toBeTruthy();
+    // The character block AND the skill rows live inside the scroller.
+    expect(scroll.querySelector('[data-role="level"]')).toBeTruthy();
+    expect(scroll.querySelectorAll('.skill').length).toBeGreaterThan(4);
+    const css = document.getElementById('skill-pane-style')?.textContent ?? '';
+    expect(css).toContain('overflow-y: auto');
+    expect(css).toContain('max-height');
+    pane.destroy();
+  });
+
+  it('setVisible(true) restores the stylesheet display — inline block broke the flex clip', () => {
+    const pane = createSkillPane(document.body);
+    pane.setVisible(false);
+    expect(pane.el.style.display).toBe('none');
+    pane.setVisible(true);
+    expect(pane.el.style.display).toBe('');
+    pane.destroy();
+  });
+});

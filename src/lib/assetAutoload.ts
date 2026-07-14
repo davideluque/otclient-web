@@ -12,7 +12,7 @@ import type { CompleteLoadedFiles } from './fileLoader';
 import { resolveVersion } from './clientVersion';
 import { cacheAvailable, clearCached, consumeEvictionNotice, getCached } from './assetCache';
 
-type FileKey = keyof CompleteLoadedFiles;
+export type FileKey = keyof CompleteLoadedFiles;
 
 interface Manifest {
   files: Record<FileKey, string>;
@@ -20,11 +20,11 @@ interface Manifest {
 
 const FILE_KEYS: readonly FileKey[] = ['dat', 'spr', 'otb', 'otbm'] as const;
 
-function isValidManifest(value: unknown): value is Manifest {
+function isValidManifest(value: unknown, fileKeys: readonly FileKey[]): value is Manifest {
   if (!value || typeof value !== 'object') return false;
   const files = (value as { files?: unknown }).files;
   if (!files || typeof files !== 'object') return false;
-  return FILE_KEYS.every(k => typeof (files as Record<string, unknown>)[k] === 'string');
+  return fileKeys.every(k => typeof (files as Record<string, unknown>)[k] === 'string');
 }
 
 function baseFor(version: string): string {
@@ -44,6 +44,12 @@ export interface AutoloadOptions {
   // read out of the asset cache.
   startApp: (files: CompleteLoadedFiles, fromCache?: boolean) => Promise<void>;
   onCacheNotice?: (notice: CacheNotice) => void;
+}
+
+export interface SelectedAutoloadOptions<K extends FileKey> {
+  onStatus: (msg: string, isError?: boolean) => void;
+  addFileToList: (name: string) => void;
+  startApp: (files: Pick<CompleteLoadedFiles, K>) => Promise<void>;
 }
 
 /**
@@ -81,6 +87,27 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
     options.onCacheNotice?.('evicted');
   }
 
+  return fetchSelectedFiles(FILE_KEYS, options, version);
+}
+
+/**
+ * Fetch only the assets a specialized client needs. Unlike tryAutoload, this
+ * deliberately bypasses the full offline-bundle cache: a partial bundle must
+ * never overwrite or masquerade as the four-file offline entry.
+ */
+export async function tryAutoloadFiles<K extends FileKey>(
+  fileKeys: readonly K[],
+  options: SelectedAutoloadOptions<K>,
+): Promise<boolean> {
+  if (fileKeys.length === 0) return false;
+  return fetchSelectedFiles(fileKeys, options, resolveVersion());
+}
+
+async function fetchSelectedFiles<K extends FileKey>(
+  fileKeys: readonly K[],
+  options: SelectedAutoloadOptions<K>,
+  version: string,
+): Promise<boolean> {
   const base = baseFor(version);
 
   // Probe manifest first. Missing / non-JSON / wrong shape = silent fallback.
@@ -89,7 +116,7 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
     const res = await fetch(`${base}/manifest.json`);
     if (!res.ok) return false;
     const json: unknown = await res.json();
-    if (!isValidManifest(json)) {
+    if (!isValidManifest(json, fileKeys)) {
       console.warn(`Asset autoload: malformed manifest at ${base}/manifest.json`);
       return false;
     }
@@ -109,11 +136,11 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
 
   try {
     const responses = await Promise.all(
-      FILE_KEYS.map(key => fetch(`${base}/${manifest.files[key]}`)),
+      fileKeys.map(key => fetch(`${base}/${manifest.files[key]}`)),
     );
     for (let i = 0; i < responses.length; i++) {
       if (!responses[i].ok) {
-        const missing = manifest.files[FILE_KEYS[i]];
+        const missing = manifest.files[fileKeys[i]];
         options.onStatus(
           `Could not load ${missing}. Drop files to load manually.`,
           true,
@@ -123,8 +150,8 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
     }
 
     const buffers = await Promise.all(responses.map(r => r.arrayBuffer()));
-    const loaded = {} as CompleteLoadedFiles;
-    FILE_KEYS.forEach((key, i) => {
+    const loaded = {} as Pick<CompleteLoadedFiles, K>;
+    fileKeys.forEach((key, i) => {
       loaded[key] = buffers[i];
       const name = manifest.files[key];
       options.addFileToList(`${name} (${(buffers[i].byteLength / 1024).toFixed(0)} KB)`);

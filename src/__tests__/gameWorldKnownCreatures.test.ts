@@ -60,6 +60,53 @@ describe('KNOWN creature re-adds keep the remembered name', () => {
     expect(world.getCreature(77)?.x).toBe(60);
   });
 
+  it('survives the full floor-change wire sequence: 0x6C remove, then KNOWN re-add', () => {
+    // Going down from the surface, the server removes the player from the
+    // old tile (0x6C) — which evicts the registry entry — and then the
+    // 0xBF floor description re-adds them in KNOWN form with no name.
+    // The remembered name must survive the eviction gap.
+    const world = new GameWorld(new GameProtocol());
+    const dispatcher = new PacketDispatcher();
+    world.registerHandlers(dispatcher);
+
+    // Learn the name via a real UNKNOWN-form add on a described tile.
+    const seed = new OutputPacket();
+    seed.addU8(0x69);
+    seed.addU16(50); seed.addU16(50); seed.addU8(7);
+    seed.addU16(100); // ground item
+    seed.addU16(0x0061); // UNKNOWN long form
+    seed.addU32(0);      // removeKnown
+    seed.addU32(77);     // id
+    seed.addString('Flash Ivan');
+    seed.addU8(100); seed.addU8(2); // health + direction
+    seed.addU8(128); seed.addU8(10); seed.addU8(20); seed.addU8(30); seed.addU8(40); // outfit
+    seed.addU8(0); seed.addU8(0); // light
+    seed.addU16(220); // speed
+    seed.addU8(0); seed.addU8(0); // skull + shield
+    seed.addU8(0); seed.addU8(0xff); // slot terminator
+    dispatcher.dispatch(new InputPacket(seed.toArrayBuffer()));
+    expect(world.getCreature(77)?.name).toBe('Flash Ivan');
+
+    // The server removes the creature from the old tile (stack pos 1:
+    // ground is 0, the creature came after it).
+    const remove = new OutputPacket();
+    remove.addU8(0x6c);
+    remove.addU16(50); remove.addU16(50); remove.addU8(7);
+    remove.addU8(1);
+    dispatcher.dispatch(new InputPacket(remove.toArrayBuffer()));
+    expect(world.getCreature(77)).toBeUndefined();
+
+    // The floor description re-adds them one floor down, KNOWN form.
+    const readd = new OutputPacket();
+    readd.addU8(0x6a);
+    readd.addU16(50); readd.addU16(51); readd.addU8(8);
+    addKnownCreature(readd, 77);
+    dispatcher.dispatch(new InputPacket(readd.toArrayBuffer()));
+
+    expect(world.getCreature(77)?.name).toBe('Flash Ivan');
+    expect(world.getCreature(77)?.z).toBe(8);
+  });
+
   it('via 0x69 TileUpdate (the floor-change re-describe path)', () => {
     const world = new GameWorld(new GameProtocol());
     const dispatcher = new PacketDispatcher();

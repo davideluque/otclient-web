@@ -88,6 +88,18 @@ function creatureBlocks(world: GameWorld, x: number, y: number, z: number): bool
   return !!tile && tile.creatures.some((c) => c.id !== world.playerCreatureId);
 }
 
+/** True when a tile flanking a diagonal step can't be walked through. */
+function diagonalSideBlocked(
+  world: GameWorld,
+  datIndex: Map<number, ThingType>,
+  x: number, y: number, z: number,
+  floorChangeIds?: Set<number>,
+): boolean {
+  return !isWorldTileWalkable(world, datIndex, x, y, z, floorChangeIds)
+    || creatureBlocks(world, x, y, z)
+    || tileFloorChanges(world, x, y, z, floorChangeIds);
+}
+
 function floorTileKey(x: number, y: number): string {
   return `${x}:${y}`;
 }
@@ -207,16 +219,10 @@ export function findWalkRoute(
       // monster-in-front escape), but never squeeze through a completely
       // closed corner. The server remains authoritative for the destination.
       const isDiagonal = dx !== 0 && dy !== 0;
-      if (isDiagonal) {
-        const sideXBlocked = !isWorldTileWalkable(
-          world, datIndex, current.node.x + dx, current.node.y, z, floorChangeIds,
-        ) || creatureBlocks(world, current.node.x + dx, current.node.y, z)
-          || tileFloorChanges(world, current.node.x + dx, current.node.y, z, floorChangeIds);
-        const sideYBlocked = !isWorldTileWalkable(
-          world, datIndex, current.node.x, current.node.y + dy, z, floorChangeIds,
-        ) || creatureBlocks(world, current.node.x, current.node.y + dy, z)
-          || tileFloorChanges(world, current.node.x, current.node.y + dy, z, floorChangeIds);
-        if (sideXBlocked && sideYBlocked) continue;
+      if (isDiagonal
+        && diagonalSideBlocked(world, datIndex, current.node.x + dx, current.node.y, z, floorChangeIds)
+        && diagonalSideBlocked(world, datIndex, current.node.x, current.node.y + dy, z, floorChangeIds)) {
+        continue;
       }
 
       const costFromStart = current.node.costFromStart

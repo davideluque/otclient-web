@@ -255,3 +255,14 @@ export function useableClientIds(otb: OtbFile): Set<number> {
   }
   return ids;
 }
+
+/** Client ids that may be repositioned with ThrowItem (0x78). */
+export function moveableClientIds(otb: OtbFile): Set<number> {
+  const ids = new Set<number>();
+  for (const [serverId, flags] of otb.serverIdToFlags) {
+    if ((flags & OtbFlags.Moveable) === 0) continue;
+    const clientId = otb.serverToClient.get(serverId);
+    if (clientId !== undefined) ids.add(clientId);
+  }
+  return ids;
+}

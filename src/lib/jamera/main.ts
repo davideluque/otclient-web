@@ -40,7 +40,7 @@ import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
 import { setItemWireFlags } from '../net/common/itemFlags';
 import { DatAttr, parseDat } from '../dat';
-import { parseOtb, floorChangeClientIds, useableClientIds } from '../otb';
+import { parseOtb, floorChangeClientIds, moveableClientIds, useableClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
 
@@ -471,6 +471,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         nextContainerId: () => teardownContainers?.manager.nextFreeId() ?? 0,
         floorChangeIds: jameraFloorChangeIds ?? undefined,
         useableIds: jameraUseableIds ?? undefined,
+        moveableIds: jameraMoveableIds ?? undefined,
         onCreatureTap: (id) => teardownCombat?.attackTarget(id),
       })
       : null;
@@ -522,6 +523,8 @@ let jameraFloorChangeIds: Set<number> | null = null;
 // Client ids handled by a tap as UseItem: corpses/containers, doors,
 // ladders, levers and grates. Like floor changes, this comes from OTB.
 let jameraUseableIds: Set<number> | null = null;
+// Client ids safe to address through ThrowItem when a world drag completes.
+let jameraMoveableIds: Set<number> | null = null;
 
 type JameraLoadedFiles = Pick<CompleteLoadedFiles, 'dat' | 'spr' | 'otb'>;
 const JAMERA_FILE_KEYS = ['dat', 'spr', 'otb'] as const;
@@ -556,6 +559,7 @@ async function tryAutoloadAssets(): Promise<void> {
       const parsedOtb = parseOtb(loaded.otb);
       jameraFloorChangeIds = floorChangeClientIds(parsedOtb);
       jameraUseableIds = useableClientIds(parsedOtb);
+      jameraMoveableIds = moveableClientIds(parsedOtb);
       assetsReadyResolve?.();
       try {
         const atlasStartedAt = performance.now();

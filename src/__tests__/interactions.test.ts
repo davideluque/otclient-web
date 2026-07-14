@@ -92,6 +92,7 @@ describe('long-press pointer tracking', () => {
     nextContainerId?: () => number;
     floorChangeIds?: Set<number>;
     useableIds?: Set<number>;
+    moveableIds?: Set<number>;
     tapToWalk?: () => boolean;
     onCreatureTap?: (creatureId: number) => void;
   }) {
@@ -293,6 +294,63 @@ describe('long-press pointer tracking', () => {
     touch('pointerup', 1, 400, 300);
     vi.advanceTimersByTime(600);
     expect(sent).toHaveLength(0);
+    handle.destroy();
+  });
+
+  it('drags an OTB-moveable floor item to another tile on touch', () => {
+    const itemTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 100 } },
+        { kind: 'item', item: { id: 3031, count: 4 } },
+      ],
+      items: [{ id: 100 }, { id: 3031, count: 4 }], creatures: [],
+    };
+    const { handle, sent, touch } = mount(itemTile, { moveableIds: new Set([3031]) });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointermove', 1, 432, 300);
+    expect(document.querySelector('.world-item-drag')).not.toBeNull();
+    touch('pointerup', 1, 432, 300);
+
+    expect(sent).toEqual([[
+      0x78,
+      100, 0, 200, 0, 7, 0xd7, 0x0b, 1,
+      101, 0, 200, 0, 7, 4,
+    ]]);
+    expect(document.querySelector('.world-item-drag')).toBeNull();
+    handle.destroy();
+  });
+
+  it('does not turn the mouse click after a drag into tap-to-walk', () => {
+    const itemTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [{ kind: 'item', item: { id: 3031 } }],
+      items: [{ id: 3031 }], creatures: [],
+    };
+    const { canvas, handle, sent } = mount(itemTile, { moveableIds: new Set([3031]) });
+    const mouse = (type: string, x: number) => canvas.dispatchEvent(new PointerEvent(type, {
+      pointerType: 'mouse', pointerId: 1, button: 0, clientX: x, clientY: 300, bubbles: true,
+    }));
+    mouse('pointerdown', 400);
+    mouse('pointermove', 432);
+    mouse('pointerup', 432);
+    canvas.dispatchEvent(new MouseEvent('click', {
+      button: 0, clientX: 432, clientY: 300, bubbles: true,
+    }));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0][0]).toBe(0x78);
+    handle.destroy();
+  });
+
+  it('never drags an item absent from the OTB Moveable set', () => {
+    const { handle, sent, touch } = mount(undefined, { moveableIds: new Set() });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointermove', 1, 432, 300);
+    touch('pointerup', 1, 432, 300);
+
+    expect(sent).toHaveLength(0);
+    expect(document.querySelector('.world-item-drag')).toBeNull();
     handle.destroy();
   });
 

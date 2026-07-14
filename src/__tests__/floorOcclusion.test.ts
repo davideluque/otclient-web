@@ -4,6 +4,7 @@ import type { FloorTileSource } from '../lib/render/floorVisibility';
 import { DatAttr, ThingCategory } from '../lib/dat';
 import type { ThingType } from '../lib/dat';
 import type { MapTile } from '../lib/net/common/types';
+import { tilePositionKey } from '../constants';
 
 function makeDatItem(clientId: number, attrIds: number[]): ThingType {
   return {
@@ -41,8 +42,6 @@ function makeSource(tiles: MapTile[]): FloorTileSource {
   return { getTile: (x, y, z) => map.get(`${x}:${y}:${z}`) };
 }
 
-const pack = (x: number, y: number): number => (x << 16) | y;
-
 describe('buildOcclusionSets', () => {
   it('a FullGround position cascades onto every deeper floor', () => {
     const source = makeSource([tile(5, 5, 7, [FULL_GROUND])]);
@@ -50,8 +49,8 @@ describe('buildOcclusionSets', () => {
     const sets = buildOcclusionSets(source, datIndex, 0, 0, 10, 10, [7, 8, 9]);
 
     expect(sets.get(7)).toEqual(new Set());
-    expect(sets.get(8)).toEqual(new Set([pack(5, 5)]));
-    expect(sets.get(9)).toEqual(new Set([pack(5, 5)]));
+    expect(sets.get(8)).toEqual(new Set([tilePositionKey(5, 5)]));
+    expect(sets.get(9)).toEqual(new Set([tilePositionKey(5, 5)]));
   });
 
   it('never occludes shallower floors — snapshot precedes own contributions', () => {
@@ -63,7 +62,7 @@ describe('buildOcclusionSets', () => {
 
     expect(sets.get(7)).toEqual(new Set());
     expect(sets.get(8)).toEqual(new Set());
-    expect(sets.get(9)).toEqual(new Set([pack(5, 5)]));
+    expect(sets.get(9)).toEqual(new Set([tilePositionKey(5, 5)]));
   });
 
   it('accumulates contributions from every shallower floor', () => {
@@ -74,8 +73,8 @@ describe('buildOcclusionSets', () => {
 
     const sets = buildOcclusionSets(source, datIndex, 0, 0, 10, 10, [7, 8, 9]);
 
-    expect(sets.get(8)).toEqual(new Set([pack(1, 1)]));
-    expect(sets.get(9)).toEqual(new Set([pack(1, 1), pack(2, 2)]));
+    expect(sets.get(8)).toEqual(new Set([tilePositionKey(1, 1)]));
+    expect(sets.get(9)).toEqual(new Set([tilePositionKey(1, 1), tilePositionKey(2, 2)]));
   });
 
   it('ignores plain Ground — only FullGround occludes', () => {
@@ -91,7 +90,7 @@ describe('buildOcclusionSets', () => {
 
     const sets = buildOcclusionSets(source, datIndex, 0, 0, 10, 10, [7, 8]);
 
-    expect(sets.get(8)).toEqual(new Set([pack(5, 5)]));
+    expect(sets.get(8)).toEqual(new Set([tilePositionKey(5, 5)]));
   });
 
   it('ignores tiles outside the region bounds', () => {
@@ -102,12 +101,12 @@ describe('buildOcclusionSets', () => {
     expect(sets.get(8)).toEqual(new Set());
   });
 
-  it('bit-packs positions as (x << 16) | y, matching renderTileRegion skipPositions', () => {
+  it('uses tile position keys for renderTileRegion skipPositions', () => {
     const source = makeSource([tile(3, 9, 7, [FULL_GROUND])]);
 
     const sets = buildOcclusionSets(source, datIndex, 0, 0, 10, 10, [7, 8]);
 
-    expect([...sets.get(8)!]).toEqual([(3 << 16) | 9]);
+    expect([...sets.get(8)!]).toEqual([tilePositionKey(3, 9)]);
     expect([...sets.get(8)!]).toEqual([196617]);
   });
 });

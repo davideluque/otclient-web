@@ -7,7 +7,7 @@ import type { AtlasPages, SpriteLocation } from './atlas';
 import { ATLAS_SIZE } from './atlas';
 import type { PlayerState } from './player';
 import { extractSpritePixels, tintOutfitSprite } from './outfitTint';
-import { TILE_SIZE } from '../constants';
+import { TILE_SIZE, tilePositionKey } from '../constants';
 
 /**
  * Anything that can yield `ResolvedTile`s in a rectangular region.
@@ -267,7 +267,7 @@ export function renderTileRegion(
   }
 
   for (const tile of source.tilesInRegion(x1, y1, x2, y2, z)) {
-    if (skipPositions?.has((tile.x << 16) | tile.y)) continue;
+    if (skipPositions?.has(tilePositionKey(tile.x, tile.y))) continue;
     renderTile(tile, container, animated, datIndex, getTexture);
   }
 

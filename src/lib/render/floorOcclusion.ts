@@ -2,6 +2,7 @@ import { DatAttr } from '../dat';
 import type { ThingType } from '../dat';
 import type { MapTile } from '../net/common/types';
 import type { FloorTileSource } from './floorVisibility';
+import { tilePositionKey } from '../../constants';
 
 /**
  * Cascading FullGround occlusion, the mechanism proven in the offline
@@ -13,9 +14,9 @@ import type { FloorTileSource } from './floorVisibility';
  *
  * `floors` must be ordered shallow → deep (nearest the viewer first,
  * i.e. the draw-on-top floor leading). Each floor's entry in the
- * returned map is the bit-packed `(x << 16) | y` position set covered
- * by SHALLOWER floors — exactly what renderTileRegion's skipPositions
- * expects when drawing that floor.
+ * returned map is the tile-position set covered by SHALLOWER floors —
+ * exactly what renderTileRegion's skipPositions expects when drawing
+ * that floor.
  */
 export function buildOcclusionSets(
   source: FloorTileSource,
@@ -33,7 +34,7 @@ export function buildOcclusionSets(
     sets.set(z, new Set(covered));
     for (let y = y1; y <= y2; y++) {
       for (let x = x1; x <= x2; x++) {
-        const packed = (x << 16) | y;
+        const packed = tilePositionKey(x, y);
         // Already covered by a shallower floor: adding again is a no-op,
         // so skip the tile lookup — in town floor 7 covers nearly
         // everything, making this the common case on deeper floors.

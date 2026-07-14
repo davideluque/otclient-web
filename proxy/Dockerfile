@@ -12,9 +12,10 @@ RUN npm ci --omit=dev
 
 COPY proxy/ ./proxy/
 
-# Only the WS listen port is fixed here. The OT target (OT_HOST / OT_LOGIN_PORT
-# / OT_GAME_PORT) and WS_ALLOWED_ORIGINS are supplied at runtime by the
-# deployment (see the compose file); server.ts carries sane localhost defaults.
+# Default to the Docker host rather than the container's own loopback. Runtime
+# deployments can override this with an OT service name or address; Linux
+# `docker run` users should map host.docker.internal to host-gateway.
+ENV OT_HOST=host.docker.internal
 ENV WS_PORT=8090
 # Telemetry (dev tooling) appends to this file; default it under /tmp so the
 # non-root user can write it even with a read-only root filesystem. Production

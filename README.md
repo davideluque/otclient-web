@@ -47,6 +47,10 @@ npm run proxy:jamera   # same as `npm run proxy` but with OT_GAME_PORT=7171
 Override the target with env vars when needed: `OT_HOST`, `OT_LOGIN_PORT`,
 `OT_GAME_PORT`, `WS_PORT` (see `proxy/server.ts`).
 
+For the container image, `OT_HOST` defaults to `host.docker.internal`. On Linux,
+include `--add-host=host.docker.internal:host-gateway` in `docker run`, or set
+`OT_HOST` to the OT server container/service name.
+
 ## Playing from your phone (same Wi‑Fi)
 
 In dev the client points its bridge at `:8090` of **whatever host loaded the

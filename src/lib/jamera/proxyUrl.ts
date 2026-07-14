@@ -15,9 +15,15 @@ export function defaultProxyUrl(
   pageLocation: Pick<Location, 'protocol' | 'host' | 'hostname'> = window.location,
   isDev: boolean = import.meta.env.DEV,
 ): string {
-  if (isDev) return `ws://${pageLocation.hostname}:8090`;
+  if (isDev) return `ws://${urlHost(pageLocation.hostname)}:8090`;
   const scheme = pageLocation.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${scheme}//${pageLocation.host}`;
+}
+
+/** URL.host requires IPv6 literals to retain their square brackets. */
+function urlHost(hostname: string): string {
+  if (hostname.startsWith('[') && hostname.endsWith(']')) return hostname;
+  return hostname.includes(':') ? `[${hostname}]` : hostname;
 }
 
 /**

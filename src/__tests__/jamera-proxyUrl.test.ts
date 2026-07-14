@@ -40,6 +40,15 @@ describe('defaultProxyUrl', () => {
     );
   });
 
+  it('brackets IPv6 page hosts when building the dev WebSocket URL', () => {
+    expect(defaultProxyUrl({ protocol: 'http:', host: '[::1]:5173', hostname: '::1' }, true)).toBe(
+      'ws://[::1]:8090',
+    );
+    expect(defaultProxyUrl({ protocol: 'http:', host: '[::1]:5173', hostname: '[::1]' }, true)).toBe(
+      'ws://[::1]:8090',
+    );
+  });
+
   it('defaults to the same origin over wss on an https production page', () => {
     expect(defaultProxyUrl({ protocol: 'https:', host: 'tibia.example', hostname: 'tibia.example' }, false)).toBe(
       'wss://tibia.example',

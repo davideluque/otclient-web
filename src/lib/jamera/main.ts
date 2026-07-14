@@ -43,6 +43,7 @@ import { DatAttr, parseDat } from '../dat';
 import { parseOtb, floorChangeClientIds, moveableClientIds, useableClientIds } from '../otb';
 import { Application } from 'pixi.js';
 import { resolveProxyOverride } from './proxyUrl';
+import { bindScreenWakeLock, loadKeepScreenAwake, type ScreenWakeLockHandle } from './screenWakeLock';
 
 const root = document.getElementById('jamera-root');
 if (!root) {
@@ -124,12 +125,16 @@ mountLoginScreen(root, {
     teardownTextWindows = null;
     teardownTrade?.destroy();
     teardownTrade = null;
+    screenWakeLock?.destroy();
+    screenWakeLock = null;
     setMetricsVisible(false);
     // Page-lifetime pane, but it must not stay open over the re-shown
     // login screen after a logout/kick.
     changelogPane?.close();
   },
   onEnterGame: (client) => {
+    screenWakeLock?.destroy();
+    screenWakeLock = bindScreenWakeLock();
     // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
     // live-map renderer, chat UI, and movement input. Surface the live
     // client on `window` only in dev builds, never in production: the
@@ -255,6 +260,13 @@ mountLoginScreen(root, {
         hint: 'Off: move with the joystick; taps still open and use objects.',
         get: () => loadTapToWalk(),
         set: (on) => saveTapToWalk(on),
+      },
+      {
+        kind: 'toggle',
+        label: 'Keep screen awake',
+        hint: 'Prevents sleep while the game is visible when the browser allows it.',
+        get: () => screenWakeLock?.enabled ?? loadKeepScreenAwake(),
+        set: (on) => screenWakeLock?.setEnabled(on),
       },
       {
         kind: 'slider',
@@ -629,30 +641,6 @@ const PING_INTERVAL_MS = 30_000;
 // re-login) can clear the old timer before starting a new one.
 let pingIntervalId: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Keep the screen on during gameplay — the same Wake Lock treatment the
- * offline client has (src/main.ts). The lock auto-releases when the tab
- * is backgrounded, so it's re-acquired on visibilitychange; a release
- * on logout isn't needed (the login screen wants the screen on too, and
- * the OS reclaims the lock whenever the tab hides). Silently a no-op on
- * unsupported browsers.
- */
-let wakeLock: WakeLockSentinel | null = null;
-
-async function requestWakeLock(): Promise<void> {
-  if (!('wakeLock' in navigator) || wakeLock) return;
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; }, { once: true });
-  } catch {
-    // Permission denied or unsupported — silently ignore.
-  }
-}
-void requestWakeLock();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') void requestWakeLock();
-});
-
 function startPingLoop(client: GameClient): void {
   // Replace any existing loop first — back-to-back in_game transitions
   // should never stack two timers, and after a disconnect the previous
@@ -766,6 +754,7 @@ let teardownInteractions: InteractionsHandle | null = null;
 // Per-session combat controls (spell circles + auto-attack).
 let teardownCombat: CombatBindingHandle | null = null;
 let settingsPane: SettingsPaneHandle | null = null;
+let screenWakeLock: ScreenWakeLockHandle | null = null;
 let teardownMinimap: MinimapBindingHandle | null = null;
 let teardownBattle: BattleBindingHandle | null = null;
 let teardownTextWindows: TextWindowBindingHandle | null = null;

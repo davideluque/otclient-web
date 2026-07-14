@@ -15,6 +15,19 @@ export interface LightSource {
   color: number;
 }
 
+/** Place a creature-carried light at its rendered (possibly interpolated) position. */
+export function creatureLightSource(
+  creature: { lightLevel: number; lightColor: number },
+  position: { x: number; y: number },
+): LightSource {
+  return {
+    x: position.x,
+    y: position.y,
+    intensity: creature.lightLevel,
+    color: tibiaColorToHex(creature.lightColor),
+  };
+}
+
 export interface LightingOptions {
   /** Base ambient color the framebuffer is filled with. Darker = darker night. */
   ambientColor: number;

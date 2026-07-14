@@ -36,17 +36,17 @@ polarity at the two call sites is [UNCERTAIN]; the degraded-safe form is
 Anti-flicker during glides: compute the probe for BOTH walk endpoints and
 take `max(firstVisible)` (PoC commit fabe172).
 
-### Screen placement — two empirically-validated conventions
+### Screen placement
 
-- **Floors below the player: raw world coordinates, no per-z screen
-  offset.** Learned the hard way in the multifloor branch (commit 988f86d:
-  the +32px/z SE offset put stairs one tile off). The 2.5D illusion comes
-  entirely from tall sprites drawing their upper halves 32px up.
-- **Floors above the player: iso offset `(z − playerZ) · TILE_SIZE` on
-  both axes.** Learned in the PoC (commit 3691ea3: without it multi-story
-  buildings collapse into a flat silhouette).
-- The asymmetry is empirical, on-device validated per direction; treat it
-  as the spec until proven otherwise.
+- **Every floor uses raw world coordinates, with no per-z container
+  offset.** The classic-client perspective is baked into the map data:
+  OTBM mappers place each floor above shifted one tile NW per level
+  (`Position::coveredUp` in otserv is (x-1, y-1, z-1)), and upstream
+  OTClient draws all floors untranslated for the same reason. Applying
+  a container offset on top double-shears the view and shifts stairs
+  and ladders north-west of their actual tile (the earlier "collapses
+  flat without the offset" lesson 3691ea3 was a PoC misdiagnosis). The
+  2.5D illusion comes from tall sprites drawing above their base tile.
 
 ### Occlusion + perf policy
 

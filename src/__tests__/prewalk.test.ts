@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PREWALK_CATCHUP_MS,
   PREWALK_CONFIRM_GRACE_MS,
   beginStep,
   confirmStep,
   createPrewalk,
   flushPrewalk,
+  prewalkActiveStep,
   prewalkStateAt,
   settlePrewalk,
   type PrewalkState,
@@ -125,6 +127,64 @@ describe('confirmStep', () => {
     // the resting step, but no pending prediction explains the move.
     expect(confirmStep(pw, { x: 101, y: 199, z: 7 }, 1900)).toBe(false);
     expect(prewalkStateAt(pw, 1900)).toBeNull();
+  });
+});
+
+describe('confirmStep catch-up (duration drift correction)', () => {
+  it('an on-time confirmation (glide already ended) leaves the timing alone', () => {
+    const pw = createPrewalk();
+    beginStep(pw, ANCHOR, Direction.East, 1000, SLOW_STEP_MS);
+    confirmStep(pw, { x: 101, y: 200, z: 7 }, 1000 + SLOW_STEP_MS + 40);
+    expect(pw.steps[0]).toMatchObject({ startAt: 1000, stepMs: SLOW_STEP_MS });
+  });
+
+  it('an early confirmation compresses the rest of the glide without moving the character', () => {
+    const pw = createPrewalk();
+    beginStep(pw, ANCHOR, Direction.East, 1000, SLOW_STEP_MS);
+    // The server finished the step at 1450 — our 680ms guess was ~230ms
+    // too slow (wrong ground, a haste). The rendered position at the
+    // confirmation instant must not jump…
+    const u = 450 / SLOW_STEP_MS;
+    confirmStep(pw, { x: 101, y: 200, z: 7 }, 1450);
+    expect(prewalkStateAt(pw, 1450)?.x).toBeCloseTo(100 + u, 5);
+    // …but the remainder finishes within the catch-up window instead of
+    // dragging the lag into every chained step.
+    expect(prewalkStateAt(pw, 1450 + PREWALK_CATCHUP_MS))
+      .toEqual({ x: 101, y: 200, moving: false });
+  });
+
+  it('chained steps shift up by the time the compression saved', () => {
+    const pw = createPrewalk();
+    beginStep(pw, ANCHOR, Direction.East, 1000, SLOW_STEP_MS);
+    beginStep(pw, ANCHOR, Direction.East, 1140, SLOW_STEP_MS); // starts at 1680
+    confirmStep(pw, { x: 101, y: 200, z: 7 }, 1300);
+    // First glide now ends at 1300 + 120 = 1420; the lookahead follows
+    // immediately instead of waiting out the stale 1680.
+    expect(pw.steps[1].startAt).toBe(1420);
+    expect(prewalkStateAt(pw, 1420 + SLOW_STEP_MS / 2)?.x).toBeCloseTo(101.5, 5);
+  });
+
+  it('a confirmation beating the glide start dashes the tile in the window', () => {
+    const pw = createPrewalk();
+    beginStep(pw, ANCHOR, Direction.East, 1000, SLOW_STEP_MS);
+    beginStep(pw, ANCHOR, Direction.East, 1140, SLOW_STEP_MS);
+    // Both confirmations arrive in one delivery burst at 1500.
+    confirmStep(pw, { x: 101, y: 200, z: 7 }, 1500);
+    confirmStep(pw, { x: 102, y: 200, z: 7 }, 1500);
+    // The second glide hadn't started; it dashes from its own tile and
+    // the whole chain is done a window later, not at the stale 2360.
+    expect(prewalkStateAt(pw, 1500 + 2 * PREWALK_CATCHUP_MS))
+      .toEqual({ x: 102, y: 200, moving: false });
+  });
+});
+
+describe('prewalkActiveStep', () => {
+  it('exposes the in-flight step and null while resting', () => {
+    const pw = createPrewalk();
+    expect(prewalkActiveStep(pw, 1000)).toBeNull();
+    beginStep(pw, ANCHOR, Direction.North, 1000, SLOW_STEP_MS);
+    expect(prewalkActiveStep(pw, 1300)).toMatchObject({ toX: 100, toY: 199 });
+    expect(prewalkActiveStep(pw, 1000 + SLOW_STEP_MS)).toBeNull();
   });
 });
 

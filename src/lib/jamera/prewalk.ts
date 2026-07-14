@@ -34,6 +34,12 @@ export const PREWALK_MAX_PENDING = 2;
  */
 export const PREWALK_CONFIRM_GRACE_MS = 800;
 
+/**
+ * When a confirmation catches a predicted glide lagging (see
+ * compressLaggingGlide), the remainder finishes within this window.
+ */
+export const PREWALK_CATCHUP_MS = 120;
+
 const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
   [Direction.North]: { dx: 0, dy: -1 },
   [Direction.East]: { dx: 1, dy: 0 },
@@ -126,7 +132,43 @@ export function confirmStep(
   }
   step.confirmed = true;
   pw.lastConfirmedAt = now;
+  compressLaggingGlide(pw, step, now);
   return true;
+}
+
+/**
+ * Drift correction. A confirmation means the server FINISHED this step;
+ * a predicted glide still scheduled to run well past it was built from
+ * an overestimated duration (wrong ground guess, a haste, a server
+ * pacing quirk) — and because every later step chains on this one's
+ * end, the error would compound until the character walked seconds
+ * behind the world, then snapped. Compress the remainder instead: keep
+ * the currently rendered position fixed (same interpolation fraction
+ * at `now`), pull the glide's end in to a short catch-up window, and
+ * shift the chained steps up by the time saved. Underestimated
+ * durations need no counterpart — the chain rests at its tail and the
+ * next send re-anchors to the send clock.
+ */
+function compressLaggingGlide(pw: PrewalkState, step: PrewalkStep, now: number): void {
+  const end = step.startAt + step.stepMs;
+  // A glide the confirmation beat entirely (delivery burst, chained
+  // route tail) keeps its chained start — pulling it to `now` would
+  // overlap the previous, still-running glide — and dashes the tile in
+  // one window from there.
+  const targetEnd = Math.max(now, step.startAt) + PREWALK_CATCHUP_MS;
+  if (end <= targetEnd) return; // glide on time — the healthy case
+  const shift = end - targetEnd;
+  if (now > step.startAt) {
+    // Mid-glide: solve startAt'/stepMs' so the interpolation fraction at
+    // `now` is unchanged (the character must not jump) while the glide
+    // ends at targetEnd. u < 1 because now < end.
+    const u = (now - step.startAt) / step.stepMs;
+    step.startAt = (now - u * targetEnd) / (1 - u);
+  }
+  step.stepMs = targetEnd - step.startAt;
+  for (let k = pw.steps.indexOf(step) + 1; k < pw.steps.length; k++) {
+    pw.steps[k].startAt -= shift;
+  }
 }
 
 /**
@@ -173,6 +215,21 @@ export function prewalkStateAt(pw: PrewalkState, now: number): PlaybackState | n
     y: s.fromY + (s.toY - s.fromY) * u,
     moving: true,
   };
+}
+
+/**
+ * The step whose glide spans `now`, or null while resting (before the
+ * first glide, between a finished chain and its handoff, or empty).
+ * Callers derive the character's facing from it — the server only
+ * turns the creature at confirmation, a step too late to look right.
+ */
+export function prewalkActiveStep(pw: PrewalkState, now: number): PrewalkStep | null {
+  if (pw.steps.length === 0) return null;
+  let i = pw.steps.length - 1;
+  while (i > 0 && pw.steps[i].startAt > now) i--;
+  const s = pw.steps[i];
+  if (now < s.startAt || now >= s.startAt + s.stepMs) return null;
+  return s;
 }
 
 /**

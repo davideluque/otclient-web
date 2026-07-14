@@ -16,9 +16,10 @@ import { loadTapToWalk } from './interactionPreferences';
  *    moving) on touch. The server's "You see ..." answer arrives as a
  *    0xB4 text message, which the chat binding already routes into the
  *    default channel — signs read themselves.
- *  - USE (0x82): double-click / double-tap. Ladders, ropes spots, sewer
- *    grates, doors, levers. (Stairs and holes don't need this — walking
- *    onto them floor-changes server-side already.)
+ *  - USE (0x82): double-click / double-tap. Rope spots, sewer grates,
+ *    doors, levers. (Stairs and holes don't need this — walking onto
+ *    them floor-changes server-side already.) Ladders and other .dat
+ *    ForceUse items use on a SINGLE click/tap, like the original client.
  *
  * Targeting: look resolves the top thing of the tapped tile, while use
  * resolves the top item. The server resolves the thing by position+stackpos,
@@ -63,7 +64,9 @@ export interface InteractionsOptions {
    * target them and going up/down by tap silently does nothing.
    */
   floorChangeIds?: Set<number>;
-  /** OTB Useable ids: containers/corpses, doors, ladders and levers. */
+  /** OTB Useable ids: containers/corpses, doors and levers. Items the
+   *  OTB misses but the .dat flags ForceUse (ladders) are always tap-
+   *  useable on top of this set. */
   useableIds?: Set<number>;
   /** Live preference adapter. Defaults to the persisted mobile setting. */
   tapToWalk?: () => boolean;
@@ -272,13 +275,16 @@ export function bindInteractions(
     };
   }
 
-  function topStackItemAtTile(position: WirePosition, ids?: Set<number>): ThingRef | null {
+  function topStackItemAtTile(
+    position: WirePosition,
+    accept?: (itemId: number) => boolean,
+  ): ThingRef | null {
     const tile = world.getTile(position.x, position.y, position.z);
     if (!tile || tile.items.length === 0) return null;
 
     for (let stackPos = tile.things.length - 1; stackPos >= 0; stackPos--) {
       const thing = tile.things[stackPos];
-      if (thing.kind === 'item' && (!ids || ids.has(thing.item.id))) {
+      if (thing.kind === 'item' && (!accept || accept(thing.item.id))) {
         return { position, thingId: thing.item.id, stackPos };
       }
     }
@@ -303,8 +309,8 @@ export function bindInteractions(
     send(protocol.actions.buildLookAt(target.position, target.thingId, target.stackPos));
   }
 
-  function use(clientX: number, clientY: number, ids?: Set<number>): void {
-    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY), ids);
+  function use(clientX: number, clientY: number, accept?: (itemId: number) => boolean): void {
+    const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY), accept);
     if (!target) return;
     // The byte is always sent, but only real containers should reserve an
     // id; doors/ladders/ropes may also use 0x82 and never answer with 0x6E.
@@ -315,10 +321,29 @@ export function bindInteractions(
     ));
   }
 
-  function tileHasUseableItem(position: WirePosition): boolean {
-    if (!opts.useableIds?.size) return false;
+  // Ladders and similar "use to travel" items flag ForceUse in the .dat
+  // (the original client uses them on a single click). Their OTB entries
+  // carry no Useable flag, so useableIds alone misses them.
+  function itemForcesUse(itemId: number): boolean {
+    return datIndex?.get(itemId)?.attrs.has(DatAttr.ForceUse) ?? false;
+  }
+
+  function isTapUseable(itemId: number): boolean {
+    return (opts.useableIds?.has(itemId) ?? false) || itemForcesUse(itemId);
+  }
+
+  function tileHasItem(position: WirePosition, accept: (itemId: number) => boolean): boolean {
     const tile = world.getTile(position.x, position.y, position.z);
-    return tile?.items.some((item) => opts.useableIds!.has(item.id)) ?? false;
+    return tile?.items.some((item) => accept(item.id)) ?? false;
+  }
+
+  // The server rejects uses beyond arm's reach ("Too far away."), so a
+  // ForceUse item is only used when the player can actually reach it;
+  // farther away the click/tap walks toward it instead.
+  function isWithinReach(position: WirePosition): boolean {
+    return Math.abs(position.x - world.playerX) <= 1
+      && Math.abs(position.y - world.playerY) <= 1
+      && position.z === world.playerZ;
   }
 
   function topCreatureAtTile(position: WirePosition): number | null {
@@ -376,9 +401,18 @@ export function bindInteractions(
       walkTo(clientX, clientY);
       return;
     }
-    if (tileHasUseableItem(pointed)) {
-      showTapFeedback(clientX, clientY, 'use');
-      use(clientX, clientY, opts.useableIds);
+    if (tileHasItem(pointed, isTapUseable)) {
+      // OTB useables (doors, corpses, levers) keep use-in-place; a
+      // ForceUse travel item out of reach walks toward it first — the
+      // next tap on it climbs.
+      if (tileHasItem(pointed, (id) => opts.useableIds?.has(id) ?? false)
+        || isWithinReach(pointed)) {
+        showTapFeedback(clientX, clientY, 'use');
+        use(clientX, clientY, isTapUseable);
+        return;
+      }
+      showTapFeedback(clientX, clientY, 'walk');
+      walkTo(clientX, clientY);
       return;
     }
     if ((opts.tapToWalk ?? loadTapToWalk)()) {
@@ -493,6 +527,14 @@ export function bindInteractions(
     }
     if (armedTrade) {
       fireTrade(e.clientX, e.clientY);
+      return;
+    }
+    // ForceUse items (ladders, stairwells) in reach use on a single
+    // click, like the original client — everything else keeps
+    // walk-then-dblclick, so a distant ladder click walks toward it.
+    const pointed = worldTileAtPointer(e.clientX, e.clientY);
+    if (tileHasItem(pointed, itemForcesUse) && isWithinReach(pointed)) {
+      use(e.clientX, e.clientY, itemForcesUse);
       return;
     }
     walkTo(e.clientX, e.clientY);

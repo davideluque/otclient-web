@@ -121,6 +121,8 @@ describe('long-press pointer tracking', () => {
     const datIndex = new Map([
       [1987, { id: 1987, attrs: new Map([[DatAttr.Container, true]]) }],
       [200, { id: 200, attrs: new Map() }],
+      // The 7.6 ladder: ForceUse in the .dat, but NOT Useable in the OTB.
+      [1948, { id: 1948, attrs: new Map([[DatAttr.ForceUse, true]]) }],
     ]) as never;
     const handle = bindInteractions(client, liveWorld, liveApp, datIndex, opts);
     const touch = (type: string, pointerId: number, clientX: number, clientY: number) =>
@@ -160,6 +162,70 @@ describe('long-press pointer tracking', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0][0]).toBe(0x82); // UseItem
     handle.destroy();
+  });
+
+  it('a single touch tap uses a ladder missing from the OTB useable set (.dat ForceUse)', () => {
+    const ladderTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 200 } },
+        { kind: 'item', item: { id: 1948 } },
+      ],
+      items: [{ id: 200 }, { id: 1948 }],
+      creatures: [],
+    };
+    const { handle, sent, touch } = mount(ladderTile, { useableIds: new Set([1987]) });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 400, 300);
+
+    expect(sent).toHaveLength(1);
+    // UseItem on the ladder itself (stackpos 1), not the ground under it.
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0x9c, 0x07, 1, 0]);
+    handle.destroy();
+  });
+
+  it('a single desktop click uses a ForceUse ladder instead of walking', () => {
+    const ladderTile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 200 } },
+        { kind: 'item', item: { id: 1948 } },
+      ],
+      items: [{ id: 200 }, { id: 1948 }],
+      creatures: [],
+    };
+    const { canvas, handle, sent } = mount(ladderTile);
+    canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 400, clientY: 300, bubbles: true }));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual([0x82, 100, 0, 200, 0, 7, 0x9c, 0x07, 1, 0]);
+    handle.destroy();
+  });
+
+  it('walks toward a ForceUse ladder that is out of reach instead of using it', () => {
+    const ladderTile: MapTile = {
+      x: 102, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 200 } },
+        { kind: 'item', item: { id: 1948 } },
+      ],
+      items: [{ id: 200 }, { id: 1948 }],
+      creatures: [],
+    };
+    // Touch tap two tiles east: out of arm's reach → autowalk, not 0x82.
+    const tap = mount(ladderTile, { tapToWalk: () => false });
+    tap.touch('pointerdown', 1, 400 + 64, 300);
+    tap.touch('pointerup', 1, 400 + 64, 300);
+    expect(tap.sent).toHaveLength(1);
+    expect(tap.sent[0][0]).toBe(0x64);
+    tap.handle.destroy();
+
+    // Desktop click on the same distant ladder also walks.
+    const click = mount(ladderTile);
+    click.canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 400 + 64, clientY: 300, bubbles: true }));
+    expect(click.sent).toHaveLength(1);
+    expect(click.sent[0][0]).toBe(0x64);
+    click.handle.destroy();
   });
 
   it('keeps object taps active when tap-to-walk is disabled', () => {

@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Fixed ladders and stairwells you click to go up doing nothing — a single tap or click now climbs them.' },
   { date: '2026-07-14', text: 'Repeated door/walk warnings now expire instead of lingering, and duplicate spell speech echoes no longer stack twice.' },
   { date: '2026-07-14', text: 'Writable books and house guest, subowner, and door lists can now be edited and saved from their movable window.' },
   { date: '2026-07-14', text: 'Trading works: choose Trade with… on an item, tap a nearby player, then review and accept both offers.' },

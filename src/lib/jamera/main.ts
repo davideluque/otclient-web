@@ -37,6 +37,7 @@ import { loadTapToWalk, saveTapToWalk } from './interactionPreferences';
 import { LIGHT_PREF_EVENT } from './renderer';
 import { expectedStepMs } from '../render/motion/forward';
 import { beginRoute, beginStep, createPrewalk, flushPrewalk } from '../render/motion/prewalk';
+import { resolveSelfMotionMode } from '../render/motion/selfMotion';
 import { createJoystick } from '../joystick';
 import { createKeyboard } from '../keyboard';
 import type { Direction } from '../player';
@@ -56,6 +57,9 @@ const params = new URLSearchParams(window.location.search);
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
+// Self-movement algorithm A/B switch (see motion/selfMotion.ts):
+// ?selfmotion=playout falls back to the pre-prediction playout buffer.
+const selfMotionMode = resolveSelfMotionMode(params.get('selfmotion'));
 // Dev-server convenience: land straight in the game on every reload so
 // changes are visible immediately. ?autologin=0 opts out (e.g. to test
 // the login form itself); production builds never auto-login.
@@ -490,7 +494,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         // Tap-to-walk: predict the whole 0x64 route — the server walks
         // it without per-step sends, so this is the only place the
         // prediction chain can learn it.
-        onRouteSent: (route) => {
+        onRouteSent: selfMotionMode !== 'prewalk' ? undefined : (route) => {
           beginRoute(
             selfPrewalk,
             { x: world.playerX, y: world.playerY, z: world.playerZ },
@@ -505,7 +509,10 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
         },
       })
       : null;
-    teardownRenderer = bindRenderer(world, atlas, app, chatManager, selfPrewalk);
+    teardownRenderer = bindRenderer(
+      world, atlas, app, chatManager,
+      selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
+    );
     console.info('[jamera] renderer bound to GameWorld');
   };
 
@@ -777,7 +784,8 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
     // Pre-walk: predict the step the packet will cause so the renderer
     // glides from the send instant instead of standing out the
     // confirmation round-trip (the level-1 step-pause-step stutter).
-    onStepSent: (dir, now) => {
+    // In playout mode the hook stays unset — no chain is ever seeded.
+    onStepSent: selfMotionMode !== 'prewalk' ? undefined : (dir, now) => {
       beginStep(
         selfPrewalk,
         { x: world.playerX, y: world.playerY, z: world.playerZ },

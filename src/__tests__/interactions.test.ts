@@ -93,6 +93,7 @@ describe('long-press pointer tracking', () => {
     floorChangeIds?: Set<number>;
     useableIds?: Set<number>;
     tapToWalk?: () => boolean;
+    onCreatureTap?: (creatureId: number) => void;
   }) {
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
@@ -177,6 +178,33 @@ describe('long-press pointer tracking', () => {
     touch('pointerdown', 1, 464, 300);
     touch('pointerup', 1, 464, 300);
     expect(sent).toHaveLength(0);
+    handle.destroy();
+  });
+
+  it('a single touch tap attacks a creature and shows red action feedback', () => {
+    const creature = {
+      id: 77, name: 'Rat', x: 100, y: 200, z: 7, direction: 2, health: 100,
+      outfit: { lookType: 21, head: 0, body: 0, legs: 0, feet: 0 },
+      lightLevel: 0, lightColor: 0, speed: 220,
+    };
+    const tile: MapTile = {
+      x: 100, y: 200, z: 7,
+      things: [
+        { kind: 'item', item: { id: 100 } },
+        { kind: 'creature', creature },
+      ],
+      items: [{ id: 100 }], creatures: [creature],
+    };
+    const onCreatureTap = vi.fn();
+    const { handle, sent, touch } = mount(tile, { onCreatureTap });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointerup', 1, 400, 300);
+
+    expect(onCreatureTap).toHaveBeenCalledWith(77);
+    expect(sent).toHaveLength(0);
+    expect(document.querySelector('.world-tap-feedback.attack')).not.toBeNull();
+    vi.advanceTimersByTime(600);
+    expect(document.querySelector('.world-tap-feedback.attack')).toBeNull();
     handle.destroy();
   });
 

@@ -46,11 +46,13 @@ function ensureStyles(): void {
   style.textContent = `
     .battle-list {
       position: fixed; left: 8px; top: calc(122px + env(safe-area-inset-top, 0px));
-      width: 132px; max-height: 40vh; overflow-y: auto;
+      width: 132px; max-height: 40vh; overflow: hidden;
+      display: flex; flex-direction: column;
       background: rgba(18,18,18,0.92); border: 1px solid #555;
       border-radius: 10px; padding: 6px; z-index: 30;
       font-family: system-ui, sans-serif; font-size: 0.72rem; color: #ddd;
     }
+    .battle-list .entries { overflow-y: auto; min-height: 0; }
     .battle-list .empty { color: #777; text-align: center; padding: 4px 0; }
     .battle-list .drag-handle {
       display: flex; justify-content: space-between; align-items: center;
@@ -142,7 +144,9 @@ export function createBattleList(opts: BattleListOptions, parent: HTMLElement = 
     get visible() { return visible; },
     setVisible: (v) => {
       visible = v;
-      el.style.display = v ? 'block' : 'none';
+      // '' (not 'block') so the stylesheet's display:flex keeps clipping
+      // the entries scroller — same pitfall as the skill pane.
+      el.style.display = v ? '' : 'none';
     },
     destroy: () => {
       stopDragging();

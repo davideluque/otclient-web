@@ -179,18 +179,24 @@ const MAX_SAMPLES = 8;
  * stairs, then moved in front" transient on every stair climb.
  */
 export function appendPlaybackSample(
-  p: { samples: PlaybackSample[]; cadence: number },
+  p: { samples: PlaybackSample[]; cadence: number; lastArrivalAt?: number },
   next: { x: number; y: number; z: number; at: number },
   stepMs: number,
 ): void {
   const last = p.samples[p.samples.length - 1];
   if (last && last.x === next.x && last.y === next.y && last.z === next.z) return;
+  // Cadence intervals come from TRUE arrival times: the flush below
+  // backdates its sample's render schedule by RENDER_DELAY_MS, and
+  // measuring the next step against that would inflate the EMA by the
+  // render delay (review catch on #299).
+  const prevArrivalAt = p.lastArrivalAt ?? last?.at;
+  p.lastArrivalAt = next.at;
   if (last && last.z !== next.z) {
     p.samples.length = 0;
     p.samples.push({ x: next.x, y: next.y, z: next.z, at: next.at - RENDER_DELAY_MS });
     return;
   }
-  if (last) p.cadence = nextStepEma(p.cadence, next.at - last.at);
+  if (last && prevArrivalAt !== undefined) p.cadence = nextStepEma(p.cadence, next.at - prevArrivalAt);
   p.samples.push({ x: next.x, y: next.y, z: next.z, at: next.at, stepMs });
   if (p.samples.length > MAX_SAMPLES) p.samples.shift();
 }

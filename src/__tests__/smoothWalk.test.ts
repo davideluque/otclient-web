@@ -224,6 +224,16 @@ describe('appendPlaybackSample (floor changes snap)', () => {
     expect(otherState).toMatchObject({ x: 100, y: 206, moving: false });
   });
 
+  it('the first step after a floor change feeds the true interval to the cadence EMA', () => {
+    const p = { samples: [{ x: 100, y: 209, z: 7, at: 1000 }] as PlaybackSample[], cadence: 380 };
+    appendPlaybackSample(p, { x: 100, y: 206, z: 6, at: 1400 }, 400);
+    // 200ms later the player keeps walking on the new floor. The flush
+    // sample was backdated by RENDER_DELAY_MS; the cadence must use the
+    // real 200ms arrival interval, not 200 + RENDER_DELAY_MS.
+    appendPlaybackSample(p, { x: 100, y: 205, z: 6, at: 1600 }, 400);
+    expect(p.cadence).toBe(nextStepEma(380, 200));
+  });
+
   it('ignores a no-op sync (same tile)', () => {
     const p = { samples: [{ x: 100, y: 200, z: 7, at: 1000 }] as PlaybackSample[], cadence: 380 };
     appendPlaybackSample(p, { x: 100, y: 200, z: 7, at: 2000 }, 400);

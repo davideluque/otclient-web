@@ -334,7 +334,7 @@ function ensurePixiApp(): Promise<Application> {
         // automatically if WebGPU init fails or isn't supported.
         preference: 'webgpu',
       });
-      app.canvas.style.cssText = 'position:fixed;inset:0;z-index:0;';
+      app.canvas.style.cssText = 'position:fixed;left:0;top:0;z-index:0;';
       document.body.appendChild(app.canvas);
       // Cover-zoom + debounced resize/orientation tracking; the app is a
       // page-lifetime singleton so the binding never needs tearing down.

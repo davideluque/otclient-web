@@ -14,6 +14,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { date: '2026-07-14', text: 'Fixed lower floors showing stale ghost tiles (or staying blank) when the ground above them changed, and fixed quickly opening two bags making the second replace the first.' },
   { date: '2026-07-14', text: 'Fixed the game opening zoomed-in/off-center after login when mobile Safari shifts the visible screen around the login form.' },
   { date: '2026-07-06', text: 'Torches and fires on other floors cast their light into your view.' },
   { date: '2026-07-06', text: 'People and monsters on other floors are visible now — watch them climb the stairs above you.' },

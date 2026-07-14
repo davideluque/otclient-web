@@ -2,7 +2,7 @@ import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
 import type { WirePosition } from '../net/common/types';
 import type { GameWorld } from '../GameWorld';
-import type { ThingType } from '../dat';
+import { DatAttr, type ThingType } from '../dat';
 import { findWalkRoute } from './autowalk';
 import { spriteIndex } from '../tileRenderer';
 import { TILE_SIZE } from '../../constants';
@@ -49,10 +49,10 @@ export interface InteractionsOptions {
    * Window id to put in 0x82's trailing index byte — the server opens a
    * used container under exactly this id (actions.cpp), so without it a
    * second container replaces the first window. Wired to
-   * ContainerManager.nextFreeId; absent (tests, pre-container mounts)
-   * every use falls back to window 0.
+   * ContainerManager.nextFreeId for .dat Container items; absent (tests,
+   * pre-container mounts, non-container uses) the packet uses window 0.
    */
-  nextContainerId?: () => number;
+  nextContainerId?: (target: ThingRef) => number;
   /**
    * Client ids of floor-changing items (from the OTB) — stairs/holes
    * flag NotWalkable in the .dat, so without this set tap-to-walk can't
@@ -241,6 +241,10 @@ export function bindInteractions(
     return null;
   }
 
+  function isContainerTarget(target: ThingRef): boolean {
+    return datIndex?.get(target.thingId)?.attrs.has(DatAttr.Container) ?? false;
+  }
+
   function send(packet: { toUint8Array(): Uint8Array }): void {
     try {
       client.send(packet as Parameters<GameClient['send']>[0]);
@@ -258,11 +262,12 @@ export function bindInteractions(
   function use(clientX: number, clientY: number): void {
     const target = topStackItemAtTile(worldTileAtPointer(clientX, clientY));
     if (!target) return;
-    // Always sent — the server only reads the index byte when the used
-    // item turns out to be a container, so no .dat check is needed here.
+    // The byte is always sent, but only real containers should reserve an
+    // id; doors/ladders/ropes may also use 0x82 and never answer with 0x6E.
+    const containerId = isContainerTarget(target) ? opts.nextContainerId?.(target) ?? 0 : 0;
     send(protocol.actions.buildUseItem(
       target.position, target.thingId, target.stackPos,
-      opts.nextContainerId?.() ?? 0,
+      containerId,
     ));
   }
 

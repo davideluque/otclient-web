@@ -14,6 +14,7 @@ export interface OpenContainer {
 
 /** The server rejects window ids above 0x0F (player.cpp addContainer). */
 export const MAX_CONTAINER_ID = 0x0f;
+const PENDING_OPEN_TTL_MS = 5_000;
 
 /**
  * Client-side mirror of the player's open containers. Bindings feed it
@@ -22,6 +23,7 @@ export const MAX_CONTAINER_ID = 0x0f;
  */
 export class ContainerManager {
   private containers = new Map<number, OpenContainer>();
+  private pendingOpenIds = new Map<number, number>();
   private listeners = new Set<() => void>();
 
   /** Open windows sorted by id — stable pane order across updates. */
@@ -39,6 +41,7 @@ export class ContainerManager {
    * container reuse the parent's window server-side.
    */
   open(event: ContainerOpenEvent): void {
+    this.pendingOpenIds.delete(event.containerId);
     this.containers.set(event.containerId, {
       id: event.containerId,
       itemId: event.containerItemId,
@@ -52,6 +55,7 @@ export class ContainerManager {
 
   /** 0x6F. Unknown ids are ignored (close echo can race a re-open). */
   close(id: number): void {
+    this.pendingOpenIds.delete(id);
     if (this.containers.delete(id)) this.notify();
   }
 
@@ -81,12 +85,17 @@ export class ContainerManager {
 
   /**
    * The window id to put in 0x82's index byte when opening a container:
-   * first free id. With all 16 in use, reuse 0 — the server overwrites
-   * that window in place and re-sends 0x6E for it.
+   * first free id, reserved until the matching 0x6E arrives. With all 16
+   * in use, reuse 0 — the server overwrites that window in place and
+   * re-sends 0x6E for it.
    */
   nextFreeId(): number {
+    this.prunePendingOpenIds();
     for (let id = 0; id <= MAX_CONTAINER_ID; id++) {
-      if (!this.containers.has(id)) return id;
+      if (!this.containers.has(id) && !this.pendingOpenIds.has(id)) {
+        this.pendingOpenIds.set(id, Date.now() + PENDING_OPEN_TTL_MS);
+        return id;
+      }
     }
     return 0;
   }
@@ -94,6 +103,7 @@ export class ContainerManager {
   /** Session teardown — drop all windows without notifying. */
   clear(): void {
     this.containers.clear();
+    this.pendingOpenIds.clear();
   }
 
   subscribe(listener: () => void): () => void {
@@ -103,5 +113,12 @@ export class ContainerManager {
 
   private notify(): void {
     for (const listener of this.listeners) listener();
+  }
+
+  private prunePendingOpenIds(): void {
+    const now = Date.now();
+    for (const [id, expiresAt] of this.pendingOpenIds) {
+      if (expiresAt <= now) this.pendingOpenIds.delete(id);
+    }
   }
 }

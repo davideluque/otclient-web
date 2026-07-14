@@ -33,7 +33,7 @@ export function registerWireSkips(dispatcher: PacketDispatcher, protocol: GamePr
   // Containers — a real container UI will replace these.
   dispatcher.on(serverOp.ContainerOpen, (p) => {
     p.skip(1); // container id
-    p.getU16(); // the container item id itself, without an item count byte
+    p.skip(2); // the container item id itself, without an item count byte
     p.getString(); // name
     p.skip(1 + 1); // capacity, hasParent
     const count = p.getU8();

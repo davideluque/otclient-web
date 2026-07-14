@@ -40,6 +40,25 @@ export function drawnFloorsAbove(firstVisible: number, playerZ: number): number[
   return floors;
 }
 
+/**
+ * Screen offset (in tiles) of a floor's container relative to the camera
+ * floor — the classic per-floor perspective: `screen = world + (z − camZ)`
+ * on both axes, so floors below shift south-east and floors above shift
+ * north-west, one tile per level. This is the model the 7.6 wire format
+ * assumes (GetFloorDescription reads floor nz at offset camZ − nz, and the
+ * floor-change frames resync west+north / east+south for exactly this
+ * shift), the model upstream OTClient renders (mapview.h
+ * transformPositionTo2D subtracts (camZ − z); position.h coveredUp is
+ * (x+n, y+n, z−n)), and the model the map art is drawn for: 64×64 stair
+ * sprites anchor bottom-right and lean up-left, landing on the stairwell
+ * hole one floor up only when their floor is shifted south-east
+ * (NDIT-204 — rendering them raw is what put stairs a tile north-west
+ * of the hole).
+ */
+export function floorLayerOffset(z: number, playerZ: number): { x: number; y: number } {
+  return { x: z - playerZ, y: z - playerZ };
+}
+
 export interface GlideEndpoints { fromX: number; fromY: number; toX: number; toY: number }
 
 /**

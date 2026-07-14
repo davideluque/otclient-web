@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, glideEndpoints, coveringRevisionKey,
-  partitionByFloor, dirtyFloorsWithBelowOcclusion,
+  partitionByFloor, dirtyFloorsWithBelowOcclusion, floorLayerOffset,
 } from '../lib/render/floorStack';
 
 describe('drawnFloorsBelow', () => {
@@ -48,6 +48,23 @@ describe('drawnFloorsAbove', () => {
 
   it('underground spans down to the z−2 base at most', () => {
     expect(drawnFloorsAbove(8, 10)).toEqual([9, 8]);
+  });
+});
+
+describe('floorLayerOffset', () => {
+  it('shifts floors below the camera south-east, one tile per level', () => {
+    expect(floorLayerOffset(8, 7)).toEqual({ x: 1, y: 1 });
+    expect(floorLayerOffset(10, 7)).toEqual({ x: 3, y: 3 });
+  });
+
+  it('shifts floors above the camera north-west, one tile per level', () => {
+    expect(floorLayerOffset(6, 7)).toEqual({ x: -1, y: -1 });
+    expect(floorLayerOffset(3, 7)).toEqual({ x: -4, y: -4 });
+  });
+
+  it('leaves the camera floor unshifted', () => {
+    expect(floorLayerOffset(7, 7)).toEqual({ x: 0, y: 0 });
+    expect(floorLayerOffset(11, 11)).toEqual({ x: 0, y: 0 });
   });
 });
 

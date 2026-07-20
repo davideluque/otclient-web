@@ -22,7 +22,7 @@
     "@types/ws": "^8.18.1",
     "eslint": "^10.7.0",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.10.6",
+    "happy-dom": "^20.11.0",
     "jsdom": "^29.1.1",
     "tsx": "^4.23.1",
     "typescript": "~6.0.3",

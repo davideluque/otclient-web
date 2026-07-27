@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.1.1",
     "@types/ws": "^8.18.1",
     "eslint": "^10.8.0",
     "fake-indexeddb": "^6.2.5",

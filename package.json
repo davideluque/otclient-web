@@ -32,7 +32,7 @@
     "wrangler": "^4.123.0"
   },
   "dependencies": {
-    "pixi.js": "^8.19.0",
+    "pixi.js": "^8.20.0",
     "ws": "^8.21.3"
   },
   "overrides": {

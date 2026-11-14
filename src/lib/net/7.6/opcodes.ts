@@ -37,6 +37,11 @@ export const ClientOp = {
 
   // Actions
   ThrowItem: 0x78,
+
+  // NPC shop window (jamera extension, docs/protocol/npc-shop.md)
+  ShopBuy: 0x7a,
+  ShopSell: 0x7b,
+  ShopClose: 0x7c,
   UseItem: 0x82,
   UseItemWith: 0x83,
   RequestTrade: 0x7d,
@@ -99,6 +104,9 @@ export const ServerOp = {
   ContainerAddItem: 0x70,
   ContainerUpdateItem: 0x71,
   ContainerRemoveItem: 0x72,
+  ShopOpen: 0x7a,
+  ShopGoods: 0x7b,
+  ShopClose: 0x7c,
   TradeRequest: 0x7d,
   TradeRequestAck: 0x7e,
   TradeClose: 0x7f,

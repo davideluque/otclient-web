@@ -32,8 +32,8 @@
     "wrangler": "^4.161.0"
   },
   "dependencies": {
-    "pixi.js": "^8.22.0",
-    "ws": "^8.22.1"
+    "pixi.js": "^8.23.0",
+    "ws": "^8.23.0"
   },
   "overrides": {
     "esbuild": "0.28.1",

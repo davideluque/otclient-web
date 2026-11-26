@@ -345,6 +345,50 @@ export interface ContainerOpenEvent {
   items: MapTileItem[];
 }
 
+/** One NPC shop catalog entry (S->C 0x7A). */
+export interface ShopItem {
+  /** Server-side item id — echoed back verbatim in buy/sell requests. */
+  serverId: number;
+  /** Client sprite id (Item::items[id].clientId) — rendering only. */
+  clientId: number;
+  /** Rune charges / fluid type / 0; must be echoed in requests. */
+  subType: number;
+  name: string;
+  /** Gold per unit; 0 = not buyable. */
+  buyPrice: number;
+  /** Gold per unit; 0 = not sellable. */
+  sellPrice: number;
+}
+
+export interface ShopOpenEvent {
+  npcName: string;
+  items: ShopItem[];
+}
+
+export interface ShopGoodsEvent {
+  /** Total gold the player carries. */
+  money: number;
+  /** Owned counts of the catalog's sellable items (by server item id). */
+  items: Array<{ serverId: number; count: number }>;
+}
+
+/**
+ * NPC shop window (jamera extension, opcodes 0x7A-0x7C; see the server's
+ * docs/protocol/npc-shop.md). Fully separate from player trade 0x7D-0x7F.
+ */
+export interface ShopProtocol {
+  /** 0x7A — the focused npc opened its shop window. */
+  parseOpen(packet: InputPacket): ShopOpenEvent;
+  /** 0x7B — money + sellable holdings; also sent after each transaction. */
+  parseGoods(packet: InputPacket): ShopGoodsEvent;
+  /** C->S 0x7A — buy `amount` (1..100) of a catalog entry. */
+  buildBuy(serverId: number, subType: number, amount: number): OutputPacket;
+  /** C->S 0x7B — sell `amount` (1..100) of a catalog entry. */
+  buildSell(serverId: number, subType: number, amount: number): OutputPacket;
+  /** C->S 0x7C — dismiss the window; the server clears the session silently. */
+  buildClose(): OutputPacket;
+}
+
 export interface ContainersProtocol {
   /** 0x6E — a container window opened (or was re-described in place). */
   parseOpen(packet: InputPacket): ContainerOpenEvent;
@@ -505,6 +549,9 @@ export interface ServerOpcodes {
   readonly ContainerAddItem: number;
   readonly ContainerUpdateItem: number;
   readonly ContainerRemoveItem: number;
+  readonly ShopOpen: number;
+  readonly ShopGoods: number;
+  readonly ShopClose: number;
   readonly TradeRequest: number;
   readonly TradeRequestAck: number;
   readonly TradeClose: number;
@@ -586,6 +633,7 @@ export interface GameProtocol {
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
   readonly containers: ContainersProtocol;
+  readonly shop: ShopProtocol;
   readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes;
   readonly clientOpcodes: ClientOpcodes;

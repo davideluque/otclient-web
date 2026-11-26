@@ -1,6 +1,6 @@
 import { spriteIndex } from './tileRenderer';
 import { ATLAS_SIZE, type AtlasPages, type SpriteLocation } from './atlas';
-import type { ThingType } from './dat';
+import { DatAttr, type ThingType } from './dat';
 
 /**
  * DOM-side item thumbnails for the inventory pane: compose an item's
@@ -32,6 +32,7 @@ export function renderItemThumbnail(
   datIndex: Map<number, ThingType>,
   layout: Map<number, SpriteLocation>,
   pages: AtlasPages,
+  subType = 0,
 ): HTMLCanvasElement | null {
   const thing = datIndex.get(clientId);
   if (!thing) return null;
@@ -49,14 +50,19 @@ export function renderItemThumbnail(
   const sctx = scratch.getContext('2d');
   if (!sctx) return null;
 
+  // In 7.6, fluid subtypes that share a color also share the low three bits.
+  // Other catalog subtypes (e.g. rune charges) do not select an item sprite.
+  const isFluid = thing.attrs.has(DatAttr.FluidContainer) || thing.attrs.has(DatAttr.Splash);
+  const pattern = isFluid ? subType % 8 : 0;
+  const patX = pattern % fg.numPatternX;
+  const patY = Math.floor(pattern / fg.numPatternX) % fg.numPatternY;
   let drewAnything = false;
   // Same ordering as renderTile: furthest piece first, anchor last,
-  // layer 0 under higher layers. Patterns/phase pinned to 0 — a
-  // thumbnail wants the canonical look, not world variation.
+  // layer 0 under higher layers.
   for (let h = fg.height - 1; h >= 0; h--) {
     for (let w = fg.width - 1; w >= 0; w--) {
       for (let layer = 0; layer < fg.layers; layer++) {
-        const id = fg.spriteIds[spriteIndex(fg, 0, 0, 0, layer, h, w)];
+        const id = fg.spriteIds[spriteIndex(fg, 0, patX, patY, layer, h, w)];
         if (!id) continue;
         const loc = layout.get(id);
         const page = loc && pages.get(loc.page);

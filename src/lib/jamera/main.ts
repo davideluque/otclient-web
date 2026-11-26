@@ -20,6 +20,7 @@ import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindContainers, type ContainerBindingHandle } from './containerBinding';
+import { bindShop, type ShopBindingHandle } from './shopBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindBattleList, type BattleBindingHandle } from './battleBinding';
 import { bindVip, type VipBindingHandle } from './vipBinding';
@@ -109,6 +110,8 @@ mountLoginScreen(root, {
     teardownInventory = null;
     teardownContainers?.destroy();
     teardownContainers = null;
+    teardownShop?.destroy();
+    teardownShop = null;
     // The renderer too: its container and tinted-outfit textures belong
     // to the dead session (mountRenderer also bumps the epoch on the
     // next login, but freeing GPU resources shouldn't wait for one).
@@ -186,13 +189,15 @@ mountLoginScreen(root, {
     teardownChat?.destroy();
     teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
+    const renderThumb = (id: number, subType = 0) => {
+      const atlas = assetPipeline.atlas;
+      return atlas ? renderItemThumbnail(id, atlas.datIndex, atlas.layout, atlas.atlasPages, subType) : null;
+    };
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane
       // binds; slots re-render on every 0x78, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
       // Late-bound: interactions mount with the renderer (after the
       // atlas), later than this binding — the optional chain no-ops in
       // that brief window instead of arming a dead handle.
@@ -204,14 +209,17 @@ mountLoginScreen(root, {
       // Same lazy atlas read as the inventory pane above: windows
       // re-render on every container packet, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
       // Drop target: the tile under the player, read at selection time.
       playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
       // Same late-bound interactions handle as the inventory pane above.
       armUseWith: (from) => teardownInteractions?.armUseWith(from),
       armTrade: (from) => teardownInteractions?.armTrade(from),
+    });
+    teardownShop?.destroy();
+    teardownShop = bindShop(client, document.body, {
+      // Same lazy atlas read as the container pane above.
+      renderThumb,
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
@@ -234,9 +242,7 @@ mountLoginScreen(root, {
     });
     teardownTrade?.destroy();
     teardownTrade = bindTrade(client, document.body, {
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
     });
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
@@ -715,6 +721,9 @@ let teardownInventory: InventoryBindingHandle | null = null;
 
 // Per-session container windows (wire state + pane), same lifecycle.
 let teardownContainers: ContainerBindingHandle | null = null;
+
+// Per-session npc shop window (wire state + pane), same lifecycle.
+let teardownShop: ShopBindingHandle | null = null;
 
 // Per-session canvas interactions (look/use), replaced with the renderer.
 let teardownInteractions: InteractionsHandle | null = null;

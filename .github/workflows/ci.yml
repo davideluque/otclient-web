@@ -26,6 +26,8 @@ jobs:
       - run: npm run build
       - run: npm run typecheck:proxy
       - run: npm test
+      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npm run test:e2e
 
   security:
     runs-on: ubuntu-latest

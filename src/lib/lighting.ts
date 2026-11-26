@@ -150,23 +150,29 @@ export function tibiaColorToHex(paletteIndex: number): number {
  * accurate: only the listed floors contribute, so a torch in the sealed
  * cellar can't glow through the ground. The plain-number form keeps the
  * offline viewer's single-floor call site unchanged.
+ *
+ * With `cameraZ` set, each source lands at its SCREEN cell — shifted by
+ * (z − cameraZ) like its floor's container (floorStack.floorLayerOffset)
+ * — so a torch on iso-shifted stairs glows on the art, not a tile off.
  */
 export function* gatherLights(
   tileMap: TileSource,
   datIndex: Map<number, ThingType>,
   x1: number, y1: number, x2: number, y2: number,
   zs: number | readonly number[],
+  cameraZ?: number,
 ): Generator<LightSource> {
   for (const z of typeof zs === 'number' ? [zs] : zs) {
-    for (const tile of tileMap.tilesInRegion(x1, y1, x2, y2, z)) {
+    const dz = cameraZ === undefined ? 0 : z - cameraZ;
+    for (const tile of tileMap.tilesInRegion(x1 - dz, y1 - dz, x2 - dz, y2 - dz, z)) {
       for (const item of tile.items) {
         const tt = datIndex.get(item.clientId);
         if (!tt) continue;
         const light = tt.attrs.get(DatAttr.Light) as Light | undefined;
         if (!light || light.intensity === 0) continue;
         yield {
-          x: tile.x,
-          y: tile.y,
+          x: tile.x + dz,
+          y: tile.y + dz,
           intensity: light.intensity,
           color: tibiaColorToHex(light.color),
         };
@@ -226,10 +232,10 @@ export class LightSpritePool {
  * The returned Sprite is short-lived (one per call) and may be destroyed by
  * the caller without affecting the underlying texture.
  *
- * `zs` (one floor or the drawn stack, see gatherLights) all land at raw
- * world coordinates in the merged overlay — a torch under an iso-shifted
- * roof glows at its tile, up to a tile off from the shifted art. Accepted
- * v1: one classic merged pass, no per-floor light layers.
+ * `zs` (one floor or the drawn stack, see gatherLights) merge into one
+ * overlay — no per-floor light layers, classic behavior. Pass `cameraZ`
+ * so off-camera-floor sources land at their perspective-shifted screen
+ * cell, matching the floor containers' iso offsets.
  */
 export function buildIlluminationOverlay(
   app: Application,
@@ -241,6 +247,7 @@ export function buildIlluminationOverlay(
   x1: number, y1: number, x2: number, y2: number,
   zs: number | readonly number[],
   opts: LightingOptions,
+  cameraZ?: number,
 ): Sprite {
   const w = (x2 - x1 + 1) * TILE_SIZE;
   const h = (y2 - y1 + 1) * TILE_SIZE;
@@ -281,7 +288,7 @@ export function buildIlluminationOverlay(
     tileMap, datIndex,
     x1 - MAX_INTENSITY, y1 - MAX_INTENSITY,
     x2 + MAX_INTENSITY, y2 + MAX_INTENSITY,
-    zs,
+    zs, cameraZ,
   )) {
     addBubble(light);
   }

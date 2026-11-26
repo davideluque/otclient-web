@@ -15,6 +15,8 @@ export interface MinimapOptions {
   radius?: number;
   /** Canvas pixels per tile (default 3). */
   scale?: number;
+  /** Called when the corner \u2715 is tapped — the owner flips its open state. */
+  onClose?: () => void;
 }
 
 export interface MinimapHandle {
@@ -53,6 +55,12 @@ function ensureStyles(): void {
       opacity: 0.92;
     }
     .minimap canvas { display: block; image-rendering: pixelated; }
+    .minimap .close-btn {
+      position: absolute; top: 2px; right: 2px;
+      background: rgba(22,22,22,0.7); border: none; border-radius: 4px;
+      color: #ccc; font-size: 0.75rem; line-height: 1;
+      padding: 2px 4px; cursor: pointer;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -73,6 +81,13 @@ export function createMinimap(opts: MinimapOptions, parent: HTMLElement = docume
   canvas.style.width = `${side * scale / 2}px`;
   canvas.style.height = `${side * scale / 2}px`;
   el.appendChild(canvas);
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'close-btn';
+  closeBtn.textContent = '\u2715';
+  closeBtn.setAttribute('aria-label', 'Close minimap');
+  closeBtn.addEventListener('click', () => opts.onClose?.());
+  el.appendChild(closeBtn);
   parent.appendChild(el);
 
   const ctx = canvas.getContext('2d');

@@ -48,9 +48,25 @@ function ensureStyles(): void {
       border: 1px solid #9a9a9a; border-radius: 10px;
       font-family: system-ui, sans-serif; font-size: 0.78rem;
       z-index: 30; user-select: none;
+      /* Compact: about the character block + four skills; the rest
+         scrolls inside .skill-scroll. */
+      max-height: min(48vh, 320px);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .skill-pane .head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin: 0 0 8px;
     }
     .skill-pane h3 {
-      margin: 0 0 8px; font-size: 0.85rem; color: #9a9a9a;
+      margin: 0; font-size: 0.85rem; color: #9a9a9a;
+    }
+    .skill-pane .head button {
+      background: none; border: none; color: #9a9a9a; font-size: 0.9rem;
+      padding: 0 2px; cursor: pointer; line-height: 1;
+    }
+    .skill-pane .skill-scroll {
+      overflow-y: auto; min-height: 0; overscroll-behavior: contain;
+      margin-right: -6px; padding-right: 6px;
     }
     .skill-pane .skill { margin: 6px 0; }
     .skill-pane .skill .row {
@@ -79,13 +95,22 @@ function ensureStyles(): void {
   document.head.appendChild(style);
 }
 
-export function createSkillPane(parent: HTMLElement = document.body): SkillPaneHandle {
+export interface SkillPaneOptions {
+  /** Called when the header \u2715 is tapped — the owner flips its open state. */
+  onClose?: () => void;
+}
+
+export function createSkillPane(
+  parent: HTMLElement = document.body,
+  opts: SkillPaneOptions = {},
+): SkillPaneHandle {
   ensureStyles();
 
   const el = document.createElement('div');
   el.className = 'skill-pane';
   el.innerHTML = `
-    <h3>Skills</h3>
+    <div class="head"><h3>Skills</h3><button type="button" aria-label="Close skills">\u2715</button></div>
+    <div class="skill-scroll">
     <div class="skill" data-role="level">
       <div class="row"><span>Level</span><span class="lvl">—</span></div>
       <div class="bar"><div class="fill level" style="width:0%"></div></div>
@@ -98,7 +123,10 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
     <div class="statline"><span>Capacity</span><span class="val" data-role="cap">—</span></div>
     <div class="statline"><span>Soul</span><span class="val" data-role="soul">—</span></div>
     <hr />
+    </div>
   `;
+  (el.querySelector('.head button') as HTMLButtonElement)
+    .addEventListener('click', () => opts.onClose?.());
 
   const levelRow = el.querySelector('[data-role="level"]') as HTMLElement;
   const magicRow = el.querySelector('[data-role="magic"]') as HTMLElement;
@@ -114,14 +142,14 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
       <div class="row"><span>${name}</span><span class="lvl">10</span></div>
       <div class="bar"><div class="fill" style="width:0%"></div></div>
     `;
-    el.appendChild(div);
+    (el.querySelector('.skill-scroll') as HTMLElement).appendChild(div);
     rows.set(name, {
       lvl: div.querySelector('.lvl') as HTMLElement,
       fill: div.querySelector('.fill') as HTMLElement,
     });
   }
   parent.appendChild(el);
-  const stopDragging = makeDraggable(el, el.querySelector('h3') as HTMLElement);
+  const stopDragging = makeDraggable(el, el.querySelector('.head') as HTMLElement);
 
   const clampPct = (p: number): string => `${Math.max(0, Math.min(100, p))}%`;
 
@@ -142,7 +170,9 @@ export function createSkillPane(parent: HTMLElement = document.body): SkillPaneH
       row.lvl.textContent = String(level);
       row.fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
     },
-    setVisible: (visible) => { el.style.display = visible ? 'block' : 'none'; },
+    // '' (not 'block') so the stylesheet's display:flex — which the
+    // scroll clipping depends on — survives a hide/show round trip.
+    setVisible: (visible) => { el.style.display = visible ? '' : 'none'; },
     destroy: () => {
       stopDragging();
       el.remove();

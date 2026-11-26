@@ -89,6 +89,16 @@ export class GameWorld {
   /** Creatures indexed by creature ID. */
   private creatures = new Map<number, WorldCreature>();
 
+  /**
+   * Names learned from UNKNOWN-form (0x61) adds, kept even after the
+   * creature leaves the registry. Floor changes remove the creature from
+   * its old tile (0x6C, which evicts the registry entry) and re-add it
+   * in KNOWN form (0x62, no name on the wire) — without this memory the
+   * name comes back empty ("my name disappears when I go down a floor").
+   * Bounded by the creatures seen in a session; entries are a few bytes.
+   */
+  private knownCreatureNames = new Map<number, string>();
+
   /** The local player's creature ID (set by SelfAppear). */
   playerCreatureId = 0;
 
@@ -470,10 +480,13 @@ export class GameWorld {
 
   private rememberCreatureAt(creature: MapCreature, position: TilePosition): void {
     const known = this.creatures.get(creature.id);
+    const name = creature.name || known?.name || this.knownCreatureNames.get(creature.id) || '';
+    if (name) this.knownCreatureNames.set(creature.id, name);
     this.creatures.set(creature.id, {
       id: creature.id,
-      // KNOWN-form creatures (0x62) omit names; keep the name learned from the UNKNOWN form.
-      name: creature.name || known?.name || '',
+      // KNOWN-form creatures (0x62) omit names; keep the name learned from
+      // the UNKNOWN form — surviving registry eviction (see knownCreatureNames).
+      name,
       x: position.x,
       y: position.y,
       z: position.z,

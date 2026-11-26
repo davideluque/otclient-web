@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEXT_RISE_PX, textJitterPx, textMotionAt } from '../lib/jamera/combatText';
-import { missilePattern, shotProgressAt } from '../lib/jamera/renderer';
+import { missilePattern, shotProgressAt } from '../lib/render/effects';
 import { ANIMATED_TEXT_TTL_MS, DISTANCE_SHOT_TTL_MS } from '../lib/GameWorld';
 
 describe('textJitterPx', () => {

@@ -1,5 +1,5 @@
 import type { Application } from 'pixi.js';
-import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
+import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from '../render/region';
 import { TILE_SIZE } from '../../constants';
 
 /**

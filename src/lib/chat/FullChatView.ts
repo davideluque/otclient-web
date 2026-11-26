@@ -10,6 +10,13 @@ import { parseCommand, type SendPacketFn } from './ChatUI';
  * Opened from the game menu; ✕ / backdrop-tap / Escape close.
  */
 
+export interface FullChatViewOptions {
+  getDraft?: () => string;
+  setDraft?: (text: string) => void;
+  /** Called after close — host restores the previous presentation mode. */
+  onClose?: () => void;
+}
+
 export interface FullChatViewHandle {
   readonly el: HTMLElement;
   open(): void;
@@ -90,6 +97,7 @@ export function createFullChatView(
   protocol: GameProtocol,
   sendPacket: SendPacketFn,
   parent: HTMLElement = document.body,
+  viewOpts: FullChatViewOptions = {},
 ): FullChatViewHandle {
   ensureStyles();
 
@@ -151,12 +159,16 @@ export function createFullChatView(
     const text = inputEl.value.trim();
     if (!text) return;
     inputEl.value = '';
+    viewOpts.setDraft?.('');
     const packet = parseCommand(text, chatManager.activeChannelId, protocol);
     if (packet) sendPacket(packet);
   };
   sendBtn.addEventListener('click', handleSend);
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSend();
+  });
+  inputEl.addEventListener('input', () => {
+    viewOpts.setDraft?.(inputEl.value);
   });
 
   const unsubscribe = chatManager.subscribe(() => {
@@ -172,14 +184,17 @@ export function createFullChatView(
     if (e.key === 'Escape') close();
   };
   const open = (): void => {
+    if (viewOpts.getDraft) inputEl.value = viewOpts.getDraft();
     renderTabs();
     renderMessages();
     el.classList.add('open');
     document.addEventListener('keydown', onKeyDown);
   };
   const close = (): void => {
+    chatManager.saveScrollPosition('full', messagesEl.scrollTop);
     el.classList.remove('open');
     document.removeEventListener('keydown', onKeyDown);
+    viewOpts.onClose?.();
   };
   closeBtn.addEventListener('click', close);
   el.addEventListener('click', (e) => {

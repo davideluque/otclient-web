@@ -5,74 +5,38 @@ import {
   creatureLightSource, loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
 } from '../lighting';
 import {
-  renderTileRegion, renderPlayer, spriteIndex, readPixelDisplacement,
+  renderTileRegion, spriteIndex, readPixelDisplacement,
   type TintedTextureCache,
 } from '../tileRenderer';
 import { buildOcclusionSets } from '../render/floorOcclusion';
 import { firstVisibleFloorForGlide } from '../render/floorVisibility';
 import {
   drawnFloorsBelow, drawnFloorsAbove, dirtyFloors, dirtyFloorsWithBelowOcclusion,
-  glideEndpoints, coveringRevisionKey, partitionByFloor,
+  floorLayerOffset, glideEndpoints, coveringRevisionKey,
 } from '../render/floorStack';
-import { createNameplate, type NameplateHandle } from './nameplate';
+import type { NameplateHandle } from '../render/nameplate';
 import { CombatTextRenderer } from './combatText';
 import { SpeechBubbleRenderer } from '../chat/SpeechBubbleRenderer';
 import type { ChatManager } from '../chat/ChatManager';
-import { DISTANCE_SHOT_TTL_MS, type GameWorld, type WorldCreature } from '../GameWorld';
+import type { GameWorld, WorldCreature } from '../GameWorld';
 import { DatAttr } from '../dat';
-import type { Direction } from '../player';
 import type { SpriteAtlas } from '../spriteAtlas';
+import type { PlaybackSample, PlaybackState, RenderPos } from '../render/motion/types';
+import {
+  RENDER_DELAY_MS, STEP_GLIDE_DEFAULT_MS, appendPlaybackSample, playbackStateAt,
+} from '../render/motion/playout';
+import { expectedStepMs, forwardStateAt } from '../render/motion/forward';
+import {
+  confirmSelfMoves, prewalkActiveStep, prewalkStateAt, settlePrewalk, type PrewalkState,
+} from '../render/motion/prewalk';
+import { directionFromStepDelta } from '../player';
 import { TILE_SIZE } from '../../constants';
-import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
+import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from '../render/region';
+import { WALK_FRAME_MS, effectPhaseAt, missilePattern, shotProgressAt } from '../render/effects';
+import { GLIDE_PAD, drawCreatures } from '../render/creatures';
 import { VIEWPORT_EVENT } from './viewport';
 import { reportMetric } from './metrics';
 
-/** Walk frame duration — two alternating walk poses at ~8 fps. */
-const WALK_FRAME_MS = 125;
-
-/**
- * Glide duration bounds. The right duration is the creature's ACTUAL
- * step cadence (Tibia paces ~400ms/tile at base speed, faster with
- * hastes/levels, plus network jitter) — a fixed value either finishes
- * early (visible stop-start between steps) or rubber-bands. The SELF
- * creature's cadence is measured from its confirmation intervals
- * (EMA), so continuous walking renders as one unbroken scroll; every
- * other creature glides forward over its true step duration instead
- * (see forwardStateAt).
- */
-export const STEP_GLIDE_DEFAULT_MS = 380;
-export const STEP_GLIDE_MIN_MS = 150;
-export const STEP_GLIDE_MAX_MS = 650;
-
-/**
- * Bounds for a computed (speed-based) step duration. The ceiling covers
- * the slowest real case — an NPC (base speed 110) crossing swamp — while
- * keeping a glitched speed/ground value from freezing a creature
- * mid-tile; the floor keeps an extreme haste from reading as a teleport.
- */
-export const FORWARD_STEP_MIN_MS = 100;
-export const FORWARD_STEP_MAX_MS = 2500;
-
-/**
- * The server's step duration (otserv Creature::getStepDuration):
- * 1000 × groundSpeed / creatureSpeed, doubled on diagonals. This is the
- * time a creature really spends per tile, so it is the glide duration
- * that renders NPCs ambling and hasted players sprinting — the arrival
- * cadence can't say that (an NPC's think-pauses swamp it).
- */
-export function expectedStepMs(creatureSpeed: number, groundSpeed: number, diagonal: boolean): number {
-  if (creatureSpeed <= 0) return STEP_GLIDE_DEFAULT_MS;
-  const ground = groundSpeed > 0 ? groundSpeed : 150;
-  const dur = ((1000 * ground) / creatureSpeed) * (diagonal ? 2 : 1);
-  return Math.max(FORWARD_STEP_MIN_MS, Math.min(FORWARD_STEP_MAX_MS, Math.round(dur)));
-}
-/**
- * Extra painted tiles beyond the server window on every side: the
- * pursuing camera trails the confirmed position by up to a tile, and
- * the trailing edge must show the (already-known, lingering) tiles
- * there instead of black.
- */
-const GLIDE_PAD = 3;
 
 /**
  * Tile-layer rebuild policy. Rebuilding tile layers is the expensive
@@ -94,179 +58,6 @@ const TILE_REVISION_THROTTLE_MS = 300;
 export const LIGHT_PREF_EVENT = 'jamera:light-pref';
 
 /**
- * Exponential moving average of a creature's step cadence. Exported for
- * tests. Per the Codex review, only samples in the plausible
- * SERVER-step-duration band feed the estimate — anything longer is
- * network arrival jitter or a standing pause, anything shorter is a
- * delivery burst; neither says how fast the creature walks.
- */
-export function nextStepEma(prevEma: number, sampleMs: number): number {
-  if (sampleMs < STEP_GLIDE_MIN_MS || sampleMs > 500) return prevEma;
-  return Math.max(STEP_GLIDE_MIN_MS, Math.min(STEP_GLIDE_MAX_MS, prevEma * 0.75 + sampleMs * 0.25));
-}
-
-/** Magic-effect animation cadence: 100 ms per .dat phase (OTClient's 7.6 timing). */
-export const EFFECT_PHASE_MS = 100;
-
-/**
- * Which .dat animation phase a magic effect shows at `now`, or -1 once
- * it has played through — effects run once, they don't loop.
- */
-export function effectPhaseAt(now: number, startedAt: number, animationPhases: number): number {
-  const phase = Math.floor((now - startedAt) / EFFECT_PHASE_MS);
-  return phase < animationPhases ? phase : -1;
-}
-
-/**
- * Sprite pick from a missile's 3×3 directional pattern grid — the
- * OTClient thingtype convention: patX is the flight's horizontal
- * component (west 0, none 1, east 2), patY the vertical (north 0,
- * none 1, south 2). The delta is snapped to 8 directions by angle
- * first (OTClient's getDirectionFromPosition), not by raw sign — a
- * (7, 1) shot flies east, not southeast.
- */
-// Octants: 0 = E, 1 = NE, 2 = N, 3 = NW, ±4 = W, -3 = SW, -2 = S, -1 = SE.
-// Module-level so the per-shot per-frame lookup allocates nothing.
-const MISSILE_PATTERN_BY_OCTANT: Record<number, { patX: number; patY: number }> = {
-  0: { patX: 2, patY: 1 },
-  1: { patX: 2, patY: 0 },
-  2: { patX: 1, patY: 0 },
-  3: { patX: 0, patY: 0 },
-  4: { patX: 0, patY: 1 },
-  [-4]: { patX: 0, patY: 1 },
-  [-3]: { patX: 0, patY: 2 },
-  [-2]: { patX: 1, patY: 2 },
-  [-1]: { patX: 2, patY: 2 },
-};
-
-export function missilePattern(dx: number, dy: number): { patX: number; patY: number } {
-  if (dx === 0 && dy === 0) return { patX: 1, patY: 1 };
-  // Screen y grows southward; flip it so atan2 works in math space.
-  const octant = Math.round(Math.atan2(-dy, dx) / (Math.PI / 4));
-  return MISSILE_PATTERN_BY_OCTANT[octant];
-}
-
-/** Flight progress 0→1 of a distance shot at `now`, clamped at landing. */
-export function shotProgressAt(now: number, startedAt: number): number {
-  return Math.min(1, Math.max(0, (now - startedAt) / DISTANCE_SHOT_TTL_MS));
-}
-
-export interface RenderPos { x: number; y: number }
-
-/**
- * Playout buffer (fixed render delay), the FPS-netcode entity-
- * interpolation pattern Codex recommended over latest-target pursuit:
- * confirmed tiles are buffered as timestamped samples and rendered
- * RENDER_DELAY_MS in the past. For SELF each glide is timed to FINISH
- * exactly at its sample's (delayed) arrival time; other creatures
- * glide forward from it instead (see forwardStateAt). Wi-Fi delivery
- * jitter smaller than the delay reorders nothing on screen — motion
- * plays back as one continuous stream instead of stalling and
- * sprinting.
- */
-export const RENDER_DELAY_MS = 180;
-/** Buffered samples per creature — enough to ride out a delivery burst. */
-const MAX_SAMPLES = 8;
-
-export interface PlaybackSample {
-  x: number;
-  y: number;
-  z: number;
-  at: number;
-  /** Expected duration of the step INTO this tile (absent on seeds). */
-  stepMs?: number;
-}
-export interface PlaybackState extends RenderPos { moving: boolean }
-
-/**
- * State on the buffered timeline at delayed time `t`. A segment cannot
- * exceed RENDER_DELAY_MS: anything longer would begin before the endpoint
- * sample had arrived and make the next render jump retroactively into the
- * step. Discontinuities hold and snap at the sample timestamp.
- */
-export function playbackStateAt(
-  samples: ReadonlyArray<PlaybackSample>,
-  cadenceMs: number,
-  t: number,
-): PlaybackState {
-  if (samples.length === 0) return { x: 0, y: 0, moving: false };
-  if (t >= samples[samples.length - 1].at) {
-    const last = samples[samples.length - 1];
-    return { x: last.x, y: last.y, moving: false };
-  }
-  // Find the segment [a, b] with a.at <= t < b.at.
-  let i = samples.length - 1;
-  while (i > 0 && samples[i - 1].at > t) i--;
-  const b = samples[i];
-  const a = i > 0 ? samples[i - 1] : b;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const discontinuity = b.z !== a.z || Math.abs(dx) > 1 || Math.abs(dy) > 1;
-  if (discontinuity) return { x: a.x, y: a.y, moving: false };
-  const duration = Math.min(cadenceMs, RENDER_DELAY_MS, Math.max(1, b.at - a.at));
-  const startAt = b.at - duration;
-  const u = Math.min(1, Math.max(0, (t - startAt) / duration));
-  return {
-    x: a.x + dx * u,
-    y: a.y + dy * u,
-    moving: (dx !== 0 || dy !== 0) && t >= startAt && t < b.at,
-  };
-}
-
-export function playbackPosAt(
-  samples: ReadonlyArray<PlaybackSample>,
-  cadenceMs: number,
-  t: number,
-): RenderPos {
-  const { x, y } = playbackStateAt(samples, cadenceMs, t);
-  return { x, y };
-}
-
-/**
- * OTClient-style forward glide, used for every creature but self: the
- * step into sample `b` animates over [b.at, b.at + b.stepMs), i.e. the
- * creature leaves its old tile when the move packet plays and takes its
- * TRUE step duration to cross — an ambling NPC ambles instead of
- * standing then dashing the tile in RENDER_DELAY_MS. Only already-known
- * samples feed the glide, so nothing ever jumps retroactively; a
- * follow-up sample arriving early cuts the glide short at its own
- * timestamp. Discontinuities snap.
- */
-export function forwardStateAt(
-  samples: ReadonlyArray<PlaybackSample>,
-  t: number,
-): PlaybackState {
-  if (samples.length === 0) return { x: 0, y: 0, moving: false };
-  // Latest sample at or before t — the step currently animating.
-  let i = samples.length - 1;
-  while (i > 0 && samples[i].at > t) i--;
-  const b = samples[i];
-  if (i === 0 || t < b.at) return { x: b.x, y: b.y, moving: false };
-  const a = samples[i - 1];
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const step = (dx !== 0 || dy !== 0) && Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && b.z === a.z;
-  if (!step) return { x: b.x, y: b.y, moving: false };
-  let duration = b.stepMs ?? STEP_GLIDE_DEFAULT_MS;
-  if (i + 1 < samples.length) {
-    duration = Math.min(duration, Math.max(1, samples[i + 1].at - b.at));
-  }
-  const u = Math.min(1, (t - b.at) / duration);
-  return {
-    x: a.x + dx * u,
-    y: a.y + dy * u,
-    moving: u < 1,
-  };
-}
-
-function walkPhase(moving: boolean, now: number): number {
-  if (!moving) return 0;
-  // Phases 1..n-1 are the walk cycle (renderPlayer clamps to the
-  // outfit's actual phase count).
-  return 1 + (Math.floor(now / WALK_FRAME_MS) % 2);
-}
-
-/**
  * Bridges `GameWorld` → PIXI: subscribes to `world.onChange` and repaints
  * the visible region around the player using the `SpriteAtlas` the cache
  * PR exposed. Returns a teardown for the caller to invoke on re-login or
@@ -286,6 +77,7 @@ export function bindRenderer(
   atlas: SpriteAtlas,
   app: Application,
   chatManager?: ChatManager,
+  prewalk?: PrewalkState,
 ): () => void {
   // Persistent scene root (recentered by the camera) holding three
   // layers: tiles (expensive, rebuilt with hysteresis), creatures
@@ -297,9 +89,12 @@ export function bindRenderer(
   // creatures(1) → aboveTiles(2)), the simplest structure where roofs
   // also draw over creatures while creatures still stand on the ground.
   //
-  // Every floor sits at raw world coordinates. Moving an above-floor
-  // container again makes stairs and ladders appear north-west of the tile
-  // they actually occupy.
+  // Every floor container carries the classic perspective offset
+  // (z − playerZ) tiles on both axes (floorStack.floorLayerOffset):
+  // below floors lean south-east, above floors north-west, one tile per
+  // level — the model the wire format, upstream OTClient, and the map's
+  // 64×64 sprite art all assume (NDIT-204). Each floor renders the world
+  // window shifted the OPPOSITE way so the screen stays exactly covered.
   let tilesRoot: Container | null = null;
   const tileFloorLayers = new Map<number, Container>();
   let aboveTilesRoot: Container | null = null;
@@ -395,6 +190,10 @@ export function bindRenderer(
   // Per-creature playout buffers (see playbackPosAt).
   const playback = new Map<number, { samples: PlaybackSample[]; cadence: number }>();
 
+  // Self position changes seen so far, for attributing new ones to the
+  // pre-walk prediction chain (same counter the walk controller reads).
+  let seenSelfSteps = world.selfSteps;
+
   // The server's formula for the step the creature just took: ground
   // speed of the tile it LEFT over its current speed (0x8F updates keep
   // WorldCreature.speed fresh, so hastes shorten the glide immediately).
@@ -420,22 +219,24 @@ export function bindRenderer(
       playback.set(c.id, p);
     }
     const last = p.samples[p.samples.length - 1];
-    if (last.x !== c.x || last.y !== c.y || last.z !== c.z) {
-      const at = c.lastMoveAt ?? performance.now();
-      p.cadence = nextStepEma(p.cadence, at - last.at);
-      p.samples.push({ x: c.x, y: c.y, z: c.z, at, stepMs: stepMsFor(c, last) });
-      if (p.samples.length > MAX_SAMPLES) p.samples.shift();
-    }
+    const stepMs = last ? stepMsFor(c, last) : 0;
+    appendPlaybackSample(p, { x: c.x, y: c.y, z: c.z, at: c.lastMoveAt ?? performance.now() }, stepMs);
     return p;
   };
 
-  // Self keeps the finish-at-confirmation playout buffer (the walk
-  // pipeline's cadence is tuned around it); everyone else glides
-  // forward at their true speed.
-  const stateAt = (c: WorldCreature, p: { samples: PlaybackSample[]; cadence: number }, t: number): PlaybackState =>
-    c.id === world.playerCreatureId
-      ? playbackStateAt(p.samples, p.cadence, t)
-      : forwardStateAt(p.samples, t);
+  // Self renders the pre-walk prediction when one is live — the glide
+  // starts at the send, runs the server's expected step duration, and
+  // renders on the wall clock (prediction has no arrival to delay by).
+  // With no prediction (server pushes, floor changes, any flush) self
+  // falls back to the finish-at-confirmation playout buffer; everyone
+  // else glides forward at their true speed.
+  const stateAt = (c: WorldCreature, p: { samples: PlaybackSample[]; cadence: number }, t: number, now: number): PlaybackState => {
+    if (c.id === world.playerCreatureId) {
+      const predicted = prewalk ? prewalkStateAt(prewalk, now) : null;
+      return predicted ?? playbackStateAt(p.samples, p.cadence, t);
+    }
+    return forwardStateAt(p.samples, t);
+  };
 
   /** When this creature's last queued glide fully lands (rAF keep-alive). */
   const settleAt = (c: WorldCreature, p: { samples: PlaybackSample[] }): number => {
@@ -445,7 +246,7 @@ export function bindRenderer(
 
   const playbackStateFor = (c: WorldCreature, now: number): PlaybackState => {
     const p = playbackFor(c);
-    return stateAt(c, p, now - RENDER_DELAY_MS);
+    return stateAt(c, p, now - RENDER_DELAY_MS, now);
   };
 
   const renderPosFor = (c: WorldCreature, now: number): RenderPos => {
@@ -583,17 +384,47 @@ export function bindRenderer(
     // The pose key includes the exact set of moving creatures so starting or
     // finishing a glide repaints the walk/idle frame immediately.
     const playbackT = now - RENDER_DELAY_MS;
+    // Reconcile the pre-walk chain before sampling: attribute any new
+    // self steps to pending predictions, expire overdue ones, and hand
+    // fully-played-out chains back to the playout buffer.
+    if (prewalk) {
+      const delta = world.selfSteps - seenSelfSteps;
+      seenSelfSteps = world.selfSteps;
+      if (delta > 0) {
+        confirmSelfMoves(prewalk, delta, { x: world.playerX, y: world.playerY, z: world.playerZ }, now);
+      }
+      settlePrewalk(prewalk, now, RENDER_DELAY_MS);
+      // Face the predicted step as it happens. The server only turns
+      // the creature at confirmation — a full step after the glide
+      // began, which reads as moonwalking on every direction change.
+      // Same value syncSelfCreature will write when the step confirms.
+      const active = prewalkActiveStep(prewalk, now);
+      if (active) {
+        const self = world.getCreature(world.playerCreatureId);
+        if (self) {
+          self.direction = directionFromStepDelta(
+            active.toX - active.fromX,
+            active.toY - active.fromY,
+            self.direction,
+          );
+        }
+      }
+    }
     const motionStates = new Map<number, PlaybackState>();
     const movingIds: number[] = [];
     let anyWalking = false;
     for (const c of world.getAllCreatures()) {
       if (!drawnBelow.includes(c.z) && !drawnAbove.includes(c.z)) continue;
       const p = playbackFor(c);
-      const state = stateAt(c, p, playbackT);
+      const state = stateAt(c, p, playbackT, now);
       motionStates.set(c.id, state);
       if (state.moving) movingIds.push(c.id);
       if (playbackT < settleAt(c, p)) anyWalking = true;
     }
+    // A live prediction chain keeps the loop armed through its glides,
+    // rest-while-pending waits, and the playout handoff — none of which
+    // the (confirmation-based) settleAt above can see.
+    if (prewalk && prewalk.steps.length > 0) anyWalking = true;
     movingIds.sort((a, b) => a - b);
     // Bubble lifecycle: ChatManager expiry runs on wall-clock time
     // (expiresAt comes from Date.now()), and the layer updates every
@@ -699,13 +530,15 @@ export function bindRenderer(
         // paint — in town, the surface floor blanks out nearly every
         // slot beneath it (see floorOcclusion.ts for the cascade rules).
         const occlusion = buildOcclusionSets(
-          world, atlas.datIndex, x1, y1, x2, y2, [...drawnBelow].reverse(),
+          world, atlas.datIndex, x1, y1, x2, y2, [...drawnBelow].reverse(), world.playerZ,
         );
         for (const z of belowToRebuild) {
+          const offset = floorLayerOffset(z, world.playerZ);
           const { container: nextTiles } = renderTileRegion(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
-            x1, y1, x2, y2, z, occlusion.get(z),
+            x1 - offset.x, y1 - offset.y, x2 - offset.x, y2 - offset.y, z, occlusion.get(z),
           );
+          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
           const old = tileFloorLayers.get(z);
           if (old) {
             tilesRoot.addChildAt(nextTiles, tilesRoot.getChildIndex(old));
@@ -720,20 +553,16 @@ export function bindRenderer(
           paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
         }
         for (const z of aboveToRebuild) {
-          // No skipPositions here: the iso offset shifts every above
-          // floor a tile up-left per z, breaking the same-(x,y)
-          // alignment the FullGround cascade assumes — and above
-          // floors are sparse roof outlines, so there is little to
-          // save anyway.
+          // No skipPositions here: above floors are sparse roof
+          // outlines, so a skip set saves next to nothing.
+          const offset = floorLayerOffset(z, world.playerZ);
           const { container: nextTiles } = renderTileRegion(
             world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
-            x1, y1, x2, y2, z,
+            x1 - offset.x, y1 - offset.y, x2 - offset.x, y2 - offset.y, z,
           );
-          // No container offset: every floor sits at raw world
-          // coordinates. OTBM maps pre-shift upper floors one tile NW
-          // per level (the classic-client perspective is baked into the
-          // map data), so translating the container again displaced
-          // stairs and ladders NW of their true tile.
+          // Iso offset, negative → up-left. Without it multi-story
+          // buildings collapse into a flat silhouette (lesson 3691ea3).
+          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
           const old = aboveFloorLayers.get(z);
           if (old) {
             aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));
@@ -779,6 +608,9 @@ export function bindRenderer(
         const tileLayer = tileFloorLayers.get(z);
         if (!tilesRoot || !tileLayer) continue;
         const layer = new Container();
+        // Same iso offset as the floor's tiles — creatures stand on the
+        // shifted ground.
+        layer.position.copyFrom(tileLayer.position);
         tilesRoot.addChildAt(layer, tilesRoot.getChildIndex(tileLayer) + 1);
         layers.set(z, layer);
       }
@@ -849,7 +681,14 @@ export function bindRenderer(
         // carriers on undrawn floors must not accumulate.
         const extraLights: LightSource[] = world.getAllCreatures()
           .filter((c) => (drawnBelow.includes(c.z) || drawnAbove.includes(c.z)) && c.lightLevel > 0)
-          .map((creature) => ({ creature, position: renderPosFor(creature, now) }))
+          .map((creature) => {
+            // Carriers glow at their floor's screen cell — shifted like
+            // its container (floorLayerOffset), so the bubble tracks the
+            // sprite, not the raw world coordinate.
+            const raw = renderPosFor(creature, now);
+            const dz = creature.z - world.playerZ;
+            return { creature, position: { x: raw.x + dz, y: raw.y + dz } };
+          })
           .filter(({ position }) =>
             position.x >= x1 - MAX_LIGHT_REACH && position.x <= x2 + MAX_LIGHT_REACH
             && position.y >= y1 - MAX_LIGHT_REACH && position.y <= y2 + MAX_LIGHT_REACH)
@@ -867,6 +706,7 @@ export function bindRenderer(
             enabled: true,
             extraLights,
           },
+          world.playerZ,
         );
         // Above both tile parents and the creatures — roofs darken
         // with the world too — below the bubble layer.
@@ -938,111 +778,3 @@ export function bindRenderer(
   };
 }
 
-/**
- * Draw every creature in the visible region (the player included) into
- * its floor's container — one per drawn z, pre-seated by the caller in
- * draw-order position, so a creature on z paints between tiles(z) and
- * tiles(z−1) and roofs occlude the people under them. North-to-south
- * within each floor so southern creatures overlap the ones behind them,
- * matching the tile painter order. Nameplates go into the SAME per-floor
- * container as their creature — a roof that hides a creature must hide
- * its nameplate too. The one exception is the PLAYER's own plate, which
- * goes into `selfPlateLayer` (above both tile parents): standing under a
- * stairwell opening, the floor-above ground paints exactly where the
- * plate hangs, and the player's own name must never vanish while the
- * player is visible. Exported for tests.
- */
-export function drawCreatures(
-  world: GameWorld,
-  atlas: SpriteAtlas,
-  layersByZ: ReadonlyMap<number, Container>,
-  tintedCache: TintedTextureCache,
-  nameplates: Map<number, NameplateHandle>,
-  isMoving: (creature: WorldCreature) => boolean,
-  now: number,
-  selfPlateLayer: Container | null,
-): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
-  const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
-  const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
-  const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
-  const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
-  const y2 = world.playerY + HALF_H_BOTTOM + GLIDE_PAD;
-
-  const byFloor = partitionByFloor(world.getAllCreatures(), [...layersByZ.keys()]);
-
-  const seen = new Set<number>();
-  for (const [z, container] of layersByZ) {
-    const visible = (byFloor.get(z) ?? []).filter((c) =>
-      c.x >= x1 && c.x <= x2 && c.y >= y1 && c.y <= y2,
-    );
-    visible.sort((a, b) => (a.y - b.y) || (a.x - b.x));
-
-    for (const c of visible) {
-      const sprite = renderCreature(c, atlas, tintedCache, walkPhase(isMoving(c), now));
-      if (sprite) {
-        container.addChild(sprite);
-        movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });
-      }
-
-      // Nameplate (name + six-band health bar) above the creature's tile.
-      // Reparented into the fresh container each rebuild; updated in place.
-      seen.add(c.id);
-      let plate = nameplates.get(c.id);
-      if (!plate) {
-        plate = createNameplate(c.name, c.health);
-        nameplates.set(c.id, plate);
-      } else {
-        plate.update(c.name, c.health);
-      }
-      plate.container.x = (c.x + 0.5) * TILE_SIZE;
-      plate.container.y = c.y * TILE_SIZE - 14;
-      const plateParent = c.id === world.playerCreatureId && selfPlateLayer
-        ? selfPlateLayer
-        : container;
-      plateParent.addChild(plate.container);
-      movables.push({
-        node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c,
-      });
-    }
-  }
-  for (const [id, plate] of nameplates) {
-    if (!seen.has(id)) {
-      plate.destroy();
-      nameplates.delete(id);
-    }
-  }
-  return movables;
-}
-
-function renderCreature(
-  c: WorldCreature,
-  atlas: SpriteAtlas,
-  tintedCache: TintedTextureCache,
-  animationPhase: number,
-): Container | null {
-  if (!c.outfit || c.outfit.lookType === 0) return null; // invisible / item-look: not drawn yet
-  return renderPlayer(
-    {
-      x: c.x,
-      y: c.y,
-      z: c.z,
-      // The wire direction byte is value-compatible with Direction
-      // (0 north, 1 east, 2 south, 3 west); renderPlayer additionally
-      // clamps to the outfit's pattern count.
-      direction: (c.direction & 3) as Direction,
-      animationPhase,
-      outfit: {
-        lookType: c.outfit.lookType,
-        headColor: c.outfit.head,
-        bodyColor: c.outfit.body,
-        legsColor: c.outfit.legs,
-        feetColor: c.outfit.feet,
-      },
-    },
-    atlas.creatureIndex,
-    atlas.atlasTextures,
-    atlas.atlasPages,
-    atlas.layout,
-    tintedCache,
-  );
-}

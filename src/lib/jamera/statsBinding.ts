@@ -38,24 +38,31 @@ export function bindStats(
   let pane: SkillPaneHandle | null = null;
   let paneOpen = false;
 
+  // The pane's own ✕ and the menu entry flip the SAME flag, so the next
+  // menu tap re-opens instead of toggling into a hidden state.
+  const makePane = (): SkillPaneHandle => {
+    const created = createSkillPane(parent, {
+      onClose: () => {
+        paneOpen = false;
+        created.setVisible(false);
+      },
+    });
+    created.setVisible(paneOpen);
+    return created;
+  };
+
   const dispatcher = client.getDispatcher();
   dispatcher.on(op.PlayerStats, (p) => {
     const stats = protocol.player.parseStats(p);
     if (!hud) hud = createHud(stats, parent);
     else hud.setStats(stats);
     // The skills pane shows the character block from the same packet.
-    if (!pane) {
-      pane = createSkillPane(parent);
-      pane.setVisible(paneOpen);
-    }
+    if (!pane) pane = makePane();
     pane.setStats(stats);
   });
   dispatcher.on(op.PlayerSkills, (p) => {
     const skills = protocol.player.parseSkills(p);
-    if (!pane) {
-      pane = createSkillPane(parent);
-      pane.setVisible(paneOpen);
-    }
+    if (!pane) pane = makePane();
     for (const { key, name } of WIRE_TO_PANE) {
       pane.setSkill(name, skills[key].level, skills[key].percent);
     }

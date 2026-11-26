@@ -20,8 +20,8 @@ This project connects to real Open Tibia 7.6 servers using the original protocol
 ## Getting started
 
 ```bash
-# Requires Node 24 (see .nvmrc)
-nvm use
+# The test suite requires Node 24.15.0 or later in the 24.x series.
+nvm install
 npm install
 npm run dev
 ```

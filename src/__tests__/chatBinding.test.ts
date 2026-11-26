@@ -24,7 +24,7 @@ function makeClient() {
 afterEach(() => document.body.replaceChildren());
 
 describe('bindChat', () => {
-  it('renders an incoming say (0xAA) in the chat UI', () => {
+  it('renders an incoming say (0xAA) in the glance overlay', () => {
     const { client, dispatcher } = makeClient();
     bindChat(client);
 
@@ -32,27 +32,28 @@ describe('bindChat', () => {
     out.addU8(0xaa);
     out.addString('Trinity');
     out.addU8(0x01); // Say
-    out.addU16(100); out.addU16(200); out.addU8(7); // position
+    out.addU16(100); out.addU16(200); out.addU8(7);
     out.addString('hello jamera');
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
-    const messages = document.querySelector('#chat-messages')!;
-    expect(messages.textContent).toContain('Trinity');
-    expect(messages.textContent).toContain('hello jamera');
+    const glance = document.querySelector('.chat-glance-stack')!;
+    expect(glance.textContent).toContain('Trinity');
+    expect(glance.textContent).toContain('hello jamera');
   });
 
   it('routes server text messages (0xB4) into the default channel as Server', () => {
     const { client, dispatcher } = makeClient();
-    bindChat(client);
+    const binding = bindChat(client);
 
     const out = new OutputPacket();
     out.addU8(0xb4);
-    out.addU8(0x11); // message class
+    out.addU8(0x11);
     out.addString('Welcome to Jamera!');
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
-    expect(document.querySelector('#chat-messages')!.textContent).toContain('Welcome to Jamera!');
+    expect(document.querySelector('.chat-glance-stack')!.textContent).toContain('Welcome to Jamera!');
     expect(document.querySelector('.game-message-overlay')!.textContent).toContain('Welcome to Jamera!');
+    expect(binding.manager.getChannel(0)?.messages[0].text).toBe('Welcome to Jamera!');
   });
 
   it('keeps messages for channels opened by the server', () => {
@@ -61,23 +62,25 @@ describe('bindChat', () => {
     const binding = bindChat(client);
 
     const out = new OutputPacket();
-    out.addU8(0xac); // ChannelOpen
+    out.addU8(0xac);
     out.addU16(4);
     out.addString('Server Events');
-    out.addU8(0xaa); // CreatureSpeak
+    out.addU8(0xaa);
     out.addString('Jamera');
-    out.addU8(0x05); // Channel
+    out.addU8(0x05);
     out.addU16(4);
     out.addString('Server restart in five minutes');
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
     expect(binding.manager.getChannel(4)?.messages[0].text).toBe('Server restart in five minutes');
-    const serverEventsTab = [...document.querySelectorAll('#chat-tabs button')]
+    binding.presentation.openQuick();
+    const serverEventsTab = [...document.querySelectorAll('.quick-chat-tabs button')]
       .find((button) => button.textContent === 'Server Events') as HTMLButtonElement | undefined;
     expect(serverEventsTab).toBeDefined();
 
     serverEventsTab!.click();
-    expect(document.querySelector('#chat-messages')!.textContent).toContain('Server restart in five minutes');
+    expect(document.querySelector('.quick-chat-messages')!.textContent).toContain('Server restart in five minutes');
+    binding.destroy();
   });
 
   it('fires onDeathMessage for a class 0x13 "You are dead." and still shows it in chat', () => {
@@ -87,12 +90,12 @@ describe('bindChat', () => {
 
     const out = new OutputPacket();
     out.addU8(0xb4);
-    out.addU8(0x13); // MSG_EVENT_ADVANCE — Jamera's death signal
+    out.addU8(0x13);
     out.addString('You are dead.');
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
     expect(onDeathMessage).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('#chat-messages')!.textContent).toContain('You are dead.');
+    expect(document.querySelector('.chat-glance-stack')!.textContent).toContain('You are dead.');
   });
 
   it('does not fire onDeathMessage for class 0x13 with different text', () => {
@@ -107,7 +110,7 @@ describe('bindChat', () => {
     dispatcher.dispatch(new InputPacket(out.toArrayBuffer()));
 
     expect(onDeathMessage).not.toHaveBeenCalled();
-    expect(document.querySelector('#chat-messages')!.textContent).toContain('You advanced in sword fighting.');
+    expect(document.querySelector('.chat-glance-stack')!.textContent).toContain('You advanced in sword fighting.');
   });
 
   it('does not fire onDeathMessage for the same text in a different class', () => {
@@ -124,54 +127,56 @@ describe('bindChat', () => {
     expect(onDeathMessage).not.toHaveBeenCalled();
   });
 
-  it('sends typed messages through the client', () => {
+  it('sends typed messages through the client from quick chat', () => {
     const { client, sent } = makeClient();
-    bindChat(client);
+    const binding = bindChat(client);
+    binding.presentation.openQuick();
 
-    const input = document.querySelector('#chat-input') as HTMLInputElement;
+    const input = document.querySelector('.quick-chat-input-row input') as HTMLInputElement;
     input.value = 'hi everyone';
-    (document.querySelector('#chat-send') as HTMLButtonElement).click();
+    (document.querySelector('.quick-chat-input-row button') as HTMLButtonElement).click();
 
     expect(sent).toHaveLength(1);
-    expect(sent[0][0]).toBe(0x96); // ClientOp Say
+    expect(sent[0][0]).toBe(0x96);
+    binding.destroy();
   });
 
   it('swallows send failures instead of crashing the UI handler', () => {
     const { client } = makeClient();
     (client as { send: (p: OutputPacket) => void }).send = () => { throw new Error('not in_game'); };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    bindChat(client);
+    const binding = bindChat(client);
+    binding.presentation.openQuick();
 
-    const input = document.querySelector('#chat-input') as HTMLInputElement;
+    const input = document.querySelector('.quick-chat-input-row input') as HTMLInputElement;
     input.value = 'hi';
-    expect(() => (document.querySelector('#chat-send') as HTMLButtonElement).click()).not.toThrow();
+    expect(() => (document.querySelector('.quick-chat-input-row button') as HTMLButtonElement).click()).not.toThrow();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+    binding.destroy();
   });
 
-  it('the ✕ button collapses the panel (no corner toggle — it overlapped the hotkey arc)', () => {
-    const { client } = makeClient();
-    bindChat(client);
-    const ui = document.querySelector('#chat-ui') as HTMLElement;
-    // Tests run with a fine pointer, so the panel starts open.
-    expect(ui.style.display).toBe('flex');
-
-    (document.querySelector('.chat-close') as HTMLButtonElement).click();
-    expect(ui.style.display).toBe('none');
-
-    // The 💬 corner toggle is gone; reopening goes through menu → Chat.
-    const toggle = [...document.querySelectorAll('body > button')]
-      .find((b) => b.textContent === '💬');
-    expect(toggle).toBeUndefined();
-  });
-
-  it('destroy removes the UI', () => {
+  it('close button in quick chat returns to glance mode', () => {
     const { client } = makeClient();
     const binding = bindChat(client);
-    expect(document.querySelector('#chat-ui')).not.toBeNull();
+    binding.presentation.openQuick();
+    expect(binding.presentation.mode).toBe('quick');
+
+    (document.querySelector('.quick-chat-head-actions button[aria-label="Close chat"]') as HTMLButtonElement).click();
+    expect(binding.presentation.mode).toBe('glance');
+    expect(document.querySelector('.quick-chat.open')).toBeNull();
+    binding.destroy();
+  });
+
+  it('destroy removes all chat UI', () => {
+    const { client } = makeClient();
+    const binding = bindChat(client);
+    binding.presentation.openQuick();
+    expect(document.querySelector('.quick-chat')).not.toBeNull();
 
     binding.destroy();
-    expect(document.querySelector('#chat-ui')).toBeNull();
+    expect(document.querySelector('.quick-chat')).toBeNull();
+    expect(document.querySelector('.chat-open-btn')).toBeNull();
     expect(document.body.querySelectorAll('button').length).toBe(0);
   });
 });

@@ -1,12 +1,12 @@
 import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
-import type { WirePosition } from '../net/common/types';
+import type { WalkDirection, WirePosition } from '../net/common/types';
 import type { GameWorld } from '../GameWorld';
 import { DatAttr, type ThingType } from '../dat';
 import { findWalkRoute } from './autowalk';
-import { spriteIndex } from '../tileRenderer';
 import { TILE_SIZE } from '../../constants';
-import { font, radius, space, surface, zIndex } from '../ui/tokens';
+import { screenToWorldTile, toCanvasSpace, floorChangeTileAtPointer } from './screenSpace';
+import { ensureDragStyles, ensureHintStyles, showTapFeedback } from './tapFeedback';
 import { loadTapToWalk } from './interactionPreferences';
 
 /**
@@ -73,6 +73,19 @@ export interface InteractionsOptions {
   tapToWalk?: () => boolean;
   /** Select/attack a tapped non-player creature through the combat binding. */
   onCreatureTap?: (creatureId: number) => void;
+  /**
+   * Fires right after a 0x64 route leaves, with the route directions —
+   * the pre-walk prediction chain animates the route from the send
+   * instant (the server sends no per-step packets to hook instead).
+   */
+  onRouteSent?: (route: WalkDirection[]) => void;
+  /**
+   * The self position the camera is currently rendering (predicted or
+   * playout), when it differs from the confirmed world.playerX/Y — tap
+   * hit-testing decodes against it. Null/undefined falls back to the
+   * confirmed position.
+   */
+  getSelfRenderPos?: () => { x: number; y: number } | null;
 }
 
 const LONG_PRESS_MS = 500;
@@ -80,185 +93,6 @@ const MOVE_TOLERANCE_PX = 12;
 /** How long after a touch tap a (legacy, pointerType-less) synthesized
  *  click is still attributed to that tap and dropped. */
 const SYNTHESIZED_CLICK_MS = 500;
-
-const HINT_STYLE_ID = 'use-with-hint-style';
-const TAP_FEEDBACK_STYLE_ID = 'tap-feedback-style';
-const DRAG_FEEDBACK_STYLE_ID = 'world-drag-feedback-style';
-
-function ensureDragStyles(): void {
-  if (document.getElementById(DRAG_FEEDBACK_STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = DRAG_FEEDBACK_STYLE_ID;
-  style.textContent = `
-    .world-item-drag, .world-item-drop {
-      position: fixed; pointer-events: none; z-index: ${zIndex.hud};
-      width: 32px; height: 32px; margin: -16px 0 0 -16px;
-      border-radius: ${radius.sm}px;
-    }
-    .world-item-drag {
-      border: 2px solid #ffd45a; background: rgb(255 212 90 / 22%);
-      box-shadow: 0 2px 10px rgb(0 0 0 / 55%);
-    }
-    .world-item-drop { border: 2px dashed rgb(255 255 255 / 80%); }
-  `;
-  document.head.appendChild(style);
-}
-
-function ensureHintStyles(): void {
-  if (document.getElementById(HINT_STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = HINT_STYLE_ID;
-  style.textContent = `
-    .use-with-hint {
-      position: fixed; top: calc(${space.lg}px + env(safe-area-inset-top, 0px));
-      left: 50%; transform: translateX(-50%); z-index: ${zIndex.hud};
-      display: flex; align-items: center; gap: ${space.lg}px;
-      padding: ${space.lg}px ${space.xl}px;
-      background: ${surface.panelBg}; border: 1px solid ${surface.panelBorder};
-      border-radius: ${radius.lg}px; color: ${surface.textPrimary};
-      font-family: ${font.ui}; font-size: ${font.sizeMd}rem; user-select: none;
-    }
-    .use-with-hint button {
-      background: none; border: none; color: ${surface.textMuted};
-      font-size: ${font.sizeLg}rem; cursor: pointer; padding: 0 ${space.sm}px;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-type TapFeedbackKind = 'walk' | 'use' | 'attack';
-
-function showTapFeedback(clientX: number, clientY: number, kind: TapFeedbackKind): void {
-  if (!document.getElementById(TAP_FEEDBACK_STYLE_ID)) {
-    const style = document.createElement('style');
-    style.id = TAP_FEEDBACK_STYLE_ID;
-    style.textContent = `
-      .world-tap-feedback {
-        position: fixed; width: 30px; height: 30px; margin: -15px 0 0 -15px;
-        z-index: ${zIndex.hud}; border: 2px solid #eee; border-radius: 50%;
-        pointer-events: none; animation: world-tap-pop 360ms ease-out forwards;
-      }
-      .world-tap-feedback.use { border-color: #ffd45a; }
-      .world-tap-feedback.attack { border-color: #ff5f57; }
-      @keyframes world-tap-pop {
-        from { opacity: 0.95; transform: scale(0.45); }
-        to { opacity: 0; transform: scale(1.45); }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-  const marker = document.createElement('div');
-  marker.className = `world-tap-feedback ${kind}`;
-  marker.style.left = `${clientX}px`;
-  marker.style.top = `${clientY}px`;
-  document.body.appendChild(marker);
-  const fallbackTimer = setTimeout(() => marker.remove(), 500);
-  marker.addEventListener('animationend', () => {
-    clearTimeout(fallbackTimer);
-    marker.remove();
-  }, { once: true });
-}
-
-/**
- * Canvas-space pixel → world tile, inverting the renderer's centering
- * math. Callers must convert viewport (client) coordinates to canvas
- * space first — see toCanvasSpace.
- */
-export function screenToWorldTile(
-  app: Application,
-  world: GameWorld,
-  clientX: number,
-  clientY: number,
-): { x: number; y: number; z: number } {
-  // The stage carries the viewport cover-zoom; one on-screen tile is
-  // TILE_SIZE × zoom canvas pixels. (Tests stub `app` without a stage.)
-  const zoom = app.stage?.scale?.x || 1;
-  const dxTiles = (clientX - app.screen.width / 2) / (TILE_SIZE * zoom);
-  const dyTiles = (clientY - app.screen.height / 2) / (TILE_SIZE * zoom);
-  return {
-    x: Math.floor(world.playerX + 0.5 + dxTiles),
-    y: Math.floor(world.playerY + 0.5 + dyTiles),
-    z: world.playerZ,
-  };
-}
-
-/**
- * Viewport (clientX/Y) → canvas-space coordinates, robust to the canvas
- * being offset, letterboxed, or CSS-scaled relative to its logical
- * app.screen size.
- */
-export function toCanvasSpace(
-  canvas: HTMLCanvasElement,
-  screen: { width: number; height: number },
-  clientX: number,
-  clientY: number,
-): { x: number; y: number } {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: (clientX - rect.left) * (screen.width / rect.width),
-    y: (clientY - rect.top) * (screen.height / rect.height),
-  };
-}
-
-/**
- * Resolve a tap on visible floor-change artwork to the item's anchor tile.
- *
- * DAT sprites are anchored at their bottom-right tile and may extend up and
- * left over neighbouring tiles.  A 2x2 stair therefore has only one logical
- * floor-change tile but four visible tile-sized pieces.  Grid-only hit testing
- * makes three of those pieces walk to ordinary ground instead of the stair.
- */
-export function floorChangeTileAtPointer(
-  world: GameWorld,
-  datIndex: Map<number, ThingType>,
-  pointedTile: WirePosition,
-  floorChangeIds?: Set<number>,
-): WirePosition {
-  if (!floorChangeIds || floorChangeIds.size === 0) return pointedTile;
-
-  let maxWidth = 1;
-  let maxHeight = 1;
-  for (const id of floorChangeIds) {
-    const frame = datIndex.get(id)?.frameGroup;
-    if (!frame) continue;
-    maxWidth = Math.max(maxWidth, frame.width);
-    maxHeight = Math.max(maxHeight, frame.height);
-  }
-
-  // Anchors whose sprites cover the pointed tile can only lie down/right of
-  // it. Iterate in reverse render order so overlapping artwork selects the
-  // visually topmost (most south-eastern) stair.
-  for (let anchorY = pointedTile.y + maxHeight - 1; anchorY >= pointedTile.y; anchorY--) {
-    for (let anchorX = pointedTile.x + maxWidth - 1; anchorX >= pointedTile.x; anchorX--) {
-      const tile = world.getTile(anchorX, anchorY, pointedTile.z);
-      if (!tile) continue;
-
-      for (let itemIndex = tile.items.length - 1; itemIndex >= 0; itemIndex--) {
-        const item = tile.items[itemIndex];
-        if (!floorChangeIds.has(item.id)) continue;
-        const frame = datIndex.get(item.id)?.frameGroup;
-        if (!frame) continue;
-
-        const pieceX = anchorX - pointedTile.x;
-        const pieceY = anchorY - pointedTile.y;
-        if (pieceX >= frame.width || pieceY >= frame.height) continue;
-
-        const patX = ((anchorX % frame.numPatternX) + frame.numPatternX) % frame.numPatternX;
-        const patY = ((anchorY % frame.numPatternY) + frame.numPatternY) % frame.numPatternY;
-        let hasVisiblePiece = false;
-        for (let layer = 0; layer < frame.layers; layer++) {
-          if (frame.spriteIds[spriteIndex(frame, 0, patX, patY, layer, pieceY, pieceX)]) {
-            hasVisiblePiece = true;
-            break;
-          }
-        }
-        if (hasVisiblePiece) return { x: anchorX, y: anchorY, z: pointedTile.z };
-      }
-    }
-  }
-
-  return pointedTile;
-}
 
 export function bindInteractions(
   client: GameClient,
@@ -274,7 +108,7 @@ export function bindInteractions(
 
   function worldTileAtPointer(clientX: number, clientY: number): WirePosition {
     const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y);
+    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y, opts.getSelfRenderPos?.());
   }
 
   function topStackThingAtTile(position: WirePosition): ThingRef | null {
@@ -432,6 +266,7 @@ export function bindInteractions(
     const route = findWalkRoute(world, datIndex, pos.x, pos.y, opts.floorChangeIds);
     if (!route || route.length === 0) return;
     send(protocol.movement.buildAutoWalk(route));
+    opts.onRouteSent?.(route);
   }
 
   /**

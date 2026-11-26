@@ -46,6 +46,11 @@ export function bindInventory(
     if (!pane) {
       pane = createInventoryPane(parent, {
         ...paneOpts,
+        // The ✕ and the menu toggle flip the same flag (see statsBinding).
+        onClose: () => {
+          open = false;
+          pane?.setVisible(false);
+        },
         onSlotTap: (wireSlot, itemId, count) => {
           // Unequipping the backpack onto its own slot would be a
           // from == to move the server drops — no sheet for that slot.

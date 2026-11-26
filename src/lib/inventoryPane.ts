@@ -55,8 +55,14 @@ function ensureStyles(): void {
     }
     .inventory-pane .drag-handle {
       grid-column: 1 / 4; grid-row: 1; color: #9a9a9a;
-      font-size: 0.72rem; line-height: 18px; text-align: center;
+      font-size: 0.72rem; line-height: 18px;
+      display: flex; justify-content: space-between; align-items: center;
     }
+    .inventory-pane .drag-handle button {
+      background: none; border: none; color: #9a9a9a; font-size: 0.85rem;
+      padding: 0 2px; cursor: pointer; line-height: 1;
+    }
+    .inventory-pane .drag-handle .spacer { width: 14px; }
     .inventory-pane .slot {
       background: rgba(0,0,0,0.45); border: 1px solid #3a3a55;
       border-radius: 6px; position: relative;
@@ -84,6 +90,8 @@ export interface InventoryPaneOptions {
    * (1 head … 10 ammo); `count` is present when the slot holds a stack.
    */
   onSlotTap?: (wireSlot: number, itemId: number, count?: number) => void;
+  /** Called when the header \u2715 is tapped — the owner flips its open state. */
+  onClose?: () => void;
 }
 
 export function createInventoryPane(
@@ -96,7 +104,16 @@ export function createInventoryPane(
   el.className = 'inventory-pane';
   const dragHandle = document.createElement('div');
   dragHandle.className = 'drag-handle';
-  dragHandle.textContent = 'Inventory';
+  const spacer = document.createElement('span');
+  spacer.className = 'spacer';
+  const title = document.createElement('span');
+  title.textContent = 'Inventory';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = '\u2715';
+  closeBtn.setAttribute('aria-label', 'Close inventory');
+  closeBtn.addEventListener('click', () => opts.onClose?.());
+  dragHandle.append(spacer, title, closeBtn);
   el.appendChild(dragHandle);
 
   interface SlotState { cell: HTMLElement; label: HTMLElement; count: HTMLElement; itemId: number | null; itemCount?: number }

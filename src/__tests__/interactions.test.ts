@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindInteractions, floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/interactions';
+import { bindInteractions } from '../lib/jamera/interactions';
+import { floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/screenSpace';
 import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from '../lib/net/7.6/actionsProtocol';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { DatAttr } from '../lib/dat';
@@ -35,6 +36,17 @@ describe('screenToWorldTile', () => {
     expect(screenToWorldTile(zoomed, world, 400 + 64, 300)).toEqual({ x: 101, y: 200, z: 7 });
     // Tile spans ±32px around center at zoom 2 — +31px is still the player tile.
     expect(screenToWorldTile(zoomed, world, 400 + 31, 300).x).toBe(100);
+  });
+
+  it('anchors on the rendered self position when one is supplied', () => {
+    // A predicted route has the camera two tiles east of the confirmed
+    // position — a center tap must decode against what the player sees.
+    expect(screenToWorldTile(app, world, 400, 300, { x: 102, y: 200 }))
+      .toEqual({ x: 102, y: 200, z: 7 });
+    // Mid-glide the camera sits between tiles; the inversion still
+    // resolves the tile under the cursor.
+    expect(screenToWorldTile(app, world, 400 + 16, 300, { x: 101.5, y: 200 }))
+      .toEqual({ x: 102, y: 200, z: 7 });
   });
 });
 
@@ -527,7 +539,7 @@ describe('long-press pointer tracking', () => {
 
 describe('toCanvasSpace', () => {
   it('compensates canvas offset and CSS scaling', async () => {
-    const { toCanvasSpace } = await import('../lib/jamera/interactions');
+    const { toCanvasSpace } = await import('../lib/jamera/screenSpace');
     const canvas = {
       getBoundingClientRect: () => ({ left: 100, top: 50, width: 400, height: 300 }),
     } as unknown as HTMLCanvasElement;

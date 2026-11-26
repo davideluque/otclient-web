@@ -2,6 +2,7 @@ import type { ChatManager } from './ChatManager';
 import type { GameProtocol } from '../net/common/types';
 import { ChannelId } from '../net/common/types';
 import type { OutputPacket } from '../net/common/OutputPacket';
+import { buildMessageRow, makeSpan } from './chatDom';
 
 export type SendPacketFn = (packet: OutputPacket) => void;
 
@@ -139,18 +140,7 @@ export function createChatUI(
 
     messagesEl.replaceChildren();
     for (const msg of channel.messages) {
-      const div = document.createElement('div');
-      div.className = 'msg';
-      const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      // Built with textContent, never innerHTML: senderName and text are
-      // server/player-controlled, so any HTML interpolation here is a DOM
-      // XSS sink (a player named `<img onerror=…>` would execute).
-      div.append(
-        makeSpan('timestamp', time),
-        makeSpan('sender', `${msg.senderName}: `),
-        makeSpan('text', msg.text),
-      );
-      messagesEl.appendChild(div);
+      messagesEl.appendChild(buildMessageRow(msg));
     }
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
@@ -257,9 +247,5 @@ function parseRecipientAndMessage(text: string): { recipientName: string; messag
   return { recipientName: match[1], message: match[2] };
 }
 
-function makeSpan(className: string, text: string): HTMLSpanElement {
-  const span = document.createElement('span');
-  span.className = className;
-  span.textContent = text;
-  return span;
-}
+// Re-export for tests that import makeSpan via ChatUI.
+export { makeSpan };

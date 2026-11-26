@@ -1,3 +1,4 @@
+import { ParseError } from './parseError';
 /**
  * Shared binary node tree reader for OTB/OTBM formats.
  * Both formats use the same escape-byte encoding:
@@ -27,12 +28,9 @@ export function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Arr
 
     if (byte === ESCAPE_CHAR) {
       i++;
-      if (i < data.length) {
-        len++;
-      }
-    } else {
-      len++;
+      if (i === data.length) throw new ParseError('Truncated node: dangling escape byte');
     }
+    len++;
     i++;
   }
 
@@ -43,15 +41,8 @@ export function readNodeData(data: Uint8Array, start: number): { bytes: Uint8Arr
 
   while (i < nextOffset) {
     const byte = data[i];
-    if (byte === ESCAPE_CHAR) {
-      i++;
-      if (i < nextOffset) {
-        buf[out++] = data[i];
-      }
-    } else {
-      buf[out++] = byte;
-    }
-    i++;
+    if (byte === ESCAPE_CHAR) i++;
+    buf[out++] = data[i++];
   }
 
   return { bytes: buf, nextOffset };
@@ -69,7 +60,7 @@ export function skipNode(data: Uint8Array, offset: number): number {
     const byte = data[i];
     if (byte === ESCAPE_CHAR) {
       i += 2;
-      if (i > data.length) break; // escape at buffer end
+      if (i > data.length) throw new ParseError('Truncated node: dangling escape byte');
       continue;
     }
     if (byte === NODE_START) depth++;
@@ -77,5 +68,6 @@ export function skipNode(data: Uint8Array, offset: number): number {
     i++;
   }
 
+  if (depth !== 0) throw new ParseError('Truncated node: missing NODE_END');
   return i;
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { ParseError } from '../lib/parseError';
 import { OtbmParser } from '../lib/otbmParser';
 import type { WorkerLike } from '../lib/otbmParser';
 import type { OtbmFile, OtbmRegion } from '../lib/otbm';
@@ -75,6 +76,15 @@ describe('OtbmParser', () => {
 
     mock.respond({ id: sent.id, error: 'something broke' });
     await expect(promise).rejects.toThrow('something broke');
+  });
+
+  it('preserves typed parse errors across the worker boundary', async () => {
+    const mock = new MockWorker();
+    const parser = new OtbmParser({ workerFactory: () => mock });
+    const promise = parser.parseRegion({ centerX: 0, centerY: 0, radius: 10 });
+    const sent = mock.posted[0].message as { id: number };
+    mock.respond({ id: sent.id, error: 'Truncated OTBM node', parseError: true });
+    await expect(promise).rejects.toBeInstanceOf(ParseError);
   });
 
   it('routes concurrent requests by id, no cross-talk', async () => {

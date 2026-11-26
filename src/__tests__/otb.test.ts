@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { ParseError } from '../lib/parseError';
 import { parseOtb, useableClientIds, OtbAttr, OtbGroups } from '../lib/otb';
 
 const NODE_START = 0xfe;
@@ -22,12 +23,11 @@ function buildRootData(opts?: { minorVersion?: number }): number[] {
   raw.push(0x00); // node type
   pushU32(raw, 0); // flags
 
-  // Attribute: type=0x01 (version data), length = 148
+  // Attribute: type=0x01 (version data), length = 140
   raw.push(0x01);
-  pushU16(raw, 148);
+  pushU16(raw, 140);
 
   // Version fields
-  pushU32(raw, 0);  // version
   pushU32(raw, 3);  // major
   pushU32(raw, opts?.minorVersion ?? 760); // minor (client version)
   pushU32(raw, 0);  // build
@@ -100,6 +100,10 @@ function buildOtb(
 }
 
 describe('parseOtb', () => {
+  it('reports a missing root end marker as a parse error', () => {
+    expect(() => parseOtb(buildOtb([]).slice(0, -1))).toThrow(ParseError);
+  });
+
   it('parses version header', () => {
     const otb = parseOtb(buildOtb([]));
     expect(otb.version.majorVersion).toBe(3);

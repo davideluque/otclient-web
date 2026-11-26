@@ -1,3 +1,4 @@
+import { ParseError } from './parseError';
 import type { OtbmFile, OtbmRegion } from './otbm';
 
 /**
@@ -13,7 +14,7 @@ export interface WorkerLike {
 
 type ParseResponse =
   | { id: number; result: OtbmFile }
-  | { id: number; error: string };
+  | { id: number; error: string; parseError?: boolean };
 
 interface OtbmParserOpts {
   /** Override the worker factory — used by tests to inject a mock. The
@@ -89,7 +90,7 @@ export class OtbmParser {
     const p = this.pending.get(msg.id);
     if (!p) return;
     this.pending.delete(msg.id);
-    if ('error' in msg) p.reject(new Error(msg.error));
+    if ('error' in msg) p.reject(msg.parseError ? new ParseError(msg.error) : new Error(msg.error));
     else p.resolve(msg.result);
   }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { ParseError } from '../lib/parseError';
 import { parseDat, DatAttr, ThingCategory, ITEM_ID_OFFSET } from '../lib/dat';
 import type { Light } from '../lib/dat';
 
@@ -220,6 +221,13 @@ describe('parseDat', () => {
     expect(fg.height).toBe(2);
     expect(fg.exactSize).toBe(48);
     expect(fg.spriteIds).toEqual([10, 11, 12, 13]);
+  });
+
+  it('reports invalid item counts and incomplete sprite references as parse errors', () => {
+    const dat = buildMinimalDat({ items: 1 });
+    expect(() => parseDat(dat.slice(0, -1))).toThrow(ParseError);
+    new DataView(dat).setUint16(4, 1, true);
+    expect(() => parseDat(dat)).toThrow(ParseError);
   });
 
   it('handles empty categories', () => {

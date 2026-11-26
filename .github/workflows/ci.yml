@@ -13,7 +13,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  check:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,3 +37,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run audit:ci
+
+  # Branch protection requires this single status for every PR.
+  check:
+    needs: [quality, security]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify quality and dependency audit results
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: test "$QUALITY" = success && test "$SECURITY" = success

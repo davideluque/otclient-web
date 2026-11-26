@@ -13,6 +13,10 @@ updates:
       - npm
     commit-message:
       prefix: deps
+    ignore:
+      # Upgrade Node declarations together with .nvmrc, CI and the proxy image.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # Runtime deps — low volume, keep batched.
       production-dependencies:

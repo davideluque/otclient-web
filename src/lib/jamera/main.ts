@@ -190,9 +190,9 @@ mountLoginScreen(root, {
     teardownChat?.destroy();
     teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
-    const renderThumb = (id: number) => {
+    const renderThumb = (id: number, subType = 0) => {
       const atlas = assetPipeline.atlas;
-      return atlas ? renderItemThumbnail(id, atlas.datIndex, atlas.layout, atlas.atlasPages) : null;
+      return atlas ? renderItemThumbnail(id, atlas.datIndex, atlas.layout, atlas.atlasPages, subType) : null;
     };
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane

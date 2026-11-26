@@ -84,7 +84,8 @@ describe('bindShop', () => {
   it('renders the window, sends a buy request from the amount sheet, and closes', () => {
     const { client, dispatcher, send } = makeClient();
     registerWireSkips(dispatcher, client.getProtocol());
-    const binding = bindShop(client, document.body);
+    const renderThumb = vi.fn(() => null);
+    const binding = bindShop(client, document.body, { renderThumb });
 
     dispatcher.dispatch(new InputPacket(shopOpenFrame().toArrayBuffer()));
     dispatcher.dispatch(new InputPacket(shopGoodsFrame(1000, [[2120, 4]]).toArrayBuffer()));
@@ -101,6 +102,7 @@ describe('bindShop', () => {
       expect.stringContaining('rope'),
       expect.stringContaining('vial of oil'),
     ]);
+    expect(renderThumb).toHaveBeenCalledWith(2874, 11); // oil vial sprite and fluid subtype
     rows[1].click();
 
     const sheetActions = [...document.querySelectorAll('.action-sheet button')] as HTMLElement[];

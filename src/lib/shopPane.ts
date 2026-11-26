@@ -15,7 +15,7 @@ export type ShopSide = 'buy' | 'sell';
 
 export interface ShopPaneOptions {
   /** Item graphic for a row (canvas scaled to fit); null → #id text. */
-  renderThumb?: (clientItemId: number) => HTMLCanvasElement | null;
+  renderThumb?: (clientItemId: number, subType: number) => HTMLCanvasElement | null;
   /** Player tapped an entry on the given side (row is tappable only when the side's price > 0). */
   onItemTap?: (side: ShopSide, item: ShopItem, ownedCount: number) => void;
   /** Player tapped ✕. */
@@ -137,7 +137,7 @@ export function createShopPane(
 
     const thumbBox = document.createElement('span');
     thumbBox.className = 'thumb';
-    const thumb = opts.renderThumb?.(item.clientId) ?? null;
+    const thumb = opts.renderThumb?.(item.clientId, item.subType) ?? null;
     if (thumb) {
       thumb.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;';
       thumbBox.appendChild(thumb);

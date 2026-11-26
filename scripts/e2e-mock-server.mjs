@@ -1,72 +1,63 @@
-// E2E: jamera client → WS proxy → mock 7.6 server. Asserts the full
-// boot, walking, and chat loop, then screenshots the live canvas.
-import { chromium } from 'playwright-core';
+import { expect, test } from '@playwright/test';
+import { mockAssets } from './mock-assets.mjs';
 
-const browser = await chromium.launch({ headless: true, executablePath: process.env.PW_CHROME });
-const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
-const logs = [];
-page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`));
-page.on('pageerror', (e) => logs.push(`PAGEERROR: ${e}`));
+test('login, render the mock world, walk east and exchange chat', async ({ page }, testInfo) => {
+  const errors = [];
+  const consoleLog = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    consoleLog.push(message.type() + ': ' + message.text());
+    if (/Unhandled opcode/i.test(message.text())) errors.push(message.text());
+  });
 
-const fail = (msg) => { console.log('FAIL:', msg); console.log(logs.slice(-25).join('\n')); process.exit(1); };
+  // Keep the shipped manifest, asset loader, parsers and renderer in the loop.
+  for (const [filename, body] of Object.entries(mockAssets)) {
+    await page.route('**/assets/760/' + filename, (route) =>
+      route.fulfill({ contentType: 'application/octet-stream', body }));
+  }
 
-await page.goto('http://localhost:5180/jamera.html?proxy=ws://localhost:8090', { waitUntil: 'domcontentloaded' });
+  try {
+    await page.goto('/jamera.html?autologin=0&telemetry=0&proxy=ws://127.0.0.1:18090');
+    await page.getByLabel('Account number').fill('1');
+    await page.getByLabel('Password').fill('1');
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await page.getByRole('button', { name: /Trinity/ }).click();
 
-// Login form
-await page.fill('input[name=account]', '1');
-await page.fill('input[name=password]', '1');
-await page.click('button[type=submit]');
+    // Stage children are attached only when the map, atlas and renderer are ready.
+    await page.waitForFunction(() => window.jameraWorld?.tileRevision > 0 && window.jameraPixi?.stage.children.length > 0);
+    const initial = await page.evaluate(() => {
+      const w = window.jameraWorld;
+      return {
+        position: [w.playerX, w.playerY, w.playerZ],
+        tiles: Array.from(w.tilesInRegion(80, 80, 120, 120, 7)).length,
+        names: w.getAllCreatures().map((c) => c.name),
+      };
+    });
+    expect(initial.position).toEqual([100, 100, 7]);
+    expect(initial.tiles).toBe(18 * 14);
+    expect(initial.names).toContain('Trinity');
+    await expect(page.locator('body > canvas')).toBeVisible();
 
-// Character list → pick Trinity
-try {
-  await page.getByRole('button', { name: /Trinity/ }).click({ timeout: 10000 });
-} catch { fail('character list never appeared'); }
+    await page.keyboard.down('ArrowRight');
+    try {
+      await page.waitForFunction(() => window.jameraWorld.playerX > 100);
+    } finally {
+      await page.keyboard.up('ArrowRight');
+    }
 
-// Wait for in_game + world populated
-try {
-  await page.waitForFunction(() => {
-    const w = window.jameraWorld;
-    return w && w.playerX === 100 && w.playerY === 100 && w.tileRevision > 0;
-  }, null, { timeout: 15000 });
-} catch { fail('never reached in_game with a populated world'); }
+    const text = 'hello mock world';
+    await page.getByRole('button', { name: 'Open chat' }).click();
+    const chat = page.getByRole('dialog', { name: 'Quick chat' });
+    await chat.getByRole('textbox', { name: 'Chat message' }).fill(text);
+    await chat.getByRole('button', { name: 'Send message' }).click();
+    await expect(chat.getByText(text, { exact: true })).toBeVisible();
+    await page.waitForFunction((expected) =>
+      window.jameraChat.manager.speechBubbles.some((bubble) => bubble.senderName === 'Trinity' && bubble.text === expected), text);
 
-const before = await page.evaluate(() => {
-  const w = window.jameraWorld;
-  let tiles = 0; for (const _ of w.tilesInRegion(80, 80, 120, 120, 7)) tiles++;
-  return { x: w.playerX, y: w.playerY, z: w.playerZ, tiles, creatures: w.getAllCreatures().length };
+    await page.screenshot({ path: process.env.E2E_SHOT ?? testInfo.outputPath('world.png') });
+    expect(errors).toEqual([]);
+  } catch (error) {
+    console.error(consoleLog.slice(-30).join('\n'), errors);
+    throw error;
+  }
 });
-console.log('IN_GAME:', JSON.stringify(before));
-if (before.tiles < 250) fail(`expected ~252 tiles, got ${before.tiles}`);
-if (before.creatures < 1) fail('player creature missing from world');
-
-// Give the atlas + renderer a moment, then walk east twice via keyboard.
-await page.waitForTimeout(3000);
-await page.keyboard.down('ArrowRight');
-await page.waitForTimeout(900);
-await page.keyboard.up('ArrowRight');
-await page.waitForFunction(() => window.jameraWorld.playerX > 100, null, { timeout: 5000 })
-  .catch(() => fail('walking east never moved the player'));
-const afterWalk = await page.evaluate(() => ({ x: window.jameraWorld.playerX, y: window.jameraWorld.playerY }));
-console.log('WALKED:', JSON.stringify(afterWalk));
-
-// Chat roundtrip: type → server echoes as 0xAA → message renders.
-await page.fill('#chat-input', 'hello mock world');
-await page.click('#chat-send');
-try {
-  await page.waitForFunction(() =>
-    document.querySelector('#chat-messages')?.textContent?.includes('hello mock world'),
-  null, { timeout: 5000 });
-} catch { fail('chat echo never rendered'); }
-console.log('CHAT: echo rendered');
-
-// Speech bubble: the echoed 0xAA carries a position, so a bubble must be
-// live in the ChatManager (the renderer draws from the same list).
-const bubbleCount = await page.evaluate(() => window.jameraChat?.manager.speechBubbles.length ?? -1);
-if (bubbleCount < 1) fail(`expected a live speech bubble, got ${bubbleCount}`);
-console.log('BUBBLES:', bubbleCount);
-
-await page.screenshot({ path: process.env.E2E_SHOT ?? '/tmp/e2e-jamera.png' });
-const warnings = logs.filter((l) => l.startsWith('warning') && l.includes('Unhandled opcode'));
-console.log('unhandled-opcode warnings:', warnings.length);
-console.log('PASS');
-await browser.close();

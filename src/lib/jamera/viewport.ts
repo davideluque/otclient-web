@@ -1,3 +1,4 @@
+import { readPlayArea, type PlayArea } from '../safeArea';
 import type { Application } from 'pixi.js';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from '../render/region';
 import { TILE_SIZE } from '../../constants';
@@ -23,6 +24,13 @@ export const PORTRAIT_PLAY_TILES_X = 11;
 
 /** Fired on window after the app-level handler resizes + rescales. */
 export const VIEWPORT_EVENT = 'jamera:viewport';
+
+// The renderer, hit tests and drag previews share the same last-applied rectangle.
+const playAreas = new WeakMap<Application, PlayArea>();
+
+export function getPlayArea(app: Application): PlayArea {
+  return playAreas.get(app) ?? { x: 0, y: 0, width: app.screen.width, height: app.screen.height };
+}
 
 export function computeCoverZoom(screenWidth: number, screenHeight: number): number {
   // Transient zero/negative/NaN dimensions happen during init and mid-
@@ -56,7 +64,12 @@ export function bindViewportCover(app: Application): () => void {
     const left = viewport?.offsetLeft ?? 0;
     const top = viewport?.offsetTop ?? 0;
     if (!(w >= 1) || !(h >= 1)) return; // hidden tab / mid-orientation
-    const zoom = computeCoverZoom(w, h);
+    const area = readPlayArea(w, h);
+    if (area.width < 1 || area.height < 1) return;
+    const zoom = computeCoverZoom(area.width, area.height);
+    const previous = playAreas.get(app);
+    const areaChanged = previous?.x !== area.x || previous.y !== area.y
+      || previous.width !== area.width || previous.height !== area.height;
     const sizeChanged = w !== app.screen.width || h !== app.screen.height;
     const currentLeft = Number.parseFloat(app.canvas.style.left);
     const currentTop = Number.parseFloat(app.canvas.style.top);
@@ -69,7 +82,8 @@ export function bindViewportCover(app: Application): () => void {
     // visualViewport.resize fires liberally (URL-bar reveal, pinch) and
     // the cold-start path applies twice by design — skip the renderer
     // churn and the downstream recenters when nothing actually changed.
-    if (!sizeChanged && !positionChanged && zoom === app.stage.scale.x) return;
+    if (!sizeChanged && !positionChanged && !areaChanged && zoom === app.stage.scale.x) return;
+    playAreas.set(app, area);
     if (sizeChanged) app.renderer.resize(w, h);
     // Keep the HiDPI backing store (canvas.width/height) mapped onto the
     // visual viewport in CSS pixels. This is explicit because renderer.resize
@@ -121,6 +135,7 @@ export function bindViewportCover(app: Application): () => void {
   window.addEventListener('pointerdown', onFirstTouch, { once: true });
 
   return () => {
+    playAreas.delete(app);
     if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
     for (const t of settleTimers) clearTimeout(t);
     window.removeEventListener('pointerdown', onFirstTouch);

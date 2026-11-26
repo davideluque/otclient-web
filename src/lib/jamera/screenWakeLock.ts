@@ -1,5 +1,6 @@
 const SCREEN_AWAKE_KEY = 'jamera.keepScreenAwake';
 
+import { debugConsole } from '../debugConsole';
 export interface ScreenWakeLockHandle {
   readonly enabled: boolean;
   setEnabled(enabled: boolean): void;
@@ -67,7 +68,7 @@ export function bindScreenWakeLock(
       // mid-session), but only the first failure is worth a log line.
       if (!warnedUnavailable) {
         warnedUnavailable = true;
-        console.info('[jamera] screen wake lock unavailable:', error instanceof Error ? error.message : error);
+        debugConsole?.info('[jamera] screen wake lock unavailable:', error instanceof Error ? error.message : error);
       }
     } finally {
       requesting = false;

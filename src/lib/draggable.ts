@@ -1,3 +1,6 @@
+import { bindVisualViewport, readVisualViewport } from './chat/viewportChat';
+import { readPlayArea } from './safeArea';
+
 /** Make a fixed panel movable by dragging a dedicated header/handle. */
 export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => void {
   handle.style.cursor = 'grab';
@@ -9,25 +12,32 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
   let panelWidth = 0;
   let panelHeight = 0;
 
-  const viewportBounds = (): { left: number; top: number; width: number; height: number } => ({
-    left: window.visualViewport?.offsetLeft ?? 0,
-    top: window.visualViewport?.offsetTop ?? 0,
-    width: window.visualViewport?.width ?? window.innerWidth,
-    height: window.visualViewport?.height ?? window.innerHeight,
-  });
+  let stopViewport: (() => void) | undefined;
 
-  const moveTo = (clientX: number, clientY: number): void => {
-    const bounds = viewportBounds();
-    const maxLeft = bounds.left + Math.max(0, bounds.width - panelWidth);
-    const maxTop = bounds.top + Math.max(0, bounds.height - panelHeight);
-    panel.style.left = `${Math.min(maxLeft, Math.max(bounds.left, clientX - offsetX))}px`;
-    panel.style.top = `${Math.min(maxTop, Math.max(bounds.top, clientY - offsetY))}px`;
+  const moveTo = (x: number, y: number): void => {
+    const viewport = readVisualViewport();
+    const area = readPlayArea(viewport.width, viewport.height);
+    const left = viewport.offsetLeft + area.x;
+    const top = viewport.offsetTop + area.y;
+    const maxLeft = left + Math.max(0, area.width - panelWidth);
+    const maxTop = top + Math.max(0, area.height - panelHeight);
+    panel.style.left = `${Math.min(maxLeft, Math.max(left, x))}px`;
+    panel.style.top = `${Math.min(maxTop, Math.max(top, y))}px`;
+  };
+
+  const keepInView = (): void => {
+    const rect = panel.getBoundingClientRect();
+    // A hidden panel reports zero. Its last visible size still keeps its
+    // saved position reachable when reopened after a rotation.
+    if (rect.width) panelWidth = rect.width;
+    if (rect.height) panelHeight = rect.height;
+    moveTo(parseFloat(panel.style.left), parseFloat(panel.style.top));
   };
 
   const onMove = (event: PointerEvent): void => {
     if (event.pointerId !== activePointer) return;
     event.preventDefault();
-    moveTo(event.clientX, event.clientY);
+    moveTo(event.clientX - offsetX, event.clientY - offsetY);
   };
 
   const finish = (event: PointerEvent): void => {
@@ -58,6 +68,7 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
     panel.style.bottom = 'auto';
     panel.style.transform = 'none';
     panel.style.margin = '0';
+    stopViewport ??= bindVisualViewport(keepInView);
     handle.style.cursor = 'grabbing';
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', finish);
@@ -67,6 +78,7 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
   handle.addEventListener('pointerdown', onDown);
   return () => {
     activePointer = null;
+    stopViewport?.();
     handle.removeEventListener('pointerdown', onDown);
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', finish);

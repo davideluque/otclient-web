@@ -1,15 +1,16 @@
+import { debugConsole } from './lib/debugConsole';
 import { Application, Container } from 'pixi.js';
 import { parseDat, DatAttr } from './lib/dat';
 import { parseSpr, releaseSprBuffer } from './lib/spr';
 import { parseOtb } from './lib/otb';
-import { OtbmAttr, OtbmNode, parseOtbmRegion } from './lib/otbm';
+import { findMapSpawn } from './lib/mapSpawn';
 import { OtbmParser } from './lib/otbmParser';
-import { NODE_END, NODE_START, readNodeData, skipNode } from './lib/nodeTree';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import type { Bounds, FloorChange } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
+import { readPlayArea } from './lib/safeArea';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import type { ViewRect } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
@@ -132,7 +133,7 @@ async function startAppOnce(loaded: CompleteLoadedFiles, fromCache = false): Pro
       } else if (result.reason === 'quota') {
         showStorageNotice(await quotaNoticeText(toCache));
       }
-    }).catch(err => console.warn('asset cache write failed:', err));
+    }).catch(err => debugConsole?.warn('asset cache write failed:', err));
   }
 }
 
@@ -140,7 +141,7 @@ const handleFiles = createFileLoader({
   setStatus,
   addFileToList,
   startApp: startAppOnce,
-  onError: console.error,
+  onError: debugConsole?.error,
 });
 
 // Attempt to auto-load assets from a per-version folder under public/.
@@ -155,7 +156,7 @@ tryAutoload({
       ? 'Your saved game assets were cleared by the browser to free up space. They will be saved again after this load.'
       : 'This browser can\'t store game assets, so offline play and instant boots are unavailable here.');
   },
-}).catch(console.error);
+}).catch(err => debugConsole?.error(err));
 
 // Drag and drop
 dropZone.addEventListener('dragover', (e) => {
@@ -191,20 +192,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const otb: OtbFile = parseOtb(loaded.otb);
   setStatus('Parsed .otb...');
 
-  // Pass 1: parse only the towns list. A radius-0 region skips every
-  // TileArea, so the parser emits header + towns metadata — enough to
-  // pick a spawn before we pay for tile data.
-  const metadataRegion: OtbmRegion = { centerX: 0, centerY: 0, radius: 0, z: 7 };
-  const metadata: OtbmFile = parseOtbmRegion(loaded.otbm, metadataRegion);
-
-  // Pick the spawn: caller override (future server hook) → Rookgaard town
-  // (the canonical Tibia 7.6 starting point) → first town the map declares
-  // → first tile we can find by scanning.
-  const pickedSpawn = pickSpawn(metadata) ?? findFirstTile(loaded.otbm);
-  if (!pickedSpawn) {
-    console.warn('OTBM declares no towns and findFirstTile found nothing — spawning at (0, 0, 7). Map is probably empty or has an unusual structure.');
-  }
-  const spawn: Position = pickedSpawn ?? { x: 0, y: 0, z: 7 };
+  const spawn = findMapSpawn(loaded.otbm);
 
   // Spin up the OTBM worker and transfer ownership of the raw buffer.
   // From here on, the main thread no longer holds the .otbm bytes —
@@ -225,8 +213,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const atlasTextures = createAtlasTextures(atlasPages);
   const layout = computeAtlasLayout(spr.spriteCount, referencedSpriteIds);
   const datIndex = buildDatIndex(dat);
-  const atlasBytes = [...atlasPages.values()].reduce((sum, page) => sum + page.byteLength, 0);
-  console.log(`Atlas CPU buffers: ${(atlasBytes / 1024 / 1024).toFixed(1)} MB across ${atlasPages.size} page(s)`);
+  if (debugConsole) {
+    const bytes = [...atlasPages.values()].reduce((sum, page) => sum + page.byteLength, 0);
+    debugConsole.log(`Atlas CPU buffers: ${(bytes / 1024 / 1024).toFixed(1)} MB across ${atlasPages.size} page(s)`);
+  }
 
   setStatus('Building tile map...');
   const tileMap = new TileMap(otbm, otb);
@@ -276,7 +266,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // fails or isn't supported. Log which one actually got selected.
     preference: 'webgpu',
   });
-  console.log(`[render] PixiJS renderer: ${app.renderer.name}`);
+  debugConsole?.log(`[render] PixiJS renderer: ${app.renderer.name}`);
 
   // Hide loader, show canvas
   loaderEl.style.display = 'none';
@@ -303,12 +293,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (document.visibilityState === 'visible') requestWakeLock();
   });
 
+  const initialArea = readPlayArea(initialW, initialH);
   const viewport = new Viewport({
     centerX: spawn.x,
     centerY: spawn.y,
-    screenWidth: initialW,
-    screenHeight: initialH,
-    playZoom: computePlayZoom(initialW, initialH),
+    screenLeft: initialArea.x,
+    screenTop: initialArea.y,
+    screenWidth: initialArea.width,
+    screenHeight: initialArea.height,
   });
   // Mutable so floor-change tiles (stair/hole/ladder) can update it on
   // step-land; everything that takes a z parameter reads this each frame.
@@ -525,14 +517,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
       tileMap.merge(expanded);
       if (tileMap.size > sizeBeforeMerge) {
         exhaustedDirections.clear(); // bounds grew — all directions worth retrying
-        console.log('[map] expanded →', tileMap.getBounds(renderZ));
+        debugConsole?.log('[map] expanded →', tileMap.getBounds(renderZ));
         render(true); // tiles changed; rebuild
       } else {
         exhaustedDirections.add(ek);
       }
     }).catch(err => {
       pendingExpansion = false;
-      console.error('[map] expansion failed:', err);
+      debugConsole?.error('[map] expansion failed:', err);
     });
     return;
   }
@@ -759,7 +751,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
     // Primary mouse button only — right/middle clicks must not walk.
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !viewport.containsPoint(e.clientX, e.clientY)) return;
     // Ignore secondary pointers (pinch second finger, hovering pen tip, etc.).
     if (activePointerId !== null) return;
     activePointerId = e.pointerId;
@@ -796,7 +788,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   window.addEventListener('pointerup', async (e: PointerEvent) => {
     if (e.pointerId !== activePointerId) return;
-    if (dragMode === 'pending') {
+    if (dragMode === 'pending' && viewport.containsPoint(e.clientX, e.clientY)) {
       // Was a tap — convert to tile, run A*, start walk. If already walking,
       // plan from the tile we're walking TO and just replace the queued
       // remainder so the current step finishes smoothly — no camera snap.
@@ -826,15 +818,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
             tileMap.merge(expanded);
             if (tileMap.size > sizeBeforeMerge) {
               exhaustedDirections.clear();
-              if (import.meta.env.DEV) {
-                console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
-              }
+              debugConsole?.log('[map] walk-expand →', tileMap.getBounds(renderZ));
               render(true);
             } else {
               exhaustedDirections.add(ek);
             }
           } catch (err) {
-            console.error('[map] walk-expand failed:', err);
+            debugConsole?.error('[map] walk-expand failed:', err);
           }
         }
       }
@@ -960,11 +950,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
         if (w < 1 || h < 1) return;
         // visualViewport.resize fires liberally on mobile (URL-bar
         // reveal, pinch); skip if nothing actually changed.
-        if (w === viewport.screenWidth && h === viewport.screenHeight) return;
-        app.renderer.resize(w, h);
-        viewport.screenWidth = w;
-        viewport.screenHeight = h;
-        viewport.applyPlayZoom(computePlayZoom(w, h));
+        const area = readPlayArea(w, h);
+        const sizeChanged = w !== app.screen.width || h !== app.screen.height;
+        if (!sizeChanged && area.x === viewport.screenLeft && area.y === viewport.screenTop
+          && area.width === viewport.screenWidth && area.height === viewport.screenHeight) return;
+        if (sizeChanged) app.renderer.resize(w, h);
+        viewport.screenLeft = area.x;
+        viewport.screenTop = area.y;
+        viewport.screenWidth = area.width;
+        viewport.screenHeight = area.height;
+        viewport.applyPlayZoom(computePlayZoom(area.width, area.height));
         // applyPlayZoom snaps zoom back to the locked baseline and
         // narrows the min/max bounds. If the user had unlocked zoom
         // ("Free") the UI would otherwise be desynced from the now-
@@ -991,132 +986,9 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   // N toggle is now handled by keyboard.ts via the 'night' toggle binding.
 
-  console.log(`Map loaded: ${tileMap.size} tiles, spawn at (${spawn.x}, ${spawn.y}, z=${spawn.z})`);
+  debugConsole?.log(`Map loaded: ${tileMap.size} tiles, spawn at (${spawn.x}, ${spawn.y}, z=${spawn.z})`);
 }
 
 function regionAround(p: Position): OtbmRegion {
   return { centerX: p.x, centerY: p.y, radius: INITIAL_REGION_RADIUS, z: p.z };
-}
-
-/**
- * Decide where the player should appear when the map loads.
- *
- * Layered fallbacks, in order of authority:
- *   1. `override` — the future hook for server-driven login positions
- *      ("you logged out at X, log back in there"). Unused today but
- *      makes the seam explicit.
- *   2. A town named "Rookgaard" — the canonical Tibia 7.6 starting
- *      point. Every real-Tibia 7.6 OTBM declares it.
- *   3. Any town the map declares — better than a hardcoded coordinate
- *      because it's guaranteed to be inside the populated area of
- *      *this* particular map.
- *   4. `null` — caller falls back to a tile-scan probe.
- */
-function pickSpawn(otbm: OtbmFile, override?: Position): Position | null {
-  if (override) return override;
-
-  // Exact case-insensitive match wins over partial — otherwise "Rookgaard East"
-  // would shadow the canonical "Rookgaard" town when both exist.
-  const exact = otbm.towns.find(t => t.name.toLowerCase() === 'rookgaard');
-  if (exact) return exact.templePosition;
-
-  const partial = otbm.towns.find(t => /rookgaard/i.test(t.name));
-  if (partial) return partial.templePosition;
-
-  if (otbm.towns.length > 0) return otbm.towns[0].templePosition;
-  return null;
-}
-
-function findFirstTile(buffer: ArrayBuffer): { x: number; y: number; z: number } | null {
-  const data = new Uint8Array(buffer);
-  let offset = 4;
-  const scanEnd = Math.min(data.length, 1024 * 1024);
-  let areaBaseX = 0;
-  let areaBaseY = 0;
-  let areaBaseZ = 0;
-
-  if (data[offset] !== NODE_START) return null;
-  offset++;
-
-  const root = readNodeData(data, offset);
-  offset = root.nextOffset;
-
-  function walk(depth = 0): { x: number; y: number; z: number } | null {
-    if (depth > 8) return null;
-
-    while (offset < scanEnd && offset < data.length) {
-      const marker = data[offset];
-
-      if (marker === NODE_END) {
-        offset++;
-        return null;
-      }
-
-      if (marker !== NODE_START) {
-        offset++;
-        continue;
-      }
-
-      offset++;
-      const node = readNodeData(data, offset);
-      offset = node.nextOffset;
-      if (node.bytes.length === 0) {
-        const found = walk(depth + 1);
-        if (found) return found;
-        continue;
-      }
-
-      const nodeType = node.bytes[0];
-      if (nodeType === OtbmNode.TileArea) {
-        areaBaseX = node.bytes[1] | (node.bytes[2] << 8);
-        areaBaseY = node.bytes[3] | (node.bytes[4] << 8);
-        areaBaseZ = node.bytes[5];
-        if (areaBaseZ !== 7) {
-          offset = skipNode(data, offset);
-          continue;
-        }
-        const found = walk(depth + 1);
-        if (found) return found;
-      } else if (nodeType === OtbmNode.Tile || nodeType === OtbmNode.HouseTile) {
-        if (tileNodeHasItems(node.bytes) || data[offset] === NODE_START) {
-          return {
-            x: areaBaseX + node.bytes[1],
-            y: areaBaseY + node.bytes[2],
-            z: areaBaseZ,
-          };
-        }
-        offset = skipNode(data, offset);
-      } else if (nodeType === OtbmNode.MapData || nodeType === OtbmNode.Towns) {
-        const found = walk(depth + 1);
-        if (found) return found;
-      } else {
-        offset = skipNode(data, offset);
-      }
-    }
-
-    return null;
-  }
-
-  return walk();
-}
-
-function tileNodeHasItems(bytes: Uint8Array): boolean {
-  let offset = bytes[0] === OtbmNode.HouseTile ? 7 : 3;
-
-  while (offset < bytes.length) {
-    const attrType = bytes[offset];
-    offset++;
-
-    if (attrType === OtbmAttr.Item) return true;
-    if (attrType === OtbmAttr.TileFlags) {
-      offset += 4;
-    } else if (attrType === OtbmAttr.Description) {
-      const len = bytes[offset] | (bytes[offset + 1] << 8);
-      offset += 2 + len;
-    } else {
-      break;
-    }
-  }
-
-  return false;
 }

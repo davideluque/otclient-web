@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import type { GameClient } from '../net/common/GameClient';
 import { createTextWindow } from '../textWindow';
 
@@ -24,7 +25,7 @@ export function bindTextWindows(
     try {
       client.send(packet);
     } catch (e) {
-      console.warn('[jamera] text-window send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] text-window send failed:', e instanceof Error ? e.message : e);
     }
   };
 

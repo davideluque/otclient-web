@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
 import { OutputPacket } from '../net/common/OutputPacket';
@@ -76,7 +77,7 @@ if (import.meta.env.DEV && params.get('telemetry') !== '0' && proxyUrl) {
   try {
     initTelemetry(proxyUrl);
   } catch (e) {
-    console.warn('[telemetry] init failed, continuing without:', e instanceof Error ? e.message : e);
+    debugConsole?.warn('[telemetry] init failed, continuing without:', e instanceof Error ? e.message : e);
   }
 }
 
@@ -156,9 +157,7 @@ mountLoginScreen(root, {
     // it on `window` would be a credential leak.
     if (import.meta.env.DEV) {
       (window as unknown as { jameraClient: typeof client }).jameraClient = client;
-      console.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
-    } else {
-      console.info('[jamera] in_game — client attached locally (suppressed from window in prod)');
+      debugConsole?.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
     }
     // Baseline consumers for the full 7.6 wire vocabulary — without
     // these, the first unhandled opcode in a frame silently drops the
@@ -336,7 +335,7 @@ mountLoginScreen(root, {
           try {
             client.send(client.getProtocol().actions.buildLogout());
           } catch (e) {
-            console.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
+            debugConsole?.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
           }
           // The server saves and closes; the disconnect flows through
           // onLeaveGame, which tears every per-session surface down.
@@ -348,7 +347,7 @@ mountLoginScreen(root, {
       (window as unknown as { jameraChat: typeof teardownChat }).jameraChat = teardownChat;
     }
     ensurePixiApp().catch((err) => {
-      console.warn('[jamera] PIXI bootstrap failed:', err);
+      debugConsole?.warn('[jamera] PIXI bootstrap failed:', err);
     });
     void mountRenderer(world, teardownChat.manager, client);
   },
@@ -410,7 +409,7 @@ function ensurePixiApp(): Promise<Application> {
         preference: rendererPreference,
         resolution: app.renderer.resolution,
       });
-      console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
+      debugConsole?.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
       if (import.meta.env.DEV) {
         (window as unknown as { jameraPixi: Application }).jameraPixi = app;
       }
@@ -439,7 +438,7 @@ function ensurePixiApp(): Promise<Application> {
 function bindGameWorld(client: GameClient): GameWorld {
   const world = new GameWorld(client.getProtocol());
   world.registerHandlers(client.getDispatcher());
-  console.info('[jamera] GameWorld bound to dispatcher');
+  debugConsole?.info('[jamera] GameWorld bound to dispatcher');
   if (import.meta.env.DEV) {
     // Dev-only DevTools hook so we can inspect live tiles / creatures /
     // player position. Replaced on each re-login so the reference
@@ -480,7 +479,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
   try {
     app = await ensurePixiApp();
   } catch (err) {
-    console.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
+    debugConsole?.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
     return;
   }
   if (epoch !== mountEpoch) return; // superseded while awaiting PIXI
@@ -528,7 +527,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
       world, atlas, app, chatManager,
       selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
     );
-    console.info('[jamera] renderer bound to GameWorld');
+    debugConsole?.info('[jamera] renderer bound to GameWorld');
   };
 
   // Fires immediately when the atlas is already cached (re-login).
@@ -580,7 +579,7 @@ function startPingLoop(client: GameClient): void {
       packet.addU8(ClientOp.Ping);
       client.send(packet);
     } catch (err) {
-      console.warn('[jamera] ping failed:', (err as Error).message);
+      debugConsole?.warn('[jamera] ping failed:', (err as Error).message);
     }
   };
 

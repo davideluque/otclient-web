@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import type { GameClient } from '../net/common/GameClient';
 import type { ShopItem } from '../net/common/types';
 import { ShopManager } from '../shop';
@@ -50,7 +51,7 @@ export function bindShop(
       try {
         client.send(packet);
       } catch (e) {
-        if (import.meta.env.DEV) console.warn('[jamera] shop send failed:', e instanceof Error ? e.message : e);
+        debugConsole?.warn('[jamera] shop send failed:', e instanceof Error ? e.message : e);
       }
     };
     pane = createShopPane(parent, {

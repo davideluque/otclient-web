@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { ChatManager } from '../chat/ChatManager';
 import { createChatPresentation, type ChatPresentationHandle } from '../chat/ChatPresentation';
 import type { NpcChatContext } from '../chat/npcContext';
@@ -60,7 +61,7 @@ export function bindChat(
     try {
       client.send(packet);
     } catch (e) {
-      console.warn('[jamera] chat send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] chat send failed:', e instanceof Error ? e.message : e);
     }
   };
 
@@ -101,7 +102,7 @@ export function bindChat(
       try {
         opts.onDeathMessage?.();
       } catch (e) {
-        console.warn('[jamera] death handler failed:', e instanceof Error ? e.message : e);
+        debugConsole?.warn('[jamera] death handler failed:', e instanceof Error ? e.message : e);
       }
     }
     manager.handleMessage({

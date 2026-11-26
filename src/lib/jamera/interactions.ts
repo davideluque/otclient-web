@@ -1,3 +1,5 @@
+import { getPlayArea } from './viewport';
+import { debugConsole } from '../debugConsole';
 import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
 import type { WalkDirection, WirePosition } from '../net/common/types';
@@ -106,9 +108,15 @@ export function bindInteractions(
   const canvas = app.canvas as HTMLCanvasElement;
   const protocol = client.getProtocol();
 
-  function worldTileAtPointer(clientX: number, clientY: number): WirePosition {
+  function inPlayArea(event: MouseEvent): boolean {
+    const { x, y } = toCanvasSpace(canvas, app.screen, event.clientX, event.clientY);
+    const area = getPlayArea(app);
+    return x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height;
+  }
+
+  function worldTileAtPointer(clientX: number, clientY: number, camera = opts.getSelfRenderPos?.()): WirePosition {
     const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y, opts.getSelfRenderPos?.());
+    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y, camera);
   }
 
   function topStackThingAtTile(position: WirePosition): ThingRef | null {
@@ -171,7 +179,7 @@ export function bindInteractions(
     try {
       client.send(packet as Parameters<GameClient['send']>[0]);
     } catch (e) {
-      console.warn('[jamera] interaction send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] interaction send failed:', e instanceof Error ? e.message : e);
     }
   }
 
@@ -405,7 +413,7 @@ export function bindInteractions(
   // old enough to omit pointerType on clicks just send a benign
   // duplicate route).
   const onClick = (e: MouseEvent): void => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !inPlayArea(e)) return;
     if (Date.now() < suppressClickUntil) return;
     // Legacy browsers synthesize a click after a touch tap WITHOUT a
     // pointerType for the guard below to catch. For plain walking that
@@ -439,10 +447,10 @@ export function bindInteractions(
   };
   const onContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
-    look(e.clientX, e.clientY);
+    if (inPlayArea(e)) look(e.clientX, e.clientY);
   };
   const onDblClick = (e: MouseEvent): void => {
-    use(e.clientX, e.clientY);
+    if (inPlayArea(e)) use(e.clientX, e.clientY);
   };
 
   // Touch: a press held LONG_PRESS_MS without wandering looks. The press
@@ -476,11 +484,13 @@ export function bindInteractions(
     if (!dragMarker || !dropMarker) return;
     dragMarker.style.left = `${clientX}px`;
     dragMarker.style.top = `${clientY}px`;
-    const destination = worldTileAtPointer(clientX, clientY);
+    const camera = opts.getSelfRenderPos?.() ?? { x: world.playerX, y: world.playerY };
+    const destination = worldTileAtPointer(clientX, clientY, camera);
     const zoom = app.stage?.scale?.x || 1;
     const tilePx = TILE_SIZE * zoom;
-    const centerX = app.screen.width / 2 + (destination.x - world.playerX) * tilePx;
-    const centerY = app.screen.height / 2 + (destination.y - world.playerY) * tilePx;
+    const area = getPlayArea(app);
+    const centerX = area.x + area.width / 2 + (destination.x - camera.x) * tilePx;
+    const centerY = area.y + area.height / 2 + (destination.y - camera.y) * tilePx;
     const rect = canvas.getBoundingClientRect();
     dropMarker.style.left = `${rect.left + centerX * (rect.width / app.screen.width)}px`;
     dropMarker.style.top = `${rect.top + centerY * (rect.height / app.screen.height)}px`;
@@ -495,7 +505,7 @@ export function bindInteractions(
     activePointerId = null;
   };
   const onPointerDown = (e: PointerEvent): void => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !inPlayArea(e)) return;
     if (!armedUseWith && !armedTrade && dragPointerId === null) {
       dragItem = topMoveableItemAtTile(worldTileAtPointer(e.clientX, e.clientY));
       if (dragItem) {
@@ -556,6 +566,11 @@ export function bindInteractions(
   // walks via the click handler, which ignores synthesized post-touch
   // clicks by pointerType.)
   const onPointerUp = (e: PointerEvent): void => {
+    if (!inPlayArea(e)) {
+      if (e.pointerId === dragPointerId) clearDrag();
+      cancelPress(e);
+      return;
+    }
     if (e.pointerId === dragPointerId && dragItem && dragging) {
       const item = dragItem;
       const destination = worldTileAtPointer(e.clientX, e.clientY);

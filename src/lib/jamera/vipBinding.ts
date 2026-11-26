@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { createVipList, type VipListHandle } from '../vipList';
 import type { GameClient } from '../net/common/GameClient';
 
@@ -20,7 +21,7 @@ export function bindVip(client: GameClient, parent: HTMLElement = document.body)
     try {
       client.send(packet);
     } catch (e) {
-      console.warn('[jamera] vip send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] vip send failed:', e instanceof Error ? e.message : e);
     }
   };
 

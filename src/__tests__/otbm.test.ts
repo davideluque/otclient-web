@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { ParseError } from '../lib/parseError';
 import { parseOtbm, parseOtbmRegion, OtbmNode, OtbmAttr } from '../lib/otbm';
 
 const NODE_START = 0xfe;
@@ -125,6 +126,10 @@ function buildOtbm(opts: {
 }
 
 describe('parseOtbm', () => {
+  it('reports a missing root end marker as a parse error', () => {
+    expect(() => parseOtbm(buildOtbm({}).slice(0, -1))).toThrow(ParseError);
+  });
+
   it('parses header', () => {
     const otbm = parseOtbm(buildOtbm({}));
     expect(otbm.header.version).toBe(2);

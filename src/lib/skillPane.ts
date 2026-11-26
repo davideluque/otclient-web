@@ -42,7 +42,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .skill-pane {
-      position: fixed; top: 50%; right: 12px; transform: translateY(-50%);
+      position: fixed; top: 50%; right: calc(12px + env(safe-area-inset-right, 0px)); transform: translateY(-50%);
       width: 190px; padding: 10px 12px;
       background: rgba(22,22,22,0.95); color: #e0e0e0;
       border: 1px solid #9a9a9a; border-radius: 10px;

@@ -36,8 +36,12 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .shop-pane {
-      position: fixed; top: 18%; left: 50%; transform: translateX(-50%);
-      z-index: 32; width: min(320px, calc(100vw - 24px));
+      position: fixed;
+      top: max(18%, var(--game-inset-top));
+      left: calc(50% + (var(--game-inset-left) - var(--game-inset-right)) / 2);
+      transform: translateX(-50%);
+      z-index: 32; width: min(320px, calc(100vw - var(--game-inset-left) - var(--game-inset-right) - 24px));
+      max-height: calc(100% - max(18%, var(--game-inset-top)) - var(--game-inset-bottom)); overflow: auto;
       background: rgba(22,22,22,0.95); border: 1px solid #9a9a9a;
       border-radius: 10px; padding: 8px;
       font-family: system-ui, sans-serif; user-select: none;

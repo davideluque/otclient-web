@@ -26,7 +26,7 @@ export function createDevControls(toggles: DevToggle[]): DevControlsHandle {
   const root = document.createElement('div');
   root.className = 'dev-controls';
   root.style.cssText = [
-    'position:fixed', 'top:12px', 'right:12px', 'z-index:60',
+    'position:fixed', 'top:calc(12px + env(safe-area-inset-top, 0px))', 'right:calc(12px + env(safe-area-inset-right, 0px))', 'z-index:60',
     'font-family:system-ui,sans-serif', 'font-size:0.75rem',
     'user-select:none', 'touch-action:none',
   ].join(';');

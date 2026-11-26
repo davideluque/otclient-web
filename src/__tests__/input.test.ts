@@ -3,6 +3,16 @@ import { screenToTile, stepInDirection } from '../lib/input';
 import { Direction } from '../lib/player';
 import { Viewport } from '../lib/viewport';
 
+it('maps the offset safe-area center to the offline player and excludes the notch', () => {
+  const viewport = new Viewport({
+    centerX: 100, centerY: 200, zoom: 1, screenLeft: 48, screenTop: 10,
+    screenWidth: 740, screenHeight: 360,
+  });
+  expect(screenToTile(418, 190, viewport)).toEqual({ x: 100, y: 200 });
+  expect(viewport.containsPoint(47, 190)).toBe(false);
+  expect(viewport.containsPoint(48, 190)).toBe(true);
+});
+
 describe('screenToTile', () => {
   function makeViewport(centerX = 10, centerY = 10) {
     return new Viewport({

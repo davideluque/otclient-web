@@ -21,6 +21,7 @@
 // - No IndexedDB at all (old WebViews, some private modes): reported as
 //   reason 'unavailable' / notice 'unavailable'.
 
+import { debugConsole } from './debugConsole';
 import type { CompleteLoadedFiles } from './fileLoader';
 
 const DB_NAME = 'otclient-web-assets';
@@ -132,7 +133,7 @@ export async function getCached(version: string): Promise<CompleteLoadedFiles | 
       db.close();
     }
   } catch (e) {
-    console.warn('assetCache.getCached failed:', e);
+    debugConsole?.warn('assetCache.getCached failed:', e);
     return null;
   }
 }
@@ -158,7 +159,7 @@ export async function putCached(version: string, files: CompleteLoadedFiles): Pr
     setCachePopulated(version, true);
     return { ok: true, firstWrite };
   } catch (e) {
-    console.warn('assetCache.putCached failed:', e);
+    debugConsole?.warn('assetCache.putCached failed:', e);
     if (isQuotaError(e)) return { ok: false, reason: 'quota' };
     if (isUnavailableError(e)) return { ok: false, reason: 'unavailable' };
     return { ok: false, reason: 'unknown' };
@@ -181,6 +182,6 @@ export async function clearCached(version: string): Promise<void> {
     // The bundle is intentionally gone — a future miss is not an eviction.
     setCachePopulated(version, false);
   } catch (e) {
-    console.warn('assetCache.clearCached failed:', e);
+    debugConsole?.warn('assetCache.clearCached failed:', e);
   }
 }

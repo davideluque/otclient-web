@@ -37,7 +37,7 @@ function spr() {
 function otb() {
   const start = 0xfe;
   const end = 0xff;
-  const version = [...u32(0), ...u32(3), ...u32(760), ...u32(0), ...Buffer.alloc(128)];
+  const version = [...u32(3), ...u32(760), ...u32(0), ...Buffer.alloc(128)];
   const root = [0, ...u32(0), 1, ...u16(version.length), ...version];
   const ground = [1, ...u32(0), 0x10, ...u16(2), ...u16(102), 0x11, ...u16(2), ...u16(102)];
   return Buffer.from([...u32(0), start, ...root, start, ...ground, end, end]);

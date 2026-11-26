@@ -8,8 +8,9 @@ import { OtbmParser } from './lib/otbmParser';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import type { Bounds, FloorChange } from './lib/tileMap';
-import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
+import { createAtlasTextures, tileTextureLookup, setItemAnimationFrame, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
+import { TileFloor, creatureDrawOrder } from './lib/render/tileFloor';
 import { readPlayArea } from './lib/safeArea';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import type { ViewRect } from './lib/viewport';
@@ -48,6 +49,7 @@ import { TILE_SIZE, tilePositionKey } from './constants';
 // --- File loading UI ---
 
 const INITIAL_REGION_RADIUS = 200;
+const ANIMATION_FRAME_MS = 500;
 const dropZone = document.getElementById('drop-zone')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const statusEl = document.getElementById('status')!;
@@ -306,7 +308,12 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // step-land; everything that takes a z parameter reads this each frame.
   let renderZ = spawn.z;
 
-  let tileContainer: Container | null = null;
+  const tileContainer = new Container();
+  tileContainer.sortableChildren = true;
+  app.stage.addChild(tileContainer);
+  const floorLayers = new Map<number, TileFloor>();
+  const getTileTexture = tileTextureLookup(atlasTextures, layout);
+  let lightOverlay: Container | null = null;
   let lastVisibleKey = '';
   let lastRenderRow = Number.NaN;
   let lastPlayerX = Number.NaN;
@@ -323,12 +330,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // RenderTexture and a Sprite per light source.
   const illuminationTexture = RenderTexture.create({ width: 1, height: 1 });
   const lightSpritePool = new LightSpritePool();
-  let animatedSprites: AnimatedSprite[] = [];
+  const animatedSprites = new Set<AnimatedSprite>();
+  const animationFrame = () => Math.floor(performance.now() / ANIMATION_FRAME_MS);
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
   let currentPlayerSprite: Container | null = null;
   let walkState: WalkState | null = null;
-  // The most recently computed walk offset (pixels). Cached so rebuildTiles
+  // The most recently computed walk offset (pixels). Cached so updatePlayer
   // and the walk ticker share one source of truth — avoids duplicating the
   // `(to-from) * progress * TILE_SIZE` formula in two places that could
   // drift apart later.
@@ -349,91 +357,58 @@ async function startApp(loaded: CompleteLoadedFiles) {
     return Math.floor(player.y);
   }
 
-  function rebuildTiles() {
-    if (tileContainer) {
-      app.stage.removeChild(tileContainer);
-      tileContainer.destroy({ children: true });
+  function updateTiles(visible: ViewRect) {
+    // In the offline map, lower floors share the current floor's screen
+    // coordinates. Track FullGround coverage shallow-to-deep, while each
+    // floor's zIndex paints the resulting stack deep-to-shallow.
+    const maxDepth = renderZ <= 7 ? 3 : 0;
+    const lastFloor = Math.min(renderZ + maxDepth, 15);
+    for (const [z, floor] of floorLayers) {
+      if (z < renderZ || z > lastFloor) {
+        floor.destroy();
+        floorLayers.delete(z);
+      }
     }
+    const covered = new Set<number>();
+    const frame = animationFrame();
+    for (let z = renderZ; z <= lastFloor; z++) {
+      let floor = floorLayers.get(z);
+      if (!floor) {
+        floor = new TileFloor(datIndex, getTileTexture, animatedSprites);
+        floor.container.zIndex = -z;
+        tileContainer.addChild(floor.container);
+        floorLayers.set(z, floor);
+      }
+      floor.update(tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, z), covered, frame);
+      if (z === lastFloor) break;
+      for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, z)) {
+        if (tile.items.some(item => datIndex.get(item.clientId)?.attrs.has(DatAttr.FullGround))) {
+          covered.add(tilePositionKey(tile.x, tile.y));
+        }
+      }
+    }
+    lightOverlay?.destroy();
+    lightOverlay = null;
 
-    const visible = viewport.getVisibleTiles();
-    lastVisibleKey = `${visible.x1},${visible.y1},${visible.x2},${visible.y2}`;
+    if (ambient.enabled) {
+      const sprite = buildIlluminationOverlay(
+        app, tileMap, datIndex, lightMask,
+        illuminationTexture, lightSpritePool,
+        visible.x1, visible.y1, visible.x2, visible.y2, renderZ,
+        ambient,
+      );
+      sprite.zIndex = 1;
+      tileContainer.addChild(sprite);
+      lightOverlay = sprite;
+    }
+  }
 
-    // --- Multi-floor rendering (authentic OTClient approach) ---
-    // Above ground (z <= 7), render visible floors below at full opacity at
-    // the SAME screen position as the current floor (no per-z screen offset).
-    // The iso/3D illusion comes purely from tall items: walls and stair tops
-    // (height>1) draw their top halves 32px up, poking into the floor above's
-    // visual band. FullGround tiles on shallower floors occlude lower floors
-    // at the same (tx, ty). Non-FullGround tiles (holes, stair landings)
-    // let the lower floor show through directly underneath.
-    const MAX_VISIBLE_FLOORS_BELOW = 3;
-
-    // Split tile rendering around the player's row so the player draws on
-    // top of items at and north of its tile (floor, decorations, walls
-    // behind it) but behind items south (trees, fences). Including the
-    // player's own row in `above` means the floor and items on the player's
-    // tile draw BEHIND the player sprite — which is what we want.
-    const playerRow = computeRenderRow();
+  function updatePlayer(playerRow: number) {
     lastRenderRow = playerRow;
     lastPlayerX = player.x;
     lastPlayerY = player.y;
     lastPlayerDirection = player.direction;
-    const above = renderTileRegion(
-      tileMap, datIndex, atlasTextures, layout,
-      visible.x1, visible.y1, visible.x2, Math.min(playerRow, visible.y2), renderZ,
-    );
-    const below = renderTileRegion(
-      tileMap, datIndex, atlasTextures, layout,
-      visible.x1, Math.max(playerRow + 1, visible.y1), visible.x2, visible.y2, renderZ,
-    );
-    tileContainer = new Container();
-
-    // Collect all animated sprites in one pass at the end.
-    const allAnimated: typeof animatedSprites = [];
-
-    if (renderZ <= 7) {
-      const maxDepth = Math.min(MAX_VISIBLE_FLOORS_BELOW, 15 - renderZ);
-
-      // Cumulative FullGround occlusion: a tile at depth d, position (tx, ty)
-      // is occluded if any shallower floor (depth d' < d) has a FullGround
-      // item at the SAME (tx, ty). Stair landings, holes, and other
-      // non-FullGround tiles let the floor below show through directly.
-      const occlusionByDepth: Set<number>[] = [];
-      const cumulative = new Set<number>();
-      for (let d = 0; d < maxDepth; d++) {
-        const floorZ = renderZ + d;
-        for (const tile of tileMap.tilesInRegion(
-          visible.x1, visible.y1, visible.x2, visible.y2, floorZ,
-        )) {
-          for (const item of tile.items) {
-            const tt = datIndex.get(item.clientId);
-            if (tt?.attrs.has(DatAttr.FullGround)) {
-              cumulative.add(tilePositionKey(tile.x, tile.y));
-              break;
-            }
-          }
-        }
-        occlusionByDepth.push(new Set(cumulative));
-      }
-
-      // Render deep-to-shallow at full opacity, all at the same screen
-      // position as the current floor. Tall items (walls, stair tops) on
-      // lower floors naturally draw their top halves 32px up — that's the
-      // entire isometric/3D effect.
-      for (let depth = maxDepth; depth >= 1; depth--) {
-        const floor = renderTileRegion(
-          tileMap, datIndex, atlasTextures, layout,
-          visible.x1, visible.y1, visible.x2, visible.y2, renderZ + depth,
-          occlusionByDepth[depth - 1],
-        );
-        tileContainer.addChild(floor.container);
-        allAnimated.push(...floor.animated);
-      }
-    }
-    allAnimated.push(...above.animated, ...below.animated);
-    animatedSprites = allAnimated;
-
-    tileContainer.addChild(above.container);
+    currentPlayerSprite?.destroy({ children: true });
     const playerSprite = renderPlayer(player, creatureIndex, atlasTextures, atlasPages, layout, tintedOutfitCache);
     if (playerSprite) {
       // Apply the current walk offset on creation so a mid-walk rebuild
@@ -443,26 +418,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
         playerSprite.x = lastWalkOffsetX;
         playerSprite.y = lastWalkOffsetY;
       }
-      tileContainer.addChild(playerSprite);
+      playerSprite.zIndex = creatureDrawOrder(playerRow, player.x);
+      floorLayers.get(renderZ)!.container.addChild(playerSprite);
     }
     currentPlayerSprite = playerSprite;
-    tileContainer.addChild(below.container);
-
-    if (ambient.enabled) {
-      const sprite = buildIlluminationOverlay(
-        app, tileMap, datIndex, lightMask,
-        illuminationTexture, lightSpritePool,
-        visible.x1, visible.y1, visible.x2, visible.y2, renderZ,
-        ambient,
-      );
-      tileContainer.addChild(sprite);
-    }
-
-    app.stage.addChild(tileContainer);
   }
 
   function updateTransform() {
-    if (!tileContainer) return;
     const offset = viewport.getContainerOffset();
     tileContainer.x = offset.x;
     tileContainer.y = offset.y;
@@ -537,15 +499,19 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // Fire-and-forget — if expansion lands, the worker callback will
     // call render(true) on its own. We don't wait here.
     tryExpand(visible);
+    const tilesChanged = forceRebuild || key !== lastVisibleKey;
+    if (tilesChanged) {
+      updateTiles(visible);
+      lastVisibleKey = key;
+    }
     if (
-      forceRebuild
-      || key !== lastVisibleKey
+      tilesChanged
       || renderRow !== lastRenderRow
       || player.x !== lastPlayerX
       || player.y !== lastPlayerY
       || player.direction !== lastPlayerDirection
     ) {
-      rebuildTiles();
+      updatePlayer(renderRow);
     }
     updateTransform();
   }
@@ -557,18 +523,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // durations weren't stored in the .dat until ~10.50+). The ticker fires
   // at 60 Hz; skip work on the ~30 frames in a row where the animation
   // frame index hasn't actually advanced.
-  const ANIMATION_FRAME_MS = 500;
   let lastFrame = -1;
   app.ticker.add(() => {
-    if (animatedSprites.length === 0) return;
-    const frame = Math.floor(performance.now() / ANIMATION_FRAME_MS);
+    if (animatedSprites.size === 0) return;
+    const frame = animationFrame();
     if (frame === lastFrame) return;
     lastFrame = frame;
-    for (const a of animatedSprites) {
-      const phase = frame % a.texturesByPhase.length;
-      const tex = a.texturesByPhase[phase];
-      if (tex && a.sprite.texture !== tex) a.sprite.texture = tex;
-    }
+    for (const item of animatedSprites) setItemAnimationFrame(item, frame);
   });
 
   // --- Mobile joystick ---
@@ -722,7 +683,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
     // Render BEFORE applying the offset on the existing sprite. render()
     // may rebuild the tile container (when the visible region key, render
-    // row, or player tile changes mid-walk); rebuildTiles picks up
+    // row, or player tile changes mid-walk); updatePlayer picks up
     // lastWalkOffsetX/Y so the freshly-created player container is already
     // at the correct interpolated position when added to the scene graph.
     render();

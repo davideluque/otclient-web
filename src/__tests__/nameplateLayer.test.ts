@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Container } from 'pixi.js';
+import { creatureDrawOrder } from '../lib/render/tileFloor';
 import { drawCreatures } from '../lib/render/creatures';
 import type { NameplateHandle } from '../lib/render/nameplate';
 import { GameWorld, type WorldCreature } from '../lib/GameWorld';
@@ -40,8 +41,10 @@ function worldWith(creatures: WorldCreature[]): GameWorld {
 }
 
 describe('drawCreatures nameplate parenting', () => {
-  const draw = (world: GameWorld, floorLayer: Container, selfPlateLayer: Container | null) => {
-    const nameplates = new Map<number, NameplateHandle>();
+  const draw = (
+    world: GameWorld, floorLayer: Container, selfPlateLayer: Container | null,
+    nameplates = new Map<number, NameplateHandle>(),
+  ) => {
     drawCreatures(
       world,
       {} as SpriteAtlas,
@@ -66,6 +69,22 @@ describe('drawCreatures nameplate parenting', () => {
 
     expect(nameplates.get(1)?.container.parent).toBe(selfPlateLayer);
     expect(nameplates.get(2)?.container.parent).toBe(floorLayer);
+  });
+
+  it('keeps a sprite-less NPC plate behind the southern row after a redraw', () => {
+    const world = worldWith([creature(2, 'An NPC', 50, 60, 8)]);
+    const floor = new Container();
+    floor.sortableChildren = true;
+    const southernTile = new Container();
+    southernTile.zIndex = creatureDrawOrder(60, 0xffff) + 1;
+    floor.addChild(southernTile);
+    const plates = draw(world, floor, null);
+    const plate = plates.get(2)!.container;
+    floor.sortChildren();
+    expect(floor.children).toEqual([plate, southernTile]);
+    draw(world, floor, null, plates);
+    floor.sortChildren();
+    expect(floor.children).toEqual([plate, southernTile]);
   });
 
   it('falls back to per-floor parenting when no top layer exists', () => {

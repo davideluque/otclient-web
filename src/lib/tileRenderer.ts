@@ -234,9 +234,29 @@ export interface AnimatedSprite {
   texturesByPhase: (Texture | null)[];
 }
 
+export function setItemAnimationFrame(item: AnimatedSprite, frame: number): void {
+  let phase = frame % item.texturesByPhase.length;
+  // Missing later frames hold the preceding image. Phase zero is present
+  // for every registered sprite, including one first seen during a gap.
+  while (phase > 0 && !item.texturesByPhase[phase]) phase--;
+  const texture = item.texturesByPhase[phase];
+  if (texture && item.sprite.texture !== texture) item.sprite.texture = texture;
+}
+
 export interface RenderedRegion {
   container: Container;
   animated: AnimatedSprite[];
+}
+
+export function tileTextureLookup(atlasTextures: AtlasTextures, layout: Map<number, SpriteLocation>) {
+  const textureCache = new Map<number, Texture | null>();
+  return (spriteId: number): Texture | null => {
+    const cached = textureCache.get(spriteId);
+    if (cached !== undefined) return cached;
+    const texture = getSpriteTexture(spriteId, atlasTextures, layout);
+    textureCache.set(spriteId, texture);
+    return texture;
+  };
 }
 
 /**
@@ -256,15 +276,7 @@ export function renderTileRegion(
   const container = new Container();
   const animated: AnimatedSprite[] = [];
 
-  // Cache textures to avoid recreating for the same sprite ID
-  const textureCache = new Map<number, Texture | null>();
-
-  function getTexture(spriteId: number): Texture | null {
-    if (textureCache.has(spriteId)) return textureCache.get(spriteId)!;
-    const tex = getSpriteTexture(spriteId, atlasTextures, layout);
-    textureCache.set(spriteId, tex);
-    return tex;
-  }
+  const getTexture = tileTextureLookup(atlasTextures, layout);
 
   for (const tile of source.tilesInRegion(x1, y1, x2, y2, z)) {
     if (skipPositions?.has(tilePositionKey(tile.x, tile.y))) continue;
@@ -274,7 +286,7 @@ export function renderTileRegion(
   return { container, animated };
 }
 
-function renderTile(
+export function renderTile(
   tile: ResolvedTile,
   container: Container,
   animated: AnimatedSprite[],

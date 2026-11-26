@@ -1,3 +1,4 @@
+import { ParseError } from './parseError';
 import { BinaryReader } from './BinaryReader';
 import { NODE_START, NODE_END, readNodeData, skipNode } from './nodeTree';
 
@@ -80,22 +81,25 @@ export interface OtbFile {
 
 function parseVersion(bytes: Uint8Array): OtbVersion {
   const reader = new BinaryReader(bytes.buffer as ArrayBuffer);
-  // Root node starts with a type byte (0x00), skip it
-  reader.skip(1);
+  if (reader.getU8() !== 0) throw new ParseError('Invalid OTB root node type');
 
   // Skip 4 bytes (flags = 0 for root)
   reader.skip(4);
 
-  // Skip attribute header (type byte + length u16)
-  reader.skip(1 + 2);
-
+  if (reader.getU8() !== 1) throw new ParseError('Missing OTB version attribute');
+  const size = reader.getU16();
+  // The standard 7.6 header is three uint32 values and a 128-byte CSD.
+  // Preserve support for the extra version word this parser previously read.
+  const extended = size === 144;
+  if (size !== 140 && !extended) throw new ParseError(`Unsupported OTB version attribute size: ${size}`);
   const version = reader.getU32();
-  const majorVersion = reader.getU32();
+  const majorVersion = extended ? reader.getU32() : version;
   const minorVersion = reader.getU32();
   const buildNumber = reader.getU32();
 
   // CSD version: 128-byte null-terminated string
   const csdBytes = bytes.subarray(reader.position, reader.position + 128);
+  reader.skip(128);
   const nullIdx = csdBytes.indexOf(0);
   const csdVersion = new TextDecoder().decode(csdBytes.subarray(0, nullIdx >= 0 ? nullIdx : 128));
 
@@ -152,6 +156,7 @@ function parseItem(bytes: Uint8Array): OtbItem {
 
     // Ensure we've advanced past this attribute's data
     const consumed = reader.position - attrStart;
+    if (consumed > attrLen) throw new ParseError(`Invalid OTB attribute length for type ${attrType}`);
     if (consumed < attrLen) {
       reader.skip(attrLen - consumed);
     }
@@ -166,13 +171,13 @@ export function parseOtb(buffer: ArrayBuffer): OtbFile {
 
   // File starts with 4 zero bytes (identifier), then NODE_START
   if (data.length < 5) {
-    throw new Error('Invalid OTB file: buffer too small');
+    throw new ParseError('Invalid OTB file: buffer too small');
   }
   offset += 4;
 
   // Expect NODE_START for root
   if (data[offset] !== NODE_START) {
-    throw new Error(`Expected NODE_START at offset ${offset}, got 0x${data[offset].toString(16)}`);
+    throw new ParseError(`Expected NODE_START at offset ${offset}, got 0x${data[offset].toString(16)}`);
   }
   offset++;
 
@@ -223,6 +228,7 @@ export function parseOtb(buffer: ArrayBuffer): OtbFile {
     }
   }
 
+  if (data[offset] !== NODE_END) throw new ParseError('Truncated OTB root: missing NODE_END');
   return { version, items, serverToClient, serverIdToFlags };
 }
 

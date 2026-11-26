@@ -1,3 +1,4 @@
+import { ParseError } from './parseError';
 import { BinaryReader } from './BinaryReader';
 
 // --- Enums & constants ---
@@ -182,6 +183,12 @@ function parseFrameGroup(reader: BinaryReader): FrameGroup {
   // 7.6 has no enhanced animations (that's 1050+)
 
   const totalSprites = width * height * layers * numPatternX * numPatternY * numPatternZ * animationPhases;
+  if (totalSprites === 0) {
+    throw new ParseError('Invalid DAT frame group: dimensions and pattern counts must be positive');
+  }
+  if (totalSprites > (reader.length - reader.position) / 2) {
+    throw new ParseError('Truncated DAT frame group: sprite count exceeds remaining data');
+  }
   const spriteIds: number[] = new Array(totalSprites);
 
   // 7.6 uses U16 sprite IDs (U32 is 960+)
@@ -218,6 +225,7 @@ export function parseDat(buffer: ArrayBuffer): DatFile {
 
   // Item IDs start at 100, others at 1
   const numItems = itemCount - ITEM_ID_OFFSET + 1;
+  if (numItems < 0) throw new ParseError(`Invalid DAT maximum item ID: ${itemCount}`);
   const numCreatures = creatureCount;
   const numEffects = effectCount;
   const numMissiles = missileCount;

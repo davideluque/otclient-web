@@ -1,3 +1,4 @@
+import { ParseError } from './parseError';
 import { BinaryReader } from './BinaryReader';
 import { NODE_START, NODE_END, readNodeData, skipNode } from './nodeTree';
 
@@ -140,13 +141,13 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
 
   // Skip 4-byte file identifier
   if (data.length < 5) {
-    throw new Error('Invalid OTBM file: buffer too small');
+    throw new ParseError('Invalid OTBM file: buffer too small');
   }
   offset += 4;
 
   // Root NODE_START
   if (data[offset] !== NODE_START) {
-    throw new Error(`Expected NODE_START at offset ${offset}`);
+    throw new ParseError(`Expected NODE_START at offset ${offset}`);
   }
   offset++;
 
@@ -155,7 +156,7 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
   offset = root.nextOffset;
 
   if (root.bytes.length === 0 || root.bytes[0] !== OtbmNode.RootV1) {
-    throw new Error('Invalid OTBM file: expected RootV1 node');
+    throw new ParseError('Invalid OTBM file: expected RootV1 node');
   }
 
   const rootReader = makeReader(root.bytes);
@@ -169,6 +170,8 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
     minorVersionItems: rootReader.getU32(),
   };
 
+  if (header.width === 0 || header.height === 0) throw new ParseError('Invalid OTBM map dimensions');
+
   const tiles: OtbmTile[] = [];
   const towns: OtbmTown[] = [];
   let areaBaseX = 0;
@@ -178,9 +181,9 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
   const MAX_DEPTH = 32;
 
   // Recursive node walker
-  function walkNodes(end: number, depth = 0): void {
-    if (depth > MAX_DEPTH) return;
-    while (offset < end && offset < data.length) {
+  function walkNodes(depth: number): void {
+    if (depth > MAX_DEPTH) throw new ParseError(`OTBM nesting exceeds ${MAX_DEPTH} levels`);
+    while (offset < data.length) {
       const marker = data[offset];
 
       if (marker === NODE_END) {
@@ -199,7 +202,7 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
 
       if (node.bytes.length === 0) {
         // Empty node, skip children
-        walkNodes(data.length, depth + 1);
+        walkNodes(depth + 1);
         continue;
       }
 
@@ -208,7 +211,7 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
       switch (nodeType) {
         case OtbmNode.MapData:
           // Container node — recurse into children
-          walkNodes(data.length, depth + 1);
+          walkNodes(depth + 1);
           break;
 
         case OtbmNode.TileArea: {
@@ -222,7 +225,7 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
             break;
           }
           // Recurse into tile children
-          walkNodes(data.length, depth + 1);
+          walkNodes(depth + 1);
           break;
         }
 
@@ -269,7 +272,7 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
         }
 
         case OtbmNode.Towns:
-          walkNodes(data.length, depth + 1);
+          walkNodes(depth + 1);
           break;
 
         case OtbmNode.Town: {
@@ -280,16 +283,17 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
           const templePosition: Position = { x: r.getU16(), y: r.getU16(), z: r.getU8() };
           towns.push({ id, name, templePosition });
           // Skip any children
-          walkNodes(data.length, depth + 1);
+          walkNodes(depth + 1);
           break;
         }
 
         default:
           // Skip unknown node types and their children
-          walkNodes(data.length, depth + 1);
+          walkNodes(depth + 1);
           break;
       }
     }
+    throw new ParseError('Truncated OTBM node: missing NODE_END');
   }
 
   function walkTileItems(tile: OtbmTile, depth: number): void {
@@ -319,12 +323,13 @@ function parseOtbmInternal(buffer: ArrayBuffer, region?: OtbmRegion): OtbmFile {
       }
 
       // Skip any nested children (container items)
-      walkNodes(data.length, depth + 1);
+      walkNodes(depth + 1);
     }
+    throw new ParseError('Truncated OTBM tile: missing NODE_END');
   }
 
   // Walk root's children
-  walkNodes(data.length, 0);
+  walkNodes(0);
 
   return { header, tiles, towns };
 }

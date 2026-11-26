@@ -39,7 +39,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .container-pane {
-      position: fixed; top: 35%; left: 12px; z-index: 30;
+      position: fixed; top: 35%; left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 30;
       display: flex; flex-direction: column; gap: 8px;
       max-height: 55vh; overflow-y: auto;
       font-family: system-ui, sans-serif; user-select: none;

@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { tryAutoloadFiles } from '../assetAutoload';
 import type { CompleteLoadedFiles } from '../fileLoader';
 import { buildSpriteAtlas, type SpriteAtlas } from '../spriteAtlas';
@@ -109,10 +110,10 @@ export function createAssetPipeline(deps?: Partial<AssetPipelineDeps>): AssetPip
     const loadStartedAt = performance.now();
     await autoload(JAMERA_FILE_KEYS, {
       onStatus: (msg, isError) => {
-        if (isError) console.warn('[jamera-assets]', msg);
-        else console.info('[jamera-assets]', msg);
+        if (isError) debugConsole?.warn('[jamera-assets]', msg);
+        else debugConsole?.info('[jamera-assets]', msg);
       },
-      addFileToList: (name) => console.info('[jamera-assets] loaded', name),
+      addFileToList: (name) => debugConsole?.info('[jamera-assets] loaded', name),
       startApp: async (files: JameraLoadedFiles) => {
         const bytes = files.dat.byteLength + files.spr.byteLength + files.otb.byteLength;
         telemetry('assets-loaded', {
@@ -120,7 +121,7 @@ export function createAssetPipeline(deps?: Partial<AssetPipelineDeps>): AssetPip
           bytes,
           files: JAMERA_FILE_KEYS.length,
         });
-        console.info('[jamera] assets ready (dat/spr/otb)');
+        debugConsole?.info('[jamera] assets ready (dat/spr/otb)');
         wireData = prepareWireData(files);
         readyResolve?.();
         try {
@@ -131,7 +132,7 @@ export function createAssetPipeline(deps?: Partial<AssetPipelineDeps>): AssetPip
           // failure here would permanently short-circuit the guard in
           // load(), and a re-login could never retry.
           loaded = true;
-          console.info(
+          debugConsole?.info(
             `[jamera] atlas cache ready (${atlas.atlasTextures.pages.size} page(s), ${atlas.layout.size} sprites)`,
           );
           // Consumed exactly once — re-logins re-register from scratch.
@@ -144,7 +145,7 @@ export function createAssetPipeline(deps?: Partial<AssetPipelineDeps>): AssetPip
           // buffers are useful for diagnosing the failure in DevTools.
           // `instanceof Error` because JS allows throwing anything; the
           // cast-and-`.message` form crashes if a non-Error is thrown.
-          console.warn('[jamera] atlas build failed:', err instanceof Error ? err.message : err);
+          debugConsole?.warn('[jamera] atlas build failed:', err instanceof Error ? err.message : err);
         }
         if (import.meta.env.DEV && typeof window !== 'undefined') {
           // Dev-only DevTools hooks for poking at the parsed assets +
@@ -158,7 +159,7 @@ export function createAssetPipeline(deps?: Partial<AssetPipelineDeps>): AssetPip
       },
     })
       .catch((err) => {
-        console.warn('[jamera] asset auto-load failed:', err instanceof Error ? err.message : err);
+        debugConsole?.warn('[jamera] asset auto-load failed:', err instanceof Error ? err.message : err);
       })
       .finally(() => {
         loading = false;

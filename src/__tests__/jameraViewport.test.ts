@@ -7,8 +7,11 @@ import {
   PORTRAIT_PLAY_TILES_X,
   VIEWPORT_EVENT,
   computeCoverZoom,
+  getPlayArea,
   bindViewportCover,
 } from '../lib/jamera/viewport';
+import { screenToWorldTile } from '../lib/jamera/screenSpace';
+import type { GameWorld } from '../lib/GameWorld';
 import { TILE_SIZE } from '../constants';
 import type { Application } from 'pixi.js';
 
@@ -66,6 +69,36 @@ describe('bindViewportCover', () => {
 
     unbind();
     window.removeEventListener(VIEWPORT_EVENT, onViewport);
+  });
+
+  it('keeps the canvas full-bleed and updates the playable origin when the notch changes sides', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    const css = document.documentElement.style;
+    css.setProperty('--game-inset-left', '47px');
+    css.setProperty('--game-inset-bottom', '21px');
+    const { app, resize, scale } = makeApp();
+    const unbind = bindViewportCover(app);
+    try {
+      const width = window.innerWidth - 47;
+      const height = window.innerHeight - 21;
+      expect(resize).toHaveBeenCalledWith(window.innerWidth, window.innerHeight);
+      expect(scale.x).toBeCloseTo(computeCoverZoom(width, height));
+      expect(getPlayArea(app)).toEqual({ x: 47, y: 0, width, height });
+      const world = { playerX: 80, playerY: 90, playerZ: 7 } as GameWorld;
+      expect(screenToWorldTile(app, world, 47 + width / 2, height / 2)).toEqual({ x: 80, y: 90, z: 7 });
+
+      css.removeProperty('--game-inset-left');
+      css.setProperty('--game-inset-right', '47px');
+      window.dispatchEvent(new Event('orientationchange'));
+      vi.advanceTimersToNextFrame();
+      vi.advanceTimersToNextFrame();
+      expect(getPlayArea(app)).toEqual({ x: 0, y: 0, width, height });
+      expect(resize).toHaveBeenCalledTimes(1);
+    } finally {
+      unbind();
+      for (const side of ['left', 'right', 'bottom']) css.removeProperty(`--game-inset-${side}`);
+      vi.useRealTimers();
+    }
   });
 
   it('a no-change re-apply neither resizes nor re-dispatches', () => {

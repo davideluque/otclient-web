@@ -1,0 +1,6 @@
+:root {
+  --game-inset-top: env(safe-area-inset-top, 0px);
+  --game-inset-right: env(safe-area-inset-right, 0px);
+  --game-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --game-inset-left: env(safe-area-inset-left, 0px);
+}

@@ -48,6 +48,20 @@ export function registerWireSkips(dispatcher: PacketDispatcher, protocol: GamePr
   dispatcher.on(serverOp.InventorySet, (p) => { p.skip(1); parseItem(p); });
   dispatcher.on(serverOp.InventoryClear, skipBytes(1));
 
+  // NPC shop window (0x7A-0x7C) — the shop binding replaces these.
+  dispatcher.on(serverOp.ShopOpen, (p) => {
+    p.getString(); // npc name
+    const count = p.getU16();
+    // U16 serverId, U16 clientSpriteId, U8 subType, name, U32 buy, U32 sell
+    for (let i = 0; i < count; i++) { p.skip(5); p.getString(); p.skip(8); }
+  });
+  dispatcher.on(serverOp.ShopGoods, (p) => {
+    p.skip(4); // money
+    const count = p.getU8();
+    p.skip(count * 4); // U16 serverId + U16 owned count each
+  });
+  dispatcher.on(serverOp.ShopClose, consumeOpcodeOnly);
+
   // Trade windows.
   const trade = (p: InputPacket): void => {
     p.getString(); // counterpart name

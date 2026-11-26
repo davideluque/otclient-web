@@ -43,7 +43,9 @@ export class Viewport {
   centerY: number;
   zoom: number;
 
-  /** Screen dimensions in pixels. */
+  /** Origin and dimensions of the playable rectangle in canvas pixels. */
+  screenLeft: Pixel;
+  screenTop: Pixel;
   screenWidth: Pixel;
   screenHeight: Pixel;
 
@@ -56,6 +58,8 @@ export class Viewport {
   constructor(opts: {
     centerX: number;
     centerY: number;
+    screenLeft?: Pixel;
+    screenTop?: Pixel;
     screenWidth: Pixel;
     screenHeight: Pixel;
     zoom?: number;
@@ -65,6 +69,8 @@ export class Viewport {
   }) {
     this.centerX = opts.centerX;
     this.centerY = opts.centerY;
+    this.screenLeft = opts.screenLeft ?? 0;
+    this.screenTop = opts.screenTop ?? 0;
     this.screenWidth = opts.screenWidth;
     this.screenHeight = opts.screenHeight;
     const fallbackPlay = computePlayZoom(opts.screenWidth, opts.screenHeight);
@@ -112,6 +118,11 @@ export class Viewport {
     };
   }
 
+  containsPoint(x: Pixel, y: Pixel): boolean {
+    return x >= this.screenLeft && x < this.screenLeft + this.screenWidth
+      && y >= this.screenTop && y < this.screenTop + this.screenHeight;
+  }
+
   /**
    * Pan the camera by a pixel delta (screen space).
    */
@@ -142,8 +153,8 @@ export class Viewport {
   getContainerOffset(): { x: Pixel; y: Pixel } {
     const tilePixel = this.tileSizeOnScreen;
     return {
-      x: this.screenWidth / 2 - this.centerX * tilePixel,
-      y: this.screenHeight / 2 - this.centerY * tilePixel,
+      x: this.screenLeft + this.screenWidth / 2 - this.centerX * tilePixel,
+      y: this.screenTop + this.screenHeight / 2 - this.centerY * tilePixel,
     };
   }
 }

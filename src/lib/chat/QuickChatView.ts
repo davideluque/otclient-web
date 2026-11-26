@@ -64,7 +64,7 @@ function ensureStyles(): void {
     .quick-chat.landscape {
       top: 0; bottom: 0;
       border-radius: 0 12px 12px 0;
-      padding-left: env(safe-area-inset-left, 0px);
+      padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
       width: 38vw; max-width: 420px; min-width: 240px;
     }
     .quick-chat-head {

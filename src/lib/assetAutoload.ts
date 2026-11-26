@@ -8,6 +8,7 @@
 // network — this is what makes the installed PWA boot instantly and work
 // offline once the assets have been seen at least once.
 
+import { debugConsole } from './debugConsole';
 import type { CompleteLoadedFiles } from './fileLoader';
 import { resolveVersion } from './clientVersion';
 import { cacheAvailable, clearCached, consumeEvictionNotice, getCached } from './assetCache';
@@ -77,7 +78,7 @@ export async function tryAutoload(options: AutoloadOptions): Promise<boolean> {
       // manifest/upload paths so one bad cache write can't brick the app.
       // Reset the status too: if the manifest path bails silently (e.g.
       // offline), "Loading cached assets..." must not linger as a lie.
-      console.warn('Cached assets failed to boot; clearing cache:', e);
+      debugConsole?.warn('Cached assets failed to boot; clearing cache:', e);
       await clearCached(version);
       options.onStatus('Could not start from saved assets. Drop files to load manually.', true);
     }
@@ -120,7 +121,7 @@ async function fetchSelectedFiles<K extends FileKey>(
     if (!res.ok) return false;
     const json: unknown = await res.json();
     if (!isValidManifest(json, fileKeys)) {
-      console.warn(`Asset autoload: malformed manifest at ${base}/manifest.json`);
+      debugConsole?.warn(`Asset autoload: malformed manifest at ${base}/manifest.json`);
       return false;
     }
     manifest = json;
@@ -163,7 +164,7 @@ async function fetchSelectedFiles<K extends FileKey>(
     await options.startApp(loaded);
     return true;
   } catch (e) {
-    console.warn('Asset autoload failed, falling back to manual upload:', e);
+    debugConsole?.warn('Asset autoload failed, falling back to manual upload:', e);
     options.onStatus('Could not load assets. Drop files to load manually.', true);
     return false;
   }

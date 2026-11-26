@@ -1,3 +1,4 @@
+import { debugConsole } from '../../debugConsole';
 import { Connection } from './Connection';
 import { PacketDispatcher } from './PacketDispatcher';
 import { generateXteaKey, type XteaKey } from './xtea';
@@ -74,7 +75,7 @@ export class GameClient {
     try {
       this.gameConn.send(pong, this.protocol.config.useXTEA);
     } catch (err) {
-      console.warn('[net] pong failed:', err instanceof Error ? err.message : err);
+      debugConsole?.warn('[net] pong failed:', err instanceof Error ? err.message : err);
     }
   }
 
@@ -143,7 +144,7 @@ export class GameClient {
     this.setState('entering_game');
     this.loginConn.disconnect();
 
-    console.info(
+    debugConsole?.info(
       `[net] game phase: announced ${character.worldIp}:${character.worldPort}, routing via proxy ${this.proxyUrl}`,
     );
     // Disconnect any prior gameConn before reassigning — otherwise a

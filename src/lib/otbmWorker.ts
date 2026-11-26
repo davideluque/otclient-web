@@ -13,6 +13,7 @@
  *   OUT { id: number, error: string }           failure or no-init
  */
 
+import { ParseError } from './parseError';
 import { parseOtbmRegion } from './otbm';
 import type { OtbmRegion } from './otbm';
 
@@ -54,6 +55,7 @@ self.onmessage = (e: MessageEvent<InboundMessage>) => {
       self.postMessage({
         id: msg.id,
         error: err instanceof Error ? err.message : String(err),
+        parseError: err instanceof ParseError,
       });
     }
   }

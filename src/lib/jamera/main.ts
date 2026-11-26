@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
 import { OutputPacket } from '../net/common/OutputPacket';
@@ -19,6 +20,7 @@ import type { ChatManager } from '../chat/ChatManager';
 import { bindStats, type StatsBindingHandle } from './statsBinding';
 import { bindInventory, type InventoryBindingHandle } from './inventoryBinding';
 import { bindContainers, type ContainerBindingHandle } from './containerBinding';
+import { bindShop, type ShopBindingHandle } from './shopBinding';
 import { bindMinimap, type MinimapBindingHandle } from './minimapBinding';
 import { bindBattleList, type BattleBindingHandle } from './battleBinding';
 import { bindVip, type VipBindingHandle } from './vipBinding';
@@ -75,7 +77,7 @@ if (import.meta.env.DEV && params.get('telemetry') !== '0' && proxyUrl) {
   try {
     initTelemetry(proxyUrl);
   } catch (e) {
-    console.warn('[telemetry] init failed, continuing without:', e instanceof Error ? e.message : e);
+    debugConsole?.warn('[telemetry] init failed, continuing without:', e instanceof Error ? e.message : e);
   }
 }
 
@@ -108,6 +110,8 @@ mountLoginScreen(root, {
     teardownInventory = null;
     teardownContainers?.destroy();
     teardownContainers = null;
+    teardownShop?.destroy();
+    teardownShop = null;
     // The renderer too: its container and tinted-outfit textures belong
     // to the dead session (mountRenderer also bumps the epoch on the
     // next login, but freeing GPU resources shouldn't wait for one).
@@ -153,9 +157,7 @@ mountLoginScreen(root, {
     // it on `window` would be a credential leak.
     if (import.meta.env.DEV) {
       (window as unknown as { jameraClient: typeof client }).jameraClient = client;
-      console.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
-    } else {
-      console.info('[jamera] in_game — client attached locally (suppressed from window in prod)');
+      debugConsole?.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
     }
     // Baseline consumers for the full 7.6 wire vocabulary — without
     // these, the first unhandled opcode in a frame silently drops the
@@ -187,13 +189,15 @@ mountLoginScreen(root, {
     teardownChat?.destroy();
     teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
+    const renderThumb = (id: number, subType = 0) => {
+      const atlas = assetPipeline.atlas;
+      return atlas ? renderItemThumbnail(id, atlas.datIndex, atlas.layout, atlas.atlasPages, subType) : null;
+    };
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane
       // binds; slots re-render on every 0x78, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
       // Late-bound: interactions mount with the renderer (after the
       // atlas), later than this binding — the optional chain no-ops in
       // that brief window instead of arming a dead handle.
@@ -205,14 +209,17 @@ mountLoginScreen(root, {
       // Same lazy atlas read as the inventory pane above: windows
       // re-render on every container packet, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
       // Drop target: the tile under the player, read at selection time.
       playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
       // Same late-bound interactions handle as the inventory pane above.
       armUseWith: (from) => teardownInteractions?.armUseWith(from),
       armTrade: (from) => teardownInteractions?.armTrade(from),
+    });
+    teardownShop?.destroy();
+    teardownShop = bindShop(client, document.body, {
+      // Same lazy atlas read as the container pane above.
+      renderThumb,
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
@@ -235,9 +242,7 @@ mountLoginScreen(root, {
     });
     teardownTrade?.destroy();
     teardownTrade = bindTrade(client, document.body, {
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
     });
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the
@@ -330,7 +335,7 @@ mountLoginScreen(root, {
           try {
             client.send(client.getProtocol().actions.buildLogout());
           } catch (e) {
-            console.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
+            debugConsole?.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
           }
           // The server saves and closes; the disconnect flows through
           // onLeaveGame, which tears every per-session surface down.
@@ -342,7 +347,7 @@ mountLoginScreen(root, {
       (window as unknown as { jameraChat: typeof teardownChat }).jameraChat = teardownChat;
     }
     ensurePixiApp().catch((err) => {
-      console.warn('[jamera] PIXI bootstrap failed:', err);
+      debugConsole?.warn('[jamera] PIXI bootstrap failed:', err);
     });
     void mountRenderer(world, teardownChat.manager, client);
   },
@@ -404,7 +409,7 @@ function ensurePixiApp(): Promise<Application> {
         preference: rendererPreference,
         resolution: app.renderer.resolution,
       });
-      console.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
+      debugConsole?.info(`[jamera] PIXI canvas ready (${app.renderer.name})`);
       if (import.meta.env.DEV) {
         (window as unknown as { jameraPixi: Application }).jameraPixi = app;
       }
@@ -433,7 +438,7 @@ function ensurePixiApp(): Promise<Application> {
 function bindGameWorld(client: GameClient): GameWorld {
   const world = new GameWorld(client.getProtocol());
   world.registerHandlers(client.getDispatcher());
-  console.info('[jamera] GameWorld bound to dispatcher');
+  debugConsole?.info('[jamera] GameWorld bound to dispatcher');
   if (import.meta.env.DEV) {
     // Dev-only DevTools hook so we can inspect live tiles / creatures /
     // player position. Replaced on each re-login so the reference
@@ -474,7 +479,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
   try {
     app = await ensurePixiApp();
   } catch (err) {
-    console.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
+    debugConsole?.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
     return;
   }
   if (epoch !== mountEpoch) return; // superseded while awaiting PIXI
@@ -522,7 +527,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
       world, atlas, app, chatManager,
       selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
     );
-    console.info('[jamera] renderer bound to GameWorld');
+    debugConsole?.info('[jamera] renderer bound to GameWorld');
   };
 
   // Fires immediately when the atlas is already cached (re-login).
@@ -574,7 +579,7 @@ function startPingLoop(client: GameClient): void {
       packet.addU8(ClientOp.Ping);
       client.send(packet);
     } catch (err) {
-      console.warn('[jamera] ping failed:', (err as Error).message);
+      debugConsole?.warn('[jamera] ping failed:', (err as Error).message);
     }
   };
 
@@ -716,6 +721,9 @@ let teardownInventory: InventoryBindingHandle | null = null;
 
 // Per-session container windows (wire state + pane), same lifecycle.
 let teardownContainers: ContainerBindingHandle | null = null;
+
+// Per-session npc shop window (wire state + pane), same lifecycle.
+let teardownShop: ShopBindingHandle | null = null;
 
 // Per-session canvas interactions (look/use), replaced with the renderer.
 let teardownInteractions: InteractionsHandle | null = null;

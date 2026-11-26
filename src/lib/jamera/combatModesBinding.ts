@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { createCombatModes, type CombatModesHandle, type CombatModesState } from '../combatModes';
 import { telemetry } from './telemetry';
 import type { GameClient } from '../net/common/GameClient';
@@ -28,7 +29,7 @@ export function bindCombatModes(client: GameClient, parent: HTMLElement = docume
       client.send(client.getProtocol().actions.buildFightModes(state.fightMode, state.chase, state.secure));
       telemetry('fight-modes', { ...state });
     } catch (e) {
-      console.warn('[jamera] fight modes send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] fight modes send failed:', e instanceof Error ? e.message : e);
     }
   };
 

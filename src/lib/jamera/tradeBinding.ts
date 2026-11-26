@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import type { GameClient } from '../net/common/GameClient';
 import type { InputPacket } from '../net/common/InputPacket';
 import type { MapTileItem } from '../net/common/types';
@@ -76,7 +77,7 @@ export function bindTrade(
     try {
       client.send(packet);
     } catch (e) {
-      console.warn('[jamera] trade send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] trade send failed:', e instanceof Error ? e.message : e);
     }
   };
 

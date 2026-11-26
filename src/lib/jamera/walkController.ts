@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import type { GameClient } from '../net/common/GameClient';
 import { reportMetric } from './metrics';
 import { telemetry } from './telemetry';
@@ -123,7 +124,7 @@ export function createWalkController(opts: WalkControllerOptions): WalkControlle
       // A throw here means the state flipped mid-tick (defensive — the
       // state check above runs in the same synchronous tick). Don't let
       // it kill the interval.
-      console.warn('[jamera] walk send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] walk send failed:', e instanceof Error ? e.message : e);
       return;
     }
     sent.push({

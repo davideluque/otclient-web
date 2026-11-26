@@ -27,7 +27,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .game-menu-btn {
-      position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); right: 8px;
+      position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); right: calc(8px + env(safe-area-inset-right, 0px));
       width: 40px; height: 40px; border-radius: 10px;
       background: rgba(22,22,22,0.9); color: #e0e0e0;
       border: 1px solid #9a9a9a; font-size: 1.1rem;
@@ -38,7 +38,7 @@ function ensureStyles(): void {
       background: rgba(20,20,20,0.98); color: #e0e0e0;
       border-left: 1px solid #9a9a9a;
       font-family: system-ui, sans-serif; font-size: 0.84rem;
-      z-index: 40; padding: 56px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+      z-index: 40; padding: calc(56px + env(safe-area-inset-top, 0px)) env(safe-area-inset-right, 0px) calc(12px + env(safe-area-inset-bottom, 0px)) 0;
       transform: translateX(100%); transition: transform 0.2s ease;
       display: flex; flex-direction: column;
       overflow-y: auto;

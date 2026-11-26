@@ -82,6 +82,10 @@ page**, so once you serve over the LAN there's no URL to hand-edit.
    *different* host, append `?proxy=ws://<other-host>:8090` (honoured only for
    loopback or a host matching the page).
 
+Development builds write browser diagnostics to the console. Run
+`VITE_DEBUG_LOGS=0 npm run dev` to silence them. New diagnostics can use
+`debugConsole?.warn(...)` or another console method from `src/lib/debugConsole.ts`.
+
 ## Project structure
 
 ```
@@ -120,6 +124,10 @@ proxy/
 ```
 
 ## Contributing
+
+Branch protection on `main` requires the CI `check` status. It verifies that
+`quality` (browser and proxy lint, browser build, proxy typecheck, unit tests, and browser E2E)
+and `security` (npm audit for high or critical findings) both passed.
 
 Contributions are welcome! This is an open project. If you're interested in Tibia, mobile gaming, or browser-based game clients, feel free to open an issue or PR.
 

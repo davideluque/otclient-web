@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import type { GameClient } from '../net/common/GameClient';
 import type { WirePosition } from '../net/common/types';
 import { containerSlotPosition, inventorySlotPosition, PLAYER_BACKPACK_SLOT } from '../net/common/virtualPosition';
@@ -59,7 +60,7 @@ export function bindContainers(
       try {
         client.send(packet);
       } catch (e) {
-        console.warn('[jamera] container send failed:', e instanceof Error ? e.message : e);
+        debugConsole?.warn('[jamera] container send failed:', e instanceof Error ? e.message : e);
       }
     };
     pane = createContainerPane(parent, {

@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { createInventoryPane, slotName, type InventoryPaneHandle, type InventoryPaneOptions } from '../inventoryPane';
 import type { GameClient } from '../net/common/GameClient';
 import { inventorySlotPosition, PLAYER_BACKPACK_SLOT } from '../net/common/virtualPosition';
@@ -70,7 +71,7 @@ export function bindInventory(
                   inventorySlotPosition(PLAYER_BACKPACK_SLOT), count ?? 1,
                 ));
               } catch (e) {
-                console.warn('[jamera] unequip send failed:', e instanceof Error ? e.message : e);
+                debugConsole?.warn('[jamera] unequip send failed:', e instanceof Error ? e.message : e);
               }
             },
           }];

@@ -11,6 +11,7 @@ const ALLOWED_PROXY_PROTOCOLS = new Set(['ws:', 'wss:']);
  * forwards `/login` and `/game` on the same host. `isDev` is a parameter (not
  * read inline) so the behaviour is unit-testable.
  */
+import { debugConsole } from '../debugConsole';
 export function defaultProxyUrl(
   pageLocation: Pick<Location, 'protocol' | 'host' | 'hostname'> = window.location,
   isDev: boolean = import.meta.env.DEV,
@@ -60,7 +61,7 @@ export function resolveProxyOverride(
 // Loud fallback: a dev with a typo'd ?proxy= should learn why they're
 // suddenly talking to the default proxy instead of their own.
 function warnRejected(raw: string, reason: string): void {
-  console.warn(`Ignoring ?proxy=${raw} (${reason}); using the default proxy.`);
+  debugConsole?.warn(`Ignoring ?proxy=${raw} (${reason}); using the default proxy.`);
 }
 
 function isSamePageHost(proxyHost: string, pageHost: string): boolean {

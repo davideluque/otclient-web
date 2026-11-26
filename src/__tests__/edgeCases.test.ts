@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { ParseError } from '../lib/parseError';
 import { readNodeData, skipNode, ESCAPE_CHAR, NODE_START, NODE_END } from '../lib/nodeTree';
 import { parseSpr, decodeSprite } from '../lib/spr';
 import { getCreatureSpriteId } from '../lib/player';
@@ -7,12 +8,9 @@ import type { FrameGroup } from '../lib/dat';
 // --- nodeTree edge cases ---
 
 describe('nodeTree edge cases', () => {
-  it('readNodeData handles ESCAPE as last byte', () => {
+  it('readNodeData rejects a dangling ESCAPE', () => {
     const data = new Uint8Array([0x41, ESCAPE_CHAR]); // 'A' then dangling escape
-    const result = readNodeData(data, 0);
-    // Should read 'A' and stop — the escape has no following byte
-    expect(result.bytes.length).toBe(1);
-    expect(result.bytes[0]).toBe(0x41);
+    expect(() => readNodeData(data, 0)).toThrow(ParseError);
   });
 
   it('readNodeData handles ESCAPE followed by NODE_START', () => {

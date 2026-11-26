@@ -18,16 +18,17 @@ function pushU32(bytes: number[], value: number) {
  * Build a root node data block: type byte (0x00) + flags (0) + attr header + version header.
  * Escape special bytes in the output.
  */
-function buildRootData(opts?: { minorVersion?: number }): number[] {
+function buildRootData(opts?: { minorVersion?: number; versionPrefix?: number }): number[] {
   const raw: number[] = [];
   raw.push(0x00); // node type
   pushU32(raw, 0); // flags
 
   // Attribute: type=0x01 (version data), length = 140
   raw.push(0x01);
-  pushU16(raw, 140);
+  pushU16(raw, opts?.versionPrefix === undefined ? 140 : 144);
 
   // Version fields
+  if (opts?.versionPrefix !== undefined) pushU32(raw, opts.versionPrefix);
   pushU32(raw, 3);  // major
   pushU32(raw, opts?.minorVersion ?? 760); // minor (client version)
   pushU32(raw, 0);  // build
@@ -77,7 +78,7 @@ function buildItemNode(serverId: number, clientId: number, flags = 0, group = 0x
 /** Build a complete .otb file buffer. */
 function buildOtb(
   items: Array<{ serverId: number; clientId: number; flags?: number; group?: number }>,
-  opts?: { minorVersion?: number },
+  opts?: { minorVersion?: number; versionPrefix?: number },
 ): ArrayBuffer {
   const bytes: number[] = [];
 
@@ -109,6 +110,11 @@ describe('parseOtb', () => {
     expect(otb.version.majorVersion).toBe(3);
     expect(otb.version.minorVersion).toBe(760);
     expect(otb.version.csdVersion).toBe('OTB 7.60');
+  });
+
+  it('also reads an extended header with a leading version field', () => {
+    const { version } = parseOtb(buildOtb([], { versionPrefix: 7 }));
+    expect(version).toMatchObject({ version: 7, majorVersion: 3, minorVersion: 760, csdVersion: 'OTB 7.60' });
   });
 
   it('parses item nodes with server and client IDs', () => {

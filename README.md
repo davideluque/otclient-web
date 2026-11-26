@@ -126,7 +126,7 @@ proxy/
 ## Contributing
 
 Branch protection on `main` requires the CI `check` status. It verifies that
-`quality` (browser and proxy lint, browser build, proxy typecheck, and tests)
+`quality` (browser and proxy lint, browser build, proxy typecheck, unit tests, and browser E2E)
 and `security` (npm audit for high or critical findings) both passed.
 
 Contributions are welcome! This is an open project. If you're interested in Tibia, mobile gaming, or browser-based game clients, feel free to open an issue or PR.

@@ -460,7 +460,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
       const sprite = buildIlluminationOverlay(
         app, tileMap, datIndex, lightMask,
         illuminationTexture, lightSpritePool,
-        visible.x1, visible.y1, visible.x2, visible.y2, 7,
+        visible.x1, visible.y1, visible.x2, visible.y2, renderZ,
         ambient,
       );
       tileContainer.addChild(sprite);

@@ -11,6 +11,7 @@ import type {
   PlayerProtocol,
   ActionsProtocol,
   ContainersProtocol,
+  ShopProtocol,
   EffectsProtocol,
 } from '../common/types';
 import {
@@ -32,6 +33,13 @@ import {
   buildCloseContainerPacket,
   buildUpContainerPacket,
 } from './containersProtocol';
+import {
+  parseShopOpen,
+  parseShopGoods,
+  buildShopBuyPacket,
+  buildShopSellPacket,
+  buildShopClosePacket,
+} from './shopProtocol';
 import {
   parseCreatureMove,
   parseCreatureTurn,
@@ -90,6 +98,7 @@ export class GameProtocol implements GameProtocolSpec {
   readonly player: PlayerProtocol;
   readonly actions: ActionsProtocol;
   readonly containers: ContainersProtocol;
+  readonly shop: ShopProtocol;
   readonly effects: EffectsProtocol;
   readonly serverOpcodes: ServerOpcodes = ServerOp;
   readonly clientOpcodes: ClientOpcodes = ClientOp;
@@ -174,6 +183,14 @@ export class GameProtocol implements GameProtocolSpec {
       parseRemoveItem: parseContainerRemoveItem,
       buildClose: buildCloseContainerPacket,
       buildUp: buildUpContainerPacket,
+    };
+
+    this.shop = {
+      parseOpen: parseShopOpen,
+      parseGoods: parseShopGoods,
+      buildBuy: buildShopBuyPacket,
+      buildSell: buildShopSellPacket,
+      buildClose: buildShopClosePacket,
     };
 
     this.effects = {

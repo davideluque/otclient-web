@@ -97,6 +97,37 @@ export function createShopPane(
   let shop: OpenShop | null = null;
   let stopDrag: (() => void) | null = null;
 
+  const head = document.createElement('div');
+  head.className = 'head';
+  const name = document.createElement('span');
+  name.className = 'name';
+  const money = document.createElement('span');
+  money.className = 'money';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '✕';
+  close.setAttribute('aria-label', 'Close shop');
+  close.addEventListener('click', () => opts.onClose?.());
+  head.append(name, money, close);
+
+  const tabs = document.createElement('div');
+  tabs.className = 'tabs';
+  const tabButtons = (['buy', 'sell'] as const).map((tabSide) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.textContent = tabSide === 'buy' ? 'Buy' : 'Sell';
+    tab.addEventListener('click', () => {
+      side = tabSide;
+      render();
+    });
+    tabs.appendChild(tab);
+    return { tab, tabSide };
+  });
+
+  const rows = document.createElement('div');
+  rows.className = 'rows';
+  el.append(head, tabs, rows);
+
   const renderRow = (item: ShopItem): HTMLElement => {
     const owned = shop?.goods.get(item.serverId) ?? 0;
     const row = document.createElement('button');
@@ -138,43 +169,21 @@ export function createShopPane(
   const render = (): void => {
     if (!shop) {
       el.style.display = 'none';
-      el.replaceChildren();
+      rows.replaceChildren();
       stopDrag?.();
       stopDrag = null;
       return;
     }
     el.style.display = '';
 
-    const head = document.createElement('div');
-    head.className = 'head';
-    const name = document.createElement('span');
-    name.className = 'name';
     name.textContent = shop.npcName;
-    const money = document.createElement('span');
-    money.className = 'money';
     money.textContent = `${shop.money} gp`;
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.textContent = '✕';
-    close.addEventListener('click', () => opts.onClose?.());
-    head.append(name, money, close);
-
-    const tabs = document.createElement('div');
-    tabs.className = 'tabs';
-    for (const tabSide of ['buy', 'sell'] as const) {
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.textContent = tabSide === 'buy' ? 'Buy' : 'Sell';
-      if (side === tabSide) tab.className = 'active';
-      tab.addEventListener('click', () => {
-        side = tabSide;
-        render();
-      });
-      tabs.appendChild(tab);
+    stopDrag ??= makeDraggable(el, head);
+    for (const { tab, tabSide } of tabButtons) {
+      tab.classList.toggle('active', side === tabSide);
+      tab.setAttribute('aria-pressed', String(side === tabSide));
     }
-
-    const rows = document.createElement('div');
-    rows.className = 'rows';
+    rows.replaceChildren();
     const entries = shop.items.filter((i) => (side === 'buy' ? i.buyPrice > 0 : i.sellPrice > 0));
     if (entries.length === 0) {
       const empty = document.createElement('div');
@@ -184,10 +193,6 @@ export function createShopPane(
     } else {
       for (const item of entries) rows.appendChild(renderRow(item));
     }
-
-    el.replaceChildren(head, tabs, rows);
-    stopDrag?.();
-    stopDrag = makeDraggable(el, head);
   };
 
   return {

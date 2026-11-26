@@ -118,6 +118,22 @@ describe('bindShop', () => {
     binding.destroy();
   });
 
+  it('continues dragging when a goods update refreshes the window', () => {
+    const { client, dispatcher } = makeClient();
+    const binding = bindShop(client, document.body);
+    dispatcher.dispatch(new InputPacket(shopOpenFrame().toArrayBuffer()));
+    const pane = document.querySelector<HTMLElement>('.shop-pane')!;
+    pane.querySelector('.head')!.dispatchEvent(new PointerEvent('pointerdown', {
+      pointerId: 1, isPrimary: true, button: 0, clientX: 10, clientY: 15, bubbles: true,
+    }));
+    dispatcher.dispatch(new InputPacket(shopGoodsFrame(750, []).toArrayBuffer()));
+    window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 40, clientY: 55 }));
+    expect(pane.style.left).toBe('30px');
+    expect(pane.style.top).toBe('40px');
+    expect(pane.querySelector('.money')?.textContent).toBe('750 gp');
+    binding.destroy();
+  });
+
   it('caps sell amounts by owned count and echoes the catalog identity', () => {
     const { client, dispatcher, send } = makeClient();
     registerWireSkips(dispatcher, client.getProtocol());
@@ -138,14 +154,14 @@ describe('bindShop', () => {
     const labels = [...document.querySelectorAll('.action-sheet button')]
       .map((b) => b.textContent ?? '')
       .filter((t) => t.startsWith('Sell'));
-    // Steps 1 and 5 fit within the 7 owned; 10+ do not.
-    expect(labels).toEqual(['Sell 1 — 8 gp', 'Sell 5 — 40 gp']);
+    // Offer the exact stack alongside preset quantities.
+    expect(labels).toEqual(['Sell 1 — 8 gp', 'Sell 5 — 40 gp', 'Sell 7 — 56 gp']);
 
     (
       [...document.querySelectorAll('.action-sheet button')]
-        .find((b) => b.textContent === 'Sell 5 — 40 gp') as HTMLElement
+        .find((b) => b.textContent === 'Sell 7 — 56 gp') as HTMLElement
     ).click();
-    expect(packetBytes(send.mock.calls.at(-1)![0])).toEqual([0x7b, 0x48, 0x08, 0, 5]);
+    expect(packetBytes(send.mock.calls.at(-1)![0])).toEqual([0x7b, 0x48, 0x08, 0, 7]);
     binding.destroy();
   });
 });

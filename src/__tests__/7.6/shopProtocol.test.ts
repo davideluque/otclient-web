@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
 import {
   parseShopOpen,
   parseShopGoods,
   buildShopBuyPacket,
   buildShopSellPacket,
   buildShopClosePacket,
-} from '../lib/net/7.6/shopProtocol';
-import { ClientOp, ServerOp } from '../lib/net/7.6/opcodes';
+} from '../../lib/net/7.6/shopProtocol';
+import { ClientOp, ServerOp } from '../../lib/net/7.6/opcodes';
 
 // Wire contract: jameraServer76 docs/protocol/npc-shop.md (opcodes 0x7A-0x7C).
 

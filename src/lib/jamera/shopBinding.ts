@@ -50,7 +50,7 @@ export function bindShop(
       try {
         client.send(packet);
       } catch (e) {
-        console.warn('[jamera] shop send failed:', e instanceof Error ? e.message : e);
+        if (import.meta.env.DEV) console.warn('[jamera] shop send failed:', e instanceof Error ? e.message : e);
       }
     };
     pane = createShopPane(parent, {
@@ -64,8 +64,9 @@ export function bindShop(
       onItemTap: (side: ShopSide, item: ShopItem, ownedCount: number) => {
         const unitPrice = side === 'buy' ? item.buyPrice : item.sellPrice;
         const cap = side === 'sell' ? Math.min(ownedCount, MAX_AMOUNT) : MAX_AMOUNT;
+        if (cap <= 0) return;
         const amounts = AMOUNT_STEPS.filter((n) => n <= cap);
-        if (amounts.length === 0) return; // nothing to sell
+        if (amounts.at(-1) !== cap) amounts.push(cap);
         const actions: ActionSheetAction[] = amounts.map((amount) => ({
           label: `${side === 'buy' ? 'Buy' : 'Sell'} ${amount} — ${unitPrice * amount} gp`,
           onSelect: () => send(side === 'buy'

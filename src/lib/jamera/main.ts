@@ -190,13 +190,15 @@ mountLoginScreen(root, {
     teardownChat?.destroy();
     teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
+    const renderThumb = (id: number) => {
+      const atlas = assetPipeline.atlas;
+      return atlas ? renderItemThumbnail(id, atlas.datIndex, atlas.layout, atlas.atlasPages) : null;
+    };
     teardownInventory = bindInventory(client, document.body, {
       // Lazy atlas read: the bundle may still be loading when the pane
       // binds; slots re-render on every 0x78, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
       // Late-bound: interactions mount with the renderer (after the
       // atlas), later than this binding — the optional chain no-ops in
       // that brief window instead of arming a dead handle.
@@ -208,9 +210,7 @@ mountLoginScreen(root, {
       // Same lazy atlas read as the inventory pane above: windows
       // re-render on every container packet, so thumbnails appear as
       // soon as the atlas exists.
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
       // Drop target: the tile under the player, read at selection time.
       playerPosition: () => ({ x: world.playerX, y: world.playerY, z: world.playerZ }),
       // Same late-bound interactions handle as the inventory pane above.
@@ -220,9 +220,7 @@ mountLoginScreen(root, {
     teardownShop?.destroy();
     teardownShop = bindShop(client, document.body, {
       // Same lazy atlas read as the container pane above.
-      renderThumb: (id) => jameraAtlas
-        ? renderItemThumbnail(id, jameraAtlas.datIndex, jameraAtlas.layout, jameraAtlas.atlasPages)
-        : null,
+      renderThumb,
     });
     teardownStats?.destroy();
     teardownMinimap?.destroy();
@@ -245,9 +243,7 @@ mountLoginScreen(root, {
     });
     teardownTrade?.destroy();
     teardownTrade = bindTrade(client, document.body, {
-      renderThumb: (id) => assetPipeline.atlas
-        ? renderItemThumbnail(id, assetPipeline.atlas.datIndex, assetPipeline.atlas.layout, assetPipeline.atlas.atlasPages)
-        : null,
+      renderThumb,
     });
     // Per-session: the toggles adapt the live combat binding; reading
     // through the teardownCombat reference keeps them pointing at the

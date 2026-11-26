@@ -10,6 +10,7 @@
  * and when disabled every call is a no-op.
  */
 
+import { debugConsole } from '../debugConsole';
 interface TelemetryEvent {
   /** Client wall-clock ms (Date.now). */
   t: number;
@@ -49,7 +50,7 @@ function flush(): void {
   }).catch((err) => {
     if (!warned) {
       warned = true;
-      console.warn('[telemetry] flush failed (suppressing further warnings):', err?.message ?? err);
+      debugConsole?.warn('[telemetry] flush failed (suppressing further warnings):', err?.message ?? err);
     }
   });
 }
@@ -108,7 +109,7 @@ export function initTelemetry(proxyUrl: string): void {
     dpr: window.devicePixelRatio,
     screen: `${window.innerWidth}x${window.innerHeight}`,
   });
-  console.info(`[telemetry] streaming to ${endpoint} (session ${sessionId})`);
+  debugConsole?.info(`[telemetry] streaming to ${endpoint} (session ${sessionId})`);
 }
 
 /** Test hook: tear the singleton down. */

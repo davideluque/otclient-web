@@ -1,3 +1,4 @@
+import { debugConsole } from '../../debugConsole';
 import { InputPacket } from './InputPacket';
 import { OutputPacket } from './OutputPacket';
 import { xteaEncrypt, xteaDecrypt } from './xtea';
@@ -100,7 +101,7 @@ export class Connection {
 
     if (encrypt) {
       if (!this.xteaKey) {
-        console.error('Cannot encrypt: no XTEA key set');
+        debugConsole?.error('Cannot encrypt: no XTEA key set');
         return;
       }
       payload = xteaEncrypt(payload, this.xteaKey);
@@ -154,7 +155,7 @@ export class Connection {
         this.onPacket?.(packet);
       } catch (e) {
         if (!(e instanceof ParseError)) throw e;
-        console.warn('[net] dropped malformed packet:', e.message);
+        debugConsole?.warn('[net] dropped malformed packet:', e.message);
       }
     }
 

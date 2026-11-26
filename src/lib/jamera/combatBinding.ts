@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import { createSpellBar, type SpellBarHandle } from '../spellBar';
 import { loadSpellSlots, spellByWords, spellIconUrl } from '../spells';
 import type { GameClient } from '../net/common/GameClient';
@@ -59,7 +60,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     try {
       client.send(packet as Parameters<GameClient['send']>[0]);
     } catch (e) {
-      console.warn('[jamera] combat send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] combat send failed:', e instanceof Error ? e.message : e);
     }
   };
 

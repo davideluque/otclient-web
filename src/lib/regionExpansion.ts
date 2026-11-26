@@ -1,3 +1,4 @@
+import { debugConsole } from './debugConsole';
 import type { ViewRect } from './viewport';
 import type { Bounds } from './tileMap';
 import type { OtbmRegion } from './otbm';
@@ -148,7 +149,7 @@ function warnIfRegionMissesDestination(region: OtbmRegion, destination: Point): 
     Math.abs(destination.x - region.centerX) > region.radius ||
     Math.abs(destination.y - region.centerY) > region.radius
   )) {
-    console.warn(
+    debugConsole?.warn(
       `regionExpansion: computed region (center ${region.centerX},${region.centerY} r${region.radius}) does not contain destination (${destination.x},${destination.y})`,
     );
   }

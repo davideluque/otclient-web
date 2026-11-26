@@ -1,3 +1,4 @@
+import { debugConsole } from '../../debugConsole';
 import type { InputPacket } from './InputPacket';
 
 export type OpcodeHandler = (packet: InputPacket) => void;
@@ -38,7 +39,7 @@ export class PacketDispatcher {
         this.defaultHandler(packet);
         return; // Can't continue — unknown opcode means unknown data length
       } else {
-        console.warn(`Unhandled opcode: 0x${opcode.toString(16).padStart(2, '0')}`);
+        debugConsole?.warn(`Unhandled opcode: 0x${opcode.toString(16).padStart(2, '0')}`);
         return; // Can't determine packet boundary for unknown opcodes
       }
     }

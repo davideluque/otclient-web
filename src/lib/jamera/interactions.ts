@@ -1,3 +1,4 @@
+import { debugConsole } from '../debugConsole';
 import type { Application } from 'pixi.js';
 import type { GameClient } from '../net/common/GameClient';
 import type { WalkDirection, WirePosition } from '../net/common/types';
@@ -171,7 +172,7 @@ export function bindInteractions(
     try {
       client.send(packet as Parameters<GameClient['send']>[0]);
     } catch (e) {
-      console.warn('[jamera] interaction send failed:', e instanceof Error ? e.message : e);
+      debugConsole?.warn('[jamera] interaction send failed:', e instanceof Error ? e.message : e);
     }
   }
 

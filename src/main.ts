@@ -1,3 +1,4 @@
+import { debugConsole } from './lib/debugConsole';
 import { Application, Container } from 'pixi.js';
 import { parseDat, DatAttr } from './lib/dat';
 import { parseSpr, releaseSprBuffer } from './lib/spr';
@@ -132,7 +133,7 @@ async function startAppOnce(loaded: CompleteLoadedFiles, fromCache = false): Pro
       } else if (result.reason === 'quota') {
         showStorageNotice(await quotaNoticeText(toCache));
       }
-    }).catch(err => console.warn('asset cache write failed:', err));
+    }).catch(err => debugConsole?.warn('asset cache write failed:', err));
   }
 }
 
@@ -140,7 +141,7 @@ const handleFiles = createFileLoader({
   setStatus,
   addFileToList,
   startApp: startAppOnce,
-  onError: console.error,
+  onError: debugConsole?.error,
 });
 
 // Attempt to auto-load assets from a per-version folder under public/.
@@ -155,7 +156,7 @@ tryAutoload({
       ? 'Your saved game assets were cleared by the browser to free up space. They will be saved again after this load.'
       : 'This browser can\'t store game assets, so offline play and instant boots are unavailable here.');
   },
-}).catch(console.error);
+}).catch(err => debugConsole?.error(err));
 
 // Drag and drop
 dropZone.addEventListener('dragover', (e) => {
@@ -202,7 +203,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // → first tile we can find by scanning.
   const pickedSpawn = pickSpawn(metadata) ?? findFirstTile(loaded.otbm);
   if (!pickedSpawn) {
-    console.warn('OTBM declares no towns and findFirstTile found nothing — spawning at (0, 0, 7). Map is probably empty or has an unusual structure.');
+    debugConsole?.warn('OTBM declares no towns and findFirstTile found nothing — spawning at (0, 0, 7). Map is probably empty or has an unusual structure.');
   }
   const spawn: Position = pickedSpawn ?? { x: 0, y: 0, z: 7 };
 
@@ -225,8 +226,10 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const atlasTextures = createAtlasTextures(atlasPages);
   const layout = computeAtlasLayout(spr.spriteCount, referencedSpriteIds);
   const datIndex = buildDatIndex(dat);
-  const atlasBytes = [...atlasPages.values()].reduce((sum, page) => sum + page.byteLength, 0);
-  console.log(`Atlas CPU buffers: ${(atlasBytes / 1024 / 1024).toFixed(1)} MB across ${atlasPages.size} page(s)`);
+  if (debugConsole) {
+    const bytes = [...atlasPages.values()].reduce((sum, page) => sum + page.byteLength, 0);
+    debugConsole.log(`Atlas CPU buffers: ${(bytes / 1024 / 1024).toFixed(1)} MB across ${atlasPages.size} page(s)`);
+  }
 
   setStatus('Building tile map...');
   const tileMap = new TileMap(otbm, otb);
@@ -276,7 +279,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
     // fails or isn't supported. Log which one actually got selected.
     preference: 'webgpu',
   });
-  console.log(`[render] PixiJS renderer: ${app.renderer.name}`);
+  debugConsole?.log(`[render] PixiJS renderer: ${app.renderer.name}`);
 
   // Hide loader, show canvas
   loaderEl.style.display = 'none';
@@ -525,14 +528,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
       tileMap.merge(expanded);
       if (tileMap.size > sizeBeforeMerge) {
         exhaustedDirections.clear(); // bounds grew — all directions worth retrying
-        console.log('[map] expanded →', tileMap.getBounds(renderZ));
+        debugConsole?.log('[map] expanded →', tileMap.getBounds(renderZ));
         render(true); // tiles changed; rebuild
       } else {
         exhaustedDirections.add(ek);
       }
     }).catch(err => {
       pendingExpansion = false;
-      console.error('[map] expansion failed:', err);
+      debugConsole?.error('[map] expansion failed:', err);
     });
     return;
   }
@@ -826,15 +829,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
             tileMap.merge(expanded);
             if (tileMap.size > sizeBeforeMerge) {
               exhaustedDirections.clear();
-              if (import.meta.env.DEV) {
-                console.log('[map] walk-expand →', tileMap.getBounds(renderZ));
-              }
+              debugConsole?.log('[map] walk-expand →', tileMap.getBounds(renderZ));
               render(true);
             } else {
               exhaustedDirections.add(ek);
             }
           } catch (err) {
-            console.error('[map] walk-expand failed:', err);
+            debugConsole?.error('[map] walk-expand failed:', err);
           }
         }
       }
@@ -991,7 +992,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   // N toggle is now handled by keyboard.ts via the 'night' toggle binding.
 
-  console.log(`Map loaded: ${tileMap.size} tiles, spawn at (${spawn.x}, ${spawn.y}, z=${spawn.z})`);
+  debugConsole?.log(`Map loaded: ${tileMap.size} tiles, spawn at (${spawn.x}, ${spawn.y}, z=${spawn.z})`);
 }
 
 function regionAround(p: Position): OtbmRegion {

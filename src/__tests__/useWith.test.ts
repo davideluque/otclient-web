@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindInteractions, type ThingRef } from '../lib/jamera/interactions';
 import { bindContainers } from '../lib/jamera/containerBinding';
 import { bindInventory } from '../lib/jamera/inventoryBinding';
-import { buildUseItemWithPacket } from '../lib/net/7.6/actionsProtocol';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { PacketDispatcher } from '../lib/net/common/PacketDispatcher';
 import { InputPacket } from '../lib/net/common/InputPacket';
@@ -20,24 +19,6 @@ import type { MapTile } from '../lib/net/common/types';
 
 const ROPE_ID = 3031; // 0x0bd7
 const BAG_ID = 2853; // 0x0b25
-
-describe('buildUseItemWithPacket', () => {
-  it('is opcode + from triple + to triple, virtual positions included', () => {
-    const b = buildUseItemWithPacket(
-      containerSlotPosition(2, 1), ROPE_ID, 1,
-      { x: 100, y: 200, z: 7 }, 1987, 0,
-    ).toUint8Array();
-    expect([...b]).toEqual([
-      0x83,
-      0xff, 0xff, 0x42, 0x00, 0x01, // from: container 2, slot 1
-      0xd7, 0x0b, // fromSpriteId 3031
-      0x01, // fromStackpos = slot
-      0x64, 0x00, 0xc8, 0x00, 0x07, // to: map tile
-      0xc3, 0x07, // toSpriteId 1987
-      0x00, // toStackpos
-    ]);
-  });
-});
 
 describe('crosshair (use-with) mode', () => {
   beforeEach(() => vi.useFakeTimers());

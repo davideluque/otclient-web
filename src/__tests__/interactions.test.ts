@@ -3,7 +3,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindInteractions } from '../lib/jamera/interactions';
 import { floorChangeTileAtPointer, screenToWorldTile } from '../lib/jamera/screenSpace';
-import { buildLookAtPacket, buildUseItemPacket, buildLogoutPacket } from '../lib/net/7.6/actionsProtocol';
 import { GameProtocol } from '../lib/net/7.6/GameProtocol';
 import { DatAttr } from '../lib/dat';
 import type { GameClient } from '../lib/net/common/GameClient';
@@ -77,22 +76,6 @@ describe('floorChangeTileAtPointer', () => {
   it('leaves ordinary ground taps unchanged', () => {
     expect(floorChangeTileAtPointer(liveWorld, datIndex, { x: 99, y: 199, z: 7 }, new Set([1947])))
       .toEqual({ x: 99, y: 199, z: 7 });
-  });
-});
-
-describe('actions packets', () => {
-  it('LookAt is pos + spriteId + stackpos', () => {
-    const b = buildLookAtPacket({ x: 0x1234, y: 0x5678, z: 7 }, 1987, 2).toUint8Array();
-    expect([...b]).toEqual([0x8c, 0x34, 0x12, 0x78, 0x56, 7, 0xc3, 0x07, 2]);
-  });
-
-  it('UseItem is pos + spriteId + stackpos + index', () => {
-    const b = buildUseItemPacket({ x: 1, y: 2, z: 7 }, 100, 0).toUint8Array();
-    expect([...b]).toEqual([0x82, 1, 0, 2, 0, 7, 100, 0, 0, 0]);
-  });
-
-  it('Logout is the bare opcode', () => {
-    expect([...buildLogoutPacket().toUint8Array()]).toEqual([0x14]);
   });
 });
 

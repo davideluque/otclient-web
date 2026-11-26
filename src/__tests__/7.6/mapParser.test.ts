@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
-import { parseMapDescription, parsePosition } from '../lib/net/7.6/mapParser';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
-import { resetItemWireFlags, setItemWireFlags } from '../lib/net/common/itemFlags';
-import type { DatFile } from '../lib/dat';
+import { parseMapDescription, parsePosition } from '../../lib/net/7.6/mapParser';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
+import { resetItemWireFlags, setItemWireFlags } from '../../lib/net/common/itemFlags';
+import type { DatFile } from '../../lib/dat';
 
 // Item parsing requires the .dat-derived wire flags (which IDs carry a
 // count byte). These fixtures use plain items only, so an empty dat is

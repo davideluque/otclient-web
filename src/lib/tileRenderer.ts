@@ -234,6 +234,15 @@ export interface AnimatedSprite {
   texturesByPhase: (Texture | null)[];
 }
 
+export function setItemAnimationFrame(item: AnimatedSprite, frame: number): void {
+  let phase = frame % item.texturesByPhase.length;
+  // Missing later frames hold the preceding image. Phase zero is present
+  // for every registered sprite, including one first seen during a gap.
+  while (phase > 0 && !item.texturesByPhase[phase]) phase--;
+  const texture = item.texturesByPhase[phase];
+  if (texture && item.sprite.texture !== texture) item.sprite.texture = texture;
+}
+
 export interface RenderedRegion {
   container: Container;
   animated: AnimatedSprite[];

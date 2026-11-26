@@ -89,7 +89,10 @@ export function drawCreatures(
         ? selfPlateLayer
         : container;
       plate.container.zIndex = plateParent === selfPlateLayer ? 0 : creatureDrawOrder(c.y, c.x);
-      plateParent.addChild(plate.container);
+      // A new sprite needs its plate immediately after it. A sprite-less
+      // creature already in this parent keeps its sorted position: Pixi
+      // appends an existing child without dirtying the sort order.
+      if (sprite || plate.container.parent !== plateParent) plateParent.addChild(plate.container);
       movables.push({
         node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c, isSprite: false,
       });

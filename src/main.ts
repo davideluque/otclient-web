@@ -8,7 +8,7 @@ import { OtbmParser } from './lib/otbmParser';
 import { buildAtlasPages, collectReferencedSpriteIds, computeAtlasLayout } from './lib/atlas';
 import { TileMap } from './lib/tileMap';
 import type { Bounds, FloorChange } from './lib/tileMap';
-import { createAtlasTextures, tileTextureLookup, renderPlayer, buildDatIndex } from './lib/tileRenderer';
+import { createAtlasTextures, tileTextureLookup, setItemAnimationFrame, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
 import { TileFloor, creatureDrawOrder } from './lib/render/tileFloor';
 import { readPlayArea } from './lib/safeArea';
@@ -49,6 +49,7 @@ import { TILE_SIZE, tilePositionKey } from './constants';
 // --- File loading UI ---
 
 const INITIAL_REGION_RADIUS = 200;
+const ANIMATION_FRAME_MS = 500;
 const dropZone = document.getElementById('drop-zone')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const statusEl = document.getElementById('status')!;
@@ -330,6 +331,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
   const illuminationTexture = RenderTexture.create({ width: 1, height: 1 });
   const lightSpritePool = new LightSpritePool();
   const animatedSprites = new Set<AnimatedSprite>();
+  const animationFrame = () => Math.floor(performance.now() / ANIMATION_FRAME_MS);
   // Reference to the player Container currently in tileContainer, so the
   // walk ticker can move it mid-step without waiting for a tile rebuild.
   let currentPlayerSprite: Container | null = null;
@@ -368,6 +370,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
       }
     }
     const covered = new Set<number>();
+    const frame = animationFrame();
     for (let z = renderZ; z <= lastFloor; z++) {
       let floor = floorLayers.get(z);
       if (!floor) {
@@ -376,7 +379,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
         tileContainer.addChild(floor.container);
         floorLayers.set(z, floor);
       }
-      floor.update(tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, z), covered);
+      floor.update(tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, z), covered, frame);
       if (z === lastFloor) break;
       for (const tile of tileMap.tilesInRegion(visible.x1, visible.y1, visible.x2, visible.y2, z)) {
         if (tile.items.some(item => datIndex.get(item.clientId)?.attrs.has(DatAttr.FullGround))) {
@@ -520,18 +523,13 @@ async function startApp(loaded: CompleteLoadedFiles) {
   // durations weren't stored in the .dat until ~10.50+). The ticker fires
   // at 60 Hz; skip work on the ~30 frames in a row where the animation
   // frame index hasn't actually advanced.
-  const ANIMATION_FRAME_MS = 500;
   let lastFrame = -1;
   app.ticker.add(() => {
     if (animatedSprites.size === 0) return;
-    const frame = Math.floor(performance.now() / ANIMATION_FRAME_MS);
+    const frame = animationFrame();
     if (frame === lastFrame) return;
     lastFrame = frame;
-    for (const a of animatedSprites) {
-      const phase = frame % a.texturesByPhase.length;
-      const tex = a.texturesByPhase[phase];
-      if (tex && a.sprite.texture !== tex) a.sprite.texture = tex;
-    }
+    for (const item of animatedSprites) setItemAnimationFrame(item, frame);
   });
 
   // --- Mobile joystick ---

@@ -1,7 +1,7 @@
 import { Container, type Texture } from 'pixi.js';
 import { tilePositionKey } from '../../constants';
 import type { ThingType } from '../dat';
-import { renderTile, type AnimatedSprite } from '../tileRenderer';
+import { renderTile, setItemAnimationFrame, type AnimatedSprite } from '../tileRenderer';
 import type { ResolvedTile } from '../tileMap';
 
 // Map coordinates are unsigned 16-bit. Reserve the second half of each
@@ -39,7 +39,7 @@ export class TileFloor {
     this.container.sortableChildren = true;
   }
 
-  update(tiles: Iterable<ResolvedTile>, covered?: ReadonlySet<number>): void {
+  update(tiles: Iterable<ResolvedTile>, covered?: ReadonlySet<number>, frame = 0): void {
     this.revision++;
     for (const tile of tiles) {
       const key = tilePositionKey(tile.x, tile.y);
@@ -58,7 +58,12 @@ export class TileFloor {
       const animated: AnimatedSprite[] = [];
       renderTile(tile, container, animated, this.datIndex, this.getTexture);
       this.container.addChild(container);
-      for (const sprite of animated) this.animated?.add(sprite);
+      if (this.animated) {
+        for (const sprite of animated) {
+          setItemAnimationFrame(sprite, frame);
+          this.animated.add(sprite);
+        }
+      }
       this.entries.set(key, {
         container, animated, seen: this.revision, itemIds: tile.items.map(item => item.clientId),
       });

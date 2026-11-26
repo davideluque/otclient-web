@@ -43,6 +43,20 @@ describe('TileFloor', () => {
     expect(animated.size).toBe(0);
   });
 
+  it('seeds entering animations with the same phase as retained tiles', () => {
+    const animated = new Set<AnimatedSprite>();
+    const sparseTorch = { ...torch, frameGroup: { ...torch.frameGroup, animationPhases: 3, spriteIds: [1, 2, 0] } };
+    const floor = new TileFloor(
+      new Map([[100, sparseTorch]]), id => id === 1 ? Texture.WHITE : Texture.EMPTY, animated,
+    );
+    floor.update([tile(1, 1)], undefined, 1);
+    const [retained] = animated;
+    floor.update([tile(1, 1), tile(2, 1)], undefined, 2);
+    expect(animated.has(retained)).toBe(true);
+    expect([...animated].map(item => item.sprite.texture)).toEqual([Texture.EMPTY, Texture.EMPTY]);
+    floor.destroy();
+  });
+
   it('invalidates changed stacks, occluded tiles and tiles cleared by the server', () => {
     const animated = new Set<AnimatedSprite>();
     const floor = new TileFloor(types, () => Texture.WHITE, animated);

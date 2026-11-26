@@ -4,9 +4,9 @@ import {
   buildGameLoginPacket,
   parseLoginResponse,
   isLoginError,
-} from '../lib/net/7.6/loginProtocol';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
+} from '../../lib/net/7.6/loginProtocol';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
 
 describe('buildLoginPacket', () => {
   it('produces canonical 7.6 login packet structure with 3 file signatures', () => {

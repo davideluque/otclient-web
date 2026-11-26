@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GameProtocol } from '../lib/net/7.6/GameProtocol';
-import { PacketDispatcher } from '../lib/net/common/PacketDispatcher';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
-import { registerWireSkips } from '../lib/net/7.6/wireSkips';
-import { setItemWireFlags, resetItemWireFlags, itemHasCountByte } from '../lib/net/common/itemFlags';
-import { parseItem } from '../lib/net/7.6/mapParser';
-import { GameWorld } from '../lib/GameWorld';
-import type { DatFile } from '../lib/dat';
-import { DatAttr, ThingCategory } from '../lib/dat';
+import { GameProtocol } from '../../lib/net/7.6/GameProtocol';
+import { PacketDispatcher } from '../../lib/net/common/PacketDispatcher';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
+import { registerWireSkips } from '../../lib/net/7.6/wireSkips';
+import { setItemWireFlags, resetItemWireFlags, itemHasCountByte } from '../../lib/net/common/itemFlags';
+import { parseItem } from '../../lib/net/7.6/mapParser';
+import { GameWorld } from '../../lib/GameWorld';
+import type { DatFile } from '../../lib/dat';
+import { DatAttr, ThingCategory } from '../../lib/dat';
 
 const STACKABLE_ID = 3031; // "gold coin" stand-in
 const PLAIN_ID = 100;

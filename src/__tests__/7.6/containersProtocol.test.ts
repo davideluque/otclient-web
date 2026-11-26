@@ -7,12 +7,12 @@ import {
   parseContainerRemoveItem,
   buildCloseContainerPacket,
   buildUpContainerPacket,
-} from '../lib/net/7.6/containersProtocol';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
-import { setItemWireFlags, resetItemWireFlags } from '../lib/net/common/itemFlags';
-import { ThingCategory, DatAttr } from '../lib/dat';
-import type { DatFile } from '../lib/dat';
+} from '../../lib/net/7.6/containersProtocol';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
+import { setItemWireFlags, resetItemWireFlags } from '../../lib/net/common/itemFlags';
+import { ThingCategory, DatAttr } from '../../lib/dat';
+import type { DatFile } from '../../lib/dat';
 
 const STACKABLE_ID = 3031;
 const PLAIN_ID = 2853; // bag

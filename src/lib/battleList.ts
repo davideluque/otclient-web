@@ -45,7 +45,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .battle-list {
-      position: fixed; left: 8px; top: calc(122px + env(safe-area-inset-top, 0px));
+      position: fixed; left: calc(8px + env(safe-area-inset-left, 0px)); top: calc(122px + env(safe-area-inset-top, 0px));
       width: 132px; max-height: 40vh; overflow: hidden;
       display: flex; flex-direction: column;
       background: rgba(18,18,18,0.92); border: 1px solid #555;

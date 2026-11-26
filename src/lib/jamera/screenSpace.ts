@@ -1,3 +1,4 @@
+import { getPlayArea } from './viewport';
 import type { Application } from 'pixi.js';
 import type { GameWorld } from '../GameWorld';
 import type { ThingType } from '../dat';
@@ -27,8 +28,9 @@ export function screenToWorldTile(
   // The stage carries the viewport cover-zoom; one on-screen tile is
   // TILE_SIZE × zoom canvas pixels. (Tests stub `app` without a stage.)
   const zoom = app.stage?.scale?.x || 1;
-  const dxTiles = (clientX - app.screen.width / 2) / (TILE_SIZE * zoom);
-  const dyTiles = (clientY - app.screen.height / 2) / (TILE_SIZE * zoom);
+  const area = getPlayArea(app);
+  const dxTiles = (clientX - area.x - area.width / 2) / (TILE_SIZE * zoom);
+  const dyTiles = (clientY - area.y - area.height / 2) / (TILE_SIZE * zoom);
   // The camera centers on the RENDERED self position, which a predicted
   // route can put tiles ahead of world.playerX/Y — decode against what
   // the player actually sees or a mid-route tap lands on the wrong tile.

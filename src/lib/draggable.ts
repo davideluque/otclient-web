@@ -1,3 +1,5 @@
+import { readPlayArea } from './safeArea';
+
 /** Make a fixed panel movable by dragging a dedicated header/handle. */
 export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => void {
   handle.style.cursor = 'grab';
@@ -9,15 +11,15 @@ export function makeDraggable(panel: HTMLElement, handle: HTMLElement): () => vo
   let panelWidth = 0;
   let panelHeight = 0;
 
-  const viewportBounds = (): { left: number; top: number; width: number; height: number } => ({
-    left: window.visualViewport?.offsetLeft ?? 0,
-    top: window.visualViewport?.offsetTop ?? 0,
-    width: window.visualViewport?.width ?? window.innerWidth,
-    height: window.visualViewport?.height ?? window.innerHeight,
-  });
-
   const moveTo = (clientX: number, clientY: number): void => {
-    const bounds = viewportBounds();
+    const viewport = window.visualViewport;
+    const area = readPlayArea(viewport?.width ?? window.innerWidth, viewport?.height ?? window.innerHeight);
+    const bounds = {
+      left: (viewport?.offsetLeft ?? 0) + area.x,
+      top: (viewport?.offsetTop ?? 0) + area.y,
+      width: area.width,
+      height: area.height,
+    };
     const maxLeft = bounds.left + Math.max(0, bounds.width - panelWidth);
     const maxTop = bounds.top + Math.max(0, bounds.height - panelHeight);
     panel.style.left = `${Math.min(maxLeft, Math.max(bounds.left, clientX - offsetX))}px`;

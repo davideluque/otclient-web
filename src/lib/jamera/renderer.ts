@@ -34,7 +34,7 @@ import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from '../render/region';
 import { WALK_FRAME_MS, effectPhaseAt, missilePattern, shotProgressAt } from '../render/effects';
 import { GLIDE_PAD, drawCreatures } from '../render/creatures';
-import { VIEWPORT_EVENT } from './viewport';
+import { getPlayArea, VIEWPORT_EVENT } from './viewport';
 import { reportMetric } from './metrics';
 
 
@@ -178,8 +178,9 @@ export function bindRenderer(
   // by the stage scale.
   const recenter = (container: Container, camX = world.playerX, camY = world.playerY): void => {
     const zoom = app.stage?.scale?.x || 1;
-    container.x = app.screen.width / 2 / zoom - (camX + 0.5) * TILE_SIZE;
-    container.y = app.screen.height / 2 / zoom - (camY + 0.5) * TILE_SIZE;
+    const area = getPlayArea(app);
+    container.x = (area.x + area.width / 2) / zoom - (camX + 0.5) * TILE_SIZE;
+    container.y = (area.y + area.height / 2) / zoom - (camY + 0.5) * TILE_SIZE;
   };
 
   // Per-rebuild registry of creature display nodes at their build-time

@@ -11,6 +11,7 @@ import { TileMap } from './lib/tileMap';
 import type { Bounds, FloorChange } from './lib/tileMap';
 import { createAtlasTextures, renderTileRegion, renderPlayer, buildDatIndex } from './lib/tileRenderer';
 import type { AnimatedSprite, TintedTextureCache } from './lib/tileRenderer';
+import { readPlayArea } from './lib/safeArea';
 import { Viewport, computePlayZoom } from './lib/viewport';
 import type { ViewRect } from './lib/viewport';
 import { buildCreatureIndex, createPlayer } from './lib/player';
@@ -306,12 +307,14 @@ async function startApp(loaded: CompleteLoadedFiles) {
     if (document.visibilityState === 'visible') requestWakeLock();
   });
 
+  const initialArea = readPlayArea(initialW, initialH);
   const viewport = new Viewport({
     centerX: spawn.x,
     centerY: spawn.y,
-    screenWidth: initialW,
-    screenHeight: initialH,
-    playZoom: computePlayZoom(initialW, initialH),
+    screenLeft: initialArea.x,
+    screenTop: initialArea.y,
+    screenWidth: initialArea.width,
+    screenHeight: initialArea.height,
   });
   // Mutable so floor-change tiles (stair/hole/ladder) can update it on
   // step-land; everything that takes a z parameter reads this each frame.
@@ -762,7 +765,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
     // Primary mouse button only — right/middle clicks must not walk.
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !viewport.containsPoint(e.clientX, e.clientY)) return;
     // Ignore secondary pointers (pinch second finger, hovering pen tip, etc.).
     if (activePointerId !== null) return;
     activePointerId = e.pointerId;
@@ -799,7 +802,7 @@ async function startApp(loaded: CompleteLoadedFiles) {
 
   window.addEventListener('pointerup', async (e: PointerEvent) => {
     if (e.pointerId !== activePointerId) return;
-    if (dragMode === 'pending') {
+    if (dragMode === 'pending' && viewport.containsPoint(e.clientX, e.clientY)) {
       // Was a tap — convert to tile, run A*, start walk. If already walking,
       // plan from the tile we're walking TO and just replace the queued
       // remainder so the current step finishes smoothly — no camera snap.
@@ -961,11 +964,16 @@ async function startApp(loaded: CompleteLoadedFiles) {
         if (w < 1 || h < 1) return;
         // visualViewport.resize fires liberally on mobile (URL-bar
         // reveal, pinch); skip if nothing actually changed.
-        if (w === viewport.screenWidth && h === viewport.screenHeight) return;
-        app.renderer.resize(w, h);
-        viewport.screenWidth = w;
-        viewport.screenHeight = h;
-        viewport.applyPlayZoom(computePlayZoom(w, h));
+        const area = readPlayArea(w, h);
+        const sizeChanged = w !== app.screen.width || h !== app.screen.height;
+        if (!sizeChanged && area.x === viewport.screenLeft && area.y === viewport.screenTop
+          && area.width === viewport.screenWidth && area.height === viewport.screenHeight) return;
+        if (sizeChanged) app.renderer.resize(w, h);
+        viewport.screenLeft = area.x;
+        viewport.screenTop = area.y;
+        viewport.screenWidth = area.width;
+        viewport.screenHeight = area.height;
+        viewport.applyPlayZoom(computePlayZoom(area.width, area.height));
         // applyPlayZoom snaps zoom back to the locked baseline and
         // narrows the min/max bounds. If the user had unlocked zoom
         // ("Free") the UI would otherwise be desynced from the now-

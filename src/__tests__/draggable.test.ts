@@ -1,11 +1,39 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeDraggable } from '../lib/draggable';
 
 afterEach(() => document.body.replaceChildren());
 
 describe('makeDraggable', () => {
+  it('keeps a dragged panel reachable when the notch or viewport changes', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    const panel = document.createElement('div');
+    const head = document.createElement('div');
+    panel.append(head);
+    document.body.append(panel);
+    panel.getBoundingClientRect = () => ({ left: 8, top: 8, width: 200, height: 120 }) as DOMRect;
+    const destroy = makeDraggable(panel, head);
+    const css = document.documentElement.style;
+    try {
+      css.setProperty('--game-inset-left', '47px');
+      window.dispatchEvent(new Event('resize'));
+      vi.advanceTimersToNextFrame();
+      expect(panel.style.left).toBe('');
+      head.dispatchEvent(new PointerEvent('pointerdown', {
+        pointerId: 1, isPrimary: true, button: 0, clientX: 12, clientY: 12, bubbles: true,
+      }));
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+      window.dispatchEvent(new Event('orientationchange'));
+      vi.advanceTimersToNextFrame();
+      expect(panel.style.left).toBe('47px');
+    } finally {
+      destroy();
+      css.removeProperty('--game-inset-left');
+      vi.useRealTimers();
+    }
+  });
+
   it('moves a panel by its header and ignores header buttons', () => {
     const panel = document.createElement('div');
     const head = document.createElement('div');

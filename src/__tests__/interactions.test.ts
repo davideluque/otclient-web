@@ -88,6 +88,7 @@ describe('long-press pointer tracking', () => {
     floorChangeIds?: Set<number>;
     useableIds?: Set<number>;
     moveableIds?: Set<number>;
+    getSelfRenderPos?: () => { x: number; y: number };
     tapToWalk?: () => boolean;
     onCreatureTap?: (creatureId: number) => void;
   }) {
@@ -376,6 +377,19 @@ describe('long-press pointer tracking', () => {
       101, 0, 200, 0, 7, 4,
     ]]);
     expect(document.querySelector('.world-item-drag')).toBeNull();
+    handle.destroy();
+  });
+
+  it('centers the drop preview on the tile under a predicted camera', () => {
+    const { handle, touch } = mount(undefined, {
+      moveableIds: new Set([1987]),
+      getSelfRenderPos: () => ({ x: 101, y: 200 }),
+    });
+    touch('pointerdown', 1, 400, 300);
+    touch('pointermove', 1, 432, 300);
+    const marker = document.querySelector<HTMLElement>('.world-item-drop');
+    expect(marker?.dataset.position).toBe('102,200,7');
+    expect(marker?.style.left).toBe('432px');
     handle.destroy();
   });
 

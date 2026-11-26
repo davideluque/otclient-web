@@ -114,9 +114,9 @@ export function bindInteractions(
     return x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height;
   }
 
-  function worldTileAtPointer(clientX: number, clientY: number): WirePosition {
+  function worldTileAtPointer(clientX: number, clientY: number, camera = opts.getSelfRenderPos?.()): WirePosition {
     const canvasPoint = toCanvasSpace(canvas, app.screen, clientX, clientY);
-    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y, opts.getSelfRenderPos?.());
+    return screenToWorldTile(app, world, canvasPoint.x, canvasPoint.y, camera);
   }
 
   function topStackThingAtTile(position: WirePosition): ThingRef | null {
@@ -484,12 +484,13 @@ export function bindInteractions(
     if (!dragMarker || !dropMarker) return;
     dragMarker.style.left = `${clientX}px`;
     dragMarker.style.top = `${clientY}px`;
-    const destination = worldTileAtPointer(clientX, clientY);
+    const camera = opts.getSelfRenderPos?.() ?? { x: world.playerX, y: world.playerY };
+    const destination = worldTileAtPointer(clientX, clientY, camera);
     const zoom = app.stage?.scale?.x || 1;
     const tilePx = TILE_SIZE * zoom;
     const area = getPlayArea(app);
-    const centerX = area.x + area.width / 2 + (destination.x - world.playerX) * tilePx;
-    const centerY = area.y + area.height / 2 + (destination.y - world.playerY) * tilePx;
+    const centerX = area.x + area.width / 2 + (destination.x - camera.x) * tilePx;
+    const centerY = area.y + area.height / 2 + (destination.y - camera.y) * tilePx;
     const rect = canvas.getBoundingClientRect();
     dropMarker.style.left = `${rect.left + centerX * (rect.width / app.screen.width)}px`;
     dropMarker.style.top = `${rect.top + centerY * (rect.height / app.screen.height)}px`;

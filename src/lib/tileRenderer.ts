@@ -239,6 +239,17 @@ export interface RenderedRegion {
   animated: AnimatedSprite[];
 }
 
+export function tileTextureLookup(atlasTextures: AtlasTextures, layout: Map<number, SpriteLocation>) {
+  const textureCache = new Map<number, Texture | null>();
+  return (spriteId: number): Texture | null => {
+    const cached = textureCache.get(spriteId);
+    if (cached !== undefined) return cached;
+    const texture = getSpriteTexture(spriteId, atlasTextures, layout);
+    textureCache.set(spriteId, texture);
+    return texture;
+  };
+}
+
 /**
  * Render a rectangular region of tiles into a PixiJS Container.
  * Each tile's items are stacked in order (ground first, then items on top).
@@ -256,15 +267,7 @@ export function renderTileRegion(
   const container = new Container();
   const animated: AnimatedSprite[] = [];
 
-  // Cache textures to avoid recreating for the same sprite ID
-  const textureCache = new Map<number, Texture | null>();
-
-  function getTexture(spriteId: number): Texture | null {
-    if (textureCache.has(spriteId)) return textureCache.get(spriteId)!;
-    const tex = getSpriteTexture(spriteId, atlasTextures, layout);
-    textureCache.set(spriteId, tex);
-    return tex;
-  }
+  const getTexture = tileTextureLookup(atlasTextures, layout);
 
   for (const tile of source.tilesInRegion(x1, y1, x2, y2, z)) {
     if (skipPositions?.has(tilePositionKey(tile.x, tile.y))) continue;
@@ -274,7 +277,7 @@ export function renderTileRegion(
   return { container, animated };
 }
 
-function renderTile(
+export function renderTile(
   tile: ResolvedTile,
   container: Container,
   animated: AnimatedSprite[],

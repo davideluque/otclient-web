@@ -8,6 +8,7 @@ import type { SpriteAtlas } from '../spriteAtlas';
 import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from './region';
 import { walkPhase } from './effects';
+import { creatureDrawOrder } from './tileFloor';
 
 /**
  * Extra painted tiles beyond the server window on every side: the
@@ -16,6 +17,14 @@ import { walkPhase } from './effects';
  * there instead of black.
  */
 export const GLIDE_PAD = 3;
+
+export interface CreatureDisplay {
+  node: Container;
+  baseX: number;
+  baseY: number;
+  c: WorldCreature;
+  isSprite: boolean;
+}
 
 /**
  * Draw every creature in the visible region (the player included) into
@@ -40,8 +49,8 @@ export function drawCreatures(
   isMoving: (creature: WorldCreature) => boolean,
   now: number,
   selfPlateLayer: Container | null,
-): Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> {
-  const movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
+): CreatureDisplay[] {
+  const movables: CreatureDisplay[] = [];
   const x1 = world.playerX - HALF_W_LEFT - GLIDE_PAD;
   const x2 = world.playerX + HALF_W_RIGHT + GLIDE_PAD;
   const y1 = world.playerY - HALF_H_TOP - GLIDE_PAD;
@@ -59,12 +68,13 @@ export function drawCreatures(
     for (const c of visible) {
       const sprite = renderCreature(c, atlas, tintedCache, walkPhase(isMoving(c), now));
       if (sprite) {
+        sprite.zIndex = creatureDrawOrder(c.y, c.x);
         container.addChild(sprite);
-        movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c });
+        movables.push({ node: sprite, baseX: sprite.x, baseY: sprite.y, c, isSprite: true });
       }
 
       // Nameplate (name + six-band health bar) above the creature's tile.
-      // Reparented into the fresh container each rebuild; updated in place.
+      // Cached across pose updates and reparented when its floor changes.
       seen.add(c.id);
       let plate = nameplates.get(c.id);
       if (!plate) {
@@ -78,9 +88,10 @@ export function drawCreatures(
       const plateParent = c.id === world.playerCreatureId && selfPlateLayer
         ? selfPlateLayer
         : container;
+      plate.container.zIndex = plateParent === selfPlateLayer ? 0 : creatureDrawOrder(c.y, c.x);
       plateParent.addChild(plate.container);
       movables.push({
-        node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c,
+        node: plate.container, baseX: plate.container.x, baseY: plate.container.y, c, isSprite: false,
       });
     }
   }

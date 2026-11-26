@@ -5,7 +5,7 @@ import {
   creatureLightSource, loadBrightness, tibiaColorToHex, LightSpritePool, type LightSource,
 } from '../lighting';
 import {
-  renderTileRegion, spriteIndex, readPixelDisplacement,
+  spriteIndex, readPixelDisplacement,
   type TintedTextureCache,
 } from '../tileRenderer';
 import { buildOcclusionSets } from '../render/floorOcclusion';
@@ -33,19 +33,16 @@ import { directionFromStepDelta } from '../player';
 import { TILE_SIZE } from '../../constants';
 import { HALF_W_LEFT, HALF_W_RIGHT, HALF_H_TOP, HALF_H_BOTTOM } from '../render/region';
 import { WALK_FRAME_MS, effectPhaseAt, missilePattern, shotProgressAt } from '../render/effects';
-import { GLIDE_PAD, drawCreatures } from '../render/creatures';
+import { TileFloor, creatureDrawOrder } from '../render/tileFloor';
+import { GLIDE_PAD, drawCreatures, type CreatureDisplay } from '../render/creatures';
 import { VIEWPORT_EVENT } from './viewport';
 import { reportMetric } from './metrics';
 
 
 /**
- * Tile-layer rebuild policy. Rebuilding tile layers is the expensive
- * operation (hundreds to thousands of sprites in dense town areas), so
- * it no longer runs per walk-pose frame: all drawn floors rebuild only
- * when the player has moved HYSTERESIS tiles from the painted center
- * (the pad keeps the screen covered in between) or on a floor change;
- * in-place tile changes (doors, dropped items) rebuild — throttled —
- * only the floors whose per-z revision moved.
+ * Rescan drawn floors on a floor change or a two-tile camera step. Dirty
+ * floor revisions (doors, dropped items) share the throttled rescan path.
+ * Only tiles that enter, leave or change allocate or release sprites.
  */
 const TILE_REBUILD_HYSTERESIS = 2;
 const TILE_REVISION_THROTTLE_MS = 300;
@@ -64,13 +61,8 @@ export const LIGHT_PREF_EVENT = 'jamera:light-pref';
  * page unload — without it, the previous session's container would leak
  * into the new session's stage.
  *
- * Tile floors rebuild whole-floor-at-a-time (per-z dirty tracking picks
- * which); no tile-by-tile diffing yet — that's a separate track (#85).
- *
- * Creatures (the player included — it's just a creature the server put
- * on a tile) draw after the tile pass, north-to-south so southern
- * creatures overlap correctly, idle pose for now (walk animation is a
- * follow-up).
+ * Only dirty floors are scanned. Tile sprites persist across scans while
+ * their item stacks match, with creatures seated after their rendered row.
  */
 export function bindRenderer(
   world: GameWorld,
@@ -79,49 +71,21 @@ export function bindRenderer(
   chatManager?: ChatManager,
   prewalk?: PrewalkState,
 ): () => void {
-  // Persistent scene root (recentered by the camera) holding three
-  // layers: tiles (expensive, rebuilt with hysteresis), creatures
-  // (cheap, rebuilt per pose/state change), bubbles (persistent).
   let root: Container | null = null;
-  // Tile floors live as one child container per drawn z, deepest floor
-  // first so shallower floors paint over deeper ones — split across TWO
-  // parents around the creature layer (root: playerAndBelowTiles(0) →
-  // creatures(1) → aboveTiles(2)), the simplest structure where roofs
-  // also draw over creatures while creatures still stand on the ground.
-  //
-  // Every floor container carries the classic perspective offset
-  // (z − playerZ) tiles on both axes (floorStack.floorLayerOffset):
-  // below floors lean south-east, above floors north-west, one tile per
-  // level — the model the wire format, upstream OTClient, and the map's
-  // 64×64 sprite art all assume (NDIT-204). Each floor renders the world
-  // window shifted the OPPOSITE way so the screen stays exactly covered.
-  let tilesRoot: Container | null = null;
-  const tileFloorLayers = new Map<number, Container>();
-  let aboveTilesRoot: Container | null = null;
-  const aboveFloorLayers = new Map<number, Container>();
-  let creatureLayer: Container | null = null;
-  // Non-player-floor creatures (and their nameplates) live in per-floor
-  // containers inserted as SIBLINGS right after their floor's tile layer
-  // — creatures on z must draw between tiles(z) and tiles(z−1). Siblings
-  // rather than children of the tile layers: tile layers are destroyed
-  // with `{ children: true }` on the expensive rebuild path, which would
-  // take the persistent nameplates down with them mid-frame. The player
-  // floor keeps its dedicated root-level layer (between the two tile
-  // parents) — same draw position, and the light/effects insertion
-  // logic anchors on it.
-  const creatureFloorLayers = new Map<number, Container>();
-  // The SELF nameplate rides above everything map (both tile parents and
-  // the light overlay): it hangs a tile above the player's head, which
+  // Deepest first, with both tiles and creatures sharing each floor's
+  // perspective offset. A roof therefore covers everything below it.
+  const floorsRoot = new Container();
+  floorsRoot.sortableChildren = true;
+  const floors = new Map<number, TileFloor>();
+  // The SELF nameplate rides above the floor stack and
+  // the light overlay: it hangs a tile above the player's head, which
   // right under a stairwell opening is exactly where the floor-above
   // ground paints — per-floor parenting hid the player's own name there.
   // Always safe on top: drawnAbove is non-empty only when the roof probe
   // found the player position UNcovered, so nothing legitimately hides
   // the player (and their name) while above-floors are drawn.
   let selfPlateLayer: Container | null = null;
-  // Bumped whenever tile-layer containers are created or destroyed, so
-  // the (cheap) creature pass re-inserts its per-floor siblings against
-  // the new stack — a roof change while everyone stands still must not
-  // leave creature containers ordered against destroyed layers.
+  // A newly visible floor needs its creatures even when they stand still.
   let tileLayoutRev = 0;
   // Combat effects (magic effects, target square). Persistent like the
   // bubble layer — tiles/creatures/light insert themselves below it —
@@ -185,7 +149,7 @@ export function bindRenderer(
   // Per-rebuild registry of creature display nodes at their build-time
   // base positions — the per-frame glide pass nudges these (and the
   // camera) by the interpolated fraction without rebuilding anything.
-  let movables: Array<{ node: Container; baseX: number; baseY: number; c: WorldCreature }> = [];
+  let movables: CreatureDisplay[] = [];
 
   // Per-creature playout buffers (see playbackPosAt).
   const playback = new Map<number, { samples: PlaybackSample[]; cadence: number }>();
@@ -263,6 +227,7 @@ export function bindRenderer(
       const p = renderPosFor(m.c, now);
       m.node.x = m.baseX + (p.x - m.c.x) * TILE_SIZE;
       m.node.y = m.baseY + (p.y - m.c.y) * TILE_SIZE;
+      if (m.node.parent !== selfPlateLayer) m.node.zIndex = creatureDrawOrder(Math.ceil(p.y), Math.round(p.x));
     }
   };
 
@@ -447,9 +412,7 @@ export function bindRenderer(
     if (!root) {
       root = new Container();
       app.stage.addChild(root);
-      // Before effectsLayer: tile/creature/light layers all insert
-      // themselves below these, so the final order is tiles → creatures
-      // → aboveTiles → light → self plate → effects.
+      root.addChild(floorsRoot);
       selfPlateLayer = new Container();
       root.addChild(selfPlateLayer);
       effectsLayer = new Container();
@@ -465,7 +428,7 @@ export function bindRenderer(
       Math.abs(world.playerY - paintedCenterY) >= TILE_REBUILD_HYSTERESIS;
     const zChanged = world.playerZ !== paintedCenterZ;
     const revChanged = world.tileRevision !== paintedTileRevision;
-    const fullRebuild = !tilesRoot || zChanged || movedFar;
+    const fullRebuild = zChanged || movedFar;
     // Stepping through a door changes no tile and moves the player one
     // step — the roof-culling moment rides on the probe result alone,
     // immediate (a vanishing roof must not wait out the throttle).
@@ -484,36 +447,16 @@ export function bindRenderer(
           : [];
       if (belowToRebuild.length > 0 || aboveToRebuild.length > 0 || rebuildAllAbove) {
         const repaintStart = performance.now();
-        if (!tilesRoot || !aboveTilesRoot) {
-          tilesRoot = new Container();
-          root.addChildAt(tilesRoot, 0);
-          // Takes index 1 now, while no creature layer exists yet;
-          // creatures always insert at index 1, landing between the
-          // two tile parents from then on.
-          aboveTilesRoot = new Container();
-          root.addChildAt(aboveTilesRoot, 1);
+        for (const [z, floor] of floors) {
+          if (drawnBelow.includes(z) || drawnAbove.includes(z)) continue;
+          floor.destroy();
+          floors.delete(z);
+          paintedRevisionByZ.delete(z);
         }
         if (fullRebuild) {
-          // The drawn set is a function of playerZ — floors of a
-          // previous stack must not linger, so the full path starts
-          // from an empty parent and re-centers the painted region.
-          for (const layer of tileFloorLayers.values()) {
-            tilesRoot.removeChild(layer);
-            layer.destroy({ children: true });
-          }
-          tileFloorLayers.clear();
-          paintedRevisionByZ.clear();
           paintedCenterX = world.playerX;
           paintedCenterY = world.playerY;
           paintedCenterZ = world.playerZ;
-        }
-        if (rebuildAllAbove) {
-          for (const [z, layer] of aboveFloorLayers) {
-            aboveTilesRoot.removeChild(layer);
-            layer.destroy({ children: true });
-            paintedRevisionByZ.delete(z);
-          }
-          aboveFloorLayers.clear();
         }
         // GLIDE_PAD: covers both the pursuing camera trailing behind
         // the confirmed position AND the hysteresis lag of the painted
@@ -532,54 +475,24 @@ export function bindRenderer(
         const occlusion = buildOcclusionSets(
           world, atlas.datIndex, x1, y1, x2, y2, [...drawnBelow].reverse(), world.playerZ,
         );
-        for (const z of belowToRebuild) {
-          const offset = floorLayerOffset(z, world.playerZ);
-          const { container: nextTiles } = renderTileRegion(
-            world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
-            x1 - offset.x, y1 - offset.y, x2 - offset.x, y2 - offset.y, z, occlusion.get(z),
-          );
-          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
-          const old = tileFloorLayers.get(z);
-          if (old) {
-            tilesRoot.addChildAt(nextTiles, tilesRoot.getChildIndex(old));
-            tilesRoot.removeChild(old);
-            old.destroy({ children: true });
-          } else {
-            // Full path only — drawnBelow is deepest-first, so plain
-            // appends produce the paint-over stacking.
-            tilesRoot.addChild(nextTiles);
+        for (const z of [...belowToRebuild, ...aboveToRebuild]) {
+          let floor = floors.get(z);
+          if (!floor) {
+            floor = new TileFloor(atlas.datIndex, id => atlas.get(id));
+            floor.container.zIndex = -z;
+            floorsRoot.addChild(floor.container);
+            floors.set(z, floor);
           }
-          tileFloorLayers.set(z, nextTiles);
-          paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
-        }
-        for (const z of aboveToRebuild) {
-          // No skipPositions here: above floors are sparse roof
-          // outlines, so a skip set saves next to nothing.
           const offset = floorLayerOffset(z, world.playerZ);
-          const { container: nextTiles } = renderTileRegion(
-            world, atlas.datIndex, atlas.atlasTextures, atlas.layout,
+          floor.container.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
+          floor.update(world.tilesInRegion(
             x1 - offset.x, y1 - offset.y, x2 - offset.x, y2 - offset.y, z,
-          );
-          // Iso offset, negative → up-left. Without it multi-story
-          // buildings collapse into a flat silhouette (lesson 3691ea3).
-          nextTiles.position.set(offset.x * TILE_SIZE, offset.y * TILE_SIZE);
-          const old = aboveFloorLayers.get(z);
-          if (old) {
-            aboveTilesRoot.addChildAt(nextTiles, aboveTilesRoot.getChildIndex(old));
-            aboveTilesRoot.removeChild(old);
-            old.destroy({ children: true });
-          } else {
-            // Deepest (playerZ−1) first, shallowest last — nearest the
-            // viewer paints on top.
-            aboveTilesRoot.addChild(nextTiles);
-          }
-          aboveFloorLayers.set(z, nextTiles);
+          ), occlusion.get(z));
           paintedRevisionByZ.set(z, world.tileRevisionByZ.get(z) ?? 0);
         }
         paintedFirstVisible = firstVisible;
         lastTileRebuildAt = now;
-        // Tile containers were created/replaced/destroyed — the creature
-        // pass below must re-seat its per-floor siblings against them.
+        // A floor may have entered or left the visible stack.
         tileLayoutRev++;
         // Tile rebuild cost — the phone-CPU half of the lag decomposition.
         reportMetric('repaint', performance.now() - repaintStart);
@@ -591,62 +504,18 @@ export function bindRenderer(
     }
 
     // ── Creature layers (cheap): poses + creature state ──
-    // tileLayoutRev in the key: the per-floor containers are ordered
-    // against the tile stack, so a stack rebuild (which alone covers a
-    // firstVisible change too) forces a re-seat even when no creature
-    // moved.
+    // Refresh creatures on newly visible floors as well as on pose changes.
     const ck = `${world.creatureRevision}:${poseKey}:${world.playerZ}:${world.playerX}:${world.playerY}:${tileLayoutRev}`;
-    if (!creatureLayer || ck !== creatureKey) {
-      // One container per drawn floor, seated in draw-order position
-      // BEFORE drawCreatures fills them. Floors whose tile layer isn't
-      // painted yet (login transient) get no container this pass — the
-      // tile rebuild that paints them bumps tileLayoutRev and re-runs
-      // this block.
-      const layers = new Map<number, Container>();
-      for (const z of drawnBelow) {
-        if (z === world.playerZ) continue;
-        const tileLayer = tileFloorLayers.get(z);
-        if (!tilesRoot || !tileLayer) continue;
-        const layer = new Container();
-        // Same iso offset as the floor's tiles — creatures stand on the
-        // shifted ground.
-        layer.position.copyFrom(tileLayer.position);
-        tilesRoot.addChildAt(layer, tilesRoot.getChildIndex(tileLayer) + 1);
-        layers.set(z, layer);
+    if (ck !== creatureKey) {
+      for (const m of movables) {
+        if (m.isSprite) m.node.destroy({ children: true });
       }
-      const nextCreatures = new Container();
-      layers.set(world.playerZ, nextCreatures);
-      for (const z of drawnAbove) {
-        const tileLayer = aboveFloorLayers.get(z);
-        if (!aboveTilesRoot || !tileLayer) continue;
-        const layer = new Container();
-        // Same iso offset as the floor's tiles — creatures stand on the
-        // shifted ground, and shallower roofs paint over them.
-        layer.position.copyFrom(tileLayer.position);
-        aboveTilesRoot.addChildAt(layer, aboveTilesRoot.getChildIndex(tileLayer) + 1);
-        layers.set(z, layer);
-      }
-      // Build first, destroy after: drawCreatures reparents persistent
-      // nameplates into the new layers, keeping them out of the destroy.
+      const layers = new Map([...floors].map(([z, floor]) => [z, floor.container]));
       movables = drawCreatures(
         world, atlas, layers, tintedCache, nameplates,
         (c) => motionStates.get(c.id)?.moving ?? playbackStateFor(c, now).moving,
         now, selfPlateLayer,
       );
-      root.addChildAt(nextCreatures, tilesRoot ? 1 : 0);
-      for (const old of creatureFloorLayers.values()) {
-        old.parent?.removeChild(old);
-        old.destroy({ children: true });
-      }
-      creatureFloorLayers.clear();
-      for (const [z, layer] of layers) {
-        if (z !== world.playerZ) creatureFloorLayers.set(z, layer);
-      }
-      if (creatureLayer) {
-        root.removeChild(creatureLayer);
-        creatureLayer.destroy({ children: true });
-      }
-      creatureLayer = nextCreatures;
       creatureKey = ck;
     }
 
@@ -708,10 +577,9 @@ export function bindRenderer(
           },
           world.playerZ,
         );
-        // Above both tile parents and the creatures — roofs darken
+        // Above the floor stack and its creatures — roofs darken
         // with the world too — below the bubble layer.
-        root.addChildAt(lightLayer, aboveTilesRoot ? root.getChildIndex(aboveTilesRoot) + 1
-          : creatureLayer ? root.getChildIndex(creatureLayer) + 1 : root.children.length);
+        root.addChildAt(lightLayer, root.getChildIndex(floorsRoot) + 1);
       }
       lightKey = lk;
     }
@@ -766,12 +634,7 @@ export function bindRenderer(
       app.stage.removeChild(root);
       root.destroy({ children: true });
       root = null;
-      tilesRoot = null;
-      tileFloorLayers.clear();
-      aboveTilesRoot = null;
-      aboveFloorLayers.clear();
-      creatureLayer = null;
-      creatureFloorLayers.clear();
+      floors.clear();
       selfPlateLayer = null;
       effectsLayer = null;
     }

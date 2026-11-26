@@ -12,12 +12,14 @@
     "typecheck:proxy": "tsc -p proxy/tsconfig.json",
     "audit:ci": "npm audit --audit-level=high",
     "test": "vitest run",
+    "test:e2e": "playwright test --config scripts/playwright.config.mjs",
     "test:watch": "vitest",
     "proxy": "npx tsx proxy/server.ts",
     "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^25.9.3",
     "@types/ws": "^8.18.2",
     "eslint": "^10.15.0",

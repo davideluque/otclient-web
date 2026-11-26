@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { GameProtocol, DEFAULT_76_CONFIG } from '../lib/net/7.6/GameProtocol';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { MessageType } from '../lib/net/common/types';
+import { GameProtocol, DEFAULT_76_CONFIG } from '../../lib/net/7.6/GameProtocol';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { MessageType } from '../../lib/net/common/types';
 
 describe('GameProtocol (7.6)', () => {
   describe('config', () => {

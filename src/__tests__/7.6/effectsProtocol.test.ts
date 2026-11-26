@@ -4,10 +4,10 @@ import {
   parseAnimatedText,
   parseDistanceShot,
   parseCreatureSquare,
-} from '../lib/net/7.6/effectsProtocol';
-import { GameProtocol } from '../lib/net/7.6/GameProtocol';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
+} from '../../lib/net/7.6/effectsProtocol';
+import { GameProtocol } from '../../lib/net/7.6/GameProtocol';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
 
 describe('parseMagicEffect', () => {
   it('parses position and the 1-based effect id off the wire', () => {

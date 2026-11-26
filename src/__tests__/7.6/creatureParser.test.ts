@@ -6,9 +6,9 @@ import {
   parseCreatureLight,
   parseCreatureSpeed,
   parseCreatureOutfit,
-} from '../lib/net/7.6/creatureParser';
-import { InputPacket } from '../lib/net/common/InputPacket';
-import { OutputPacket } from '../lib/net/common/OutputPacket';
+} from '../../lib/net/7.6/creatureParser';
+import { InputPacket } from '../../lib/net/common/InputPacket';
+import { OutputPacket } from '../../lib/net/common/OutputPacket';
 
 describe('creatureParser', () => {
   it('parses creature move', () => {

@@ -33,7 +33,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .action-sheet-backdrop {
-      position: fixed; inset: 0; z-index: ${zIndex.modal};
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: ${zIndex.modal};
       background: rgba(0,0,0,0.45);
       font-family: system-ui, sans-serif; user-select: none;
     }

@@ -23,7 +23,7 @@ function ensureStyles(): void {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    .text-window { position: fixed; inset: 0; z-index: 60; display: none;
+    .text-window { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 60; display: none;
       align-items: center; justify-content: center; background: rgba(0,0,0,.55);
       font-family: system-ui, sans-serif; }
     .text-window.open { display: flex; }

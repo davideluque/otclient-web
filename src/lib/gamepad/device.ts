@@ -3,7 +3,7 @@ import { buttons, type Button, type Snapshot } from './mapping';
 export const controls = [...buttons, 'leftX+', 'leftX-', 'leftY+', 'leftY-', 'rightX+', 'rightX-', 'rightY+', 'rightY-'] as const;
 export type Control = typeof controls[number];
 export type Source = { button: number } | { axis: number; neutral: number; active: number };
-export type Profile = Record<Control, Source>;
+export type Profile = Record<Control, Source | null>;
 export interface RawPad {
   id: string;
   mapping: string;
@@ -23,6 +23,7 @@ export function standardProfile(): Profile {
 export function normalize(pad: RawPad, profile: Profile): Snapshot {
   function value(control: Control): number {
     const src = profile[control];
+    if (!src) return 0;
     if ('button' in src) {
       const b = pad.buttons[src.button];
       return b?.pressed ? 1 : b?.value ?? 0;
@@ -47,6 +48,7 @@ export function loadProfile(pad: RawPad): Profile | null {
     const saved = JSON.parse(localStorage.getItem('jamera.pad.' + pad.id) ?? 'null');
     if (saved && controls.every((name) => {
       const src = saved[name];
+      if (src === null) return /^right[XY]/.test(name);
       return src && (Number.isInteger(src.button) && src.button >= 0 && src.button < pad.buttons.length
         || Number.isInteger(src.axis) && src.axis >= 0 && src.axis < pad.axes.length
         && Number.isFinite(src.active) && Number.isFinite(src.neutral) && src.active !== src.neutral);

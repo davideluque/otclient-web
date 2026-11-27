@@ -157,7 +157,7 @@ export function createInventoryPane(
         s.cell.classList.add('filled');
         const thumb = opts.renderThumb?.(itemId) ?? null;
         if (thumb) {
-          thumb.style.cssText = 'position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
+          thumb.style.cssText = 'position:absolute;top: 2px; right: 2px; bottom: 2px; left: 2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
           s.cell.appendChild(thumb);
           s.label.textContent = '';
         } else {

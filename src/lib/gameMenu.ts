@@ -52,7 +52,7 @@ function ensureStyles(): void {
     }
     .game-menu-pane button:active { background: rgba(255,255,255,0.12); }
     .game-menu-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.4);
       z-index: 39; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
     }
     .game-menu-backdrop.open { opacity: 1; pointer-events: auto; }

@@ -9,6 +9,8 @@
  * component, not the gallery.
  */
 
+import { createControllerHUD } from '../gamepad/hud';
+import { loadBindings } from '../gamepad/bindings';
 import { createJoystick } from '../joystick';
 import { createDevControls } from '../devControls';
 import { createHud } from '../hud';
@@ -597,6 +599,18 @@ export const ENTRIES: GalleryEntry[] = [
         text: `full view message #${++n}`, timestamp: Date.now(),
       }));
       return () => view.destroy();
+    },
+  },
+  {
+    name: 'Controller HUD', description: 'Controller spell words and readiness on each modifier layer.',
+    mount({ knobs }) {
+      const hud = createControllerHUD();
+      const bindings = loadBindings();
+      let layer = 0;
+      const draw = () => hud.update(layer, bindings, () => 0, performance.now());
+      knobs.button('Next layer', () => { layer = (layer + 1) % 4; draw(); });
+      draw();
+      return () => hud.destroy();
     },
   },
 ];

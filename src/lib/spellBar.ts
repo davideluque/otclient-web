@@ -22,13 +22,15 @@ export interface SpellBarOptions {
   spells: SpellDef[];
   /** Fires when a ready (off-cooldown) spell button is pressed. */
   onCast: (id: string) => void;
+  /** A session cast action owns readiness and starts the sweep for all input sources. */
+  externalCooldown?: boolean;
   parent?: HTMLElement;
 }
 
 export interface SpellBarHandle {
   readonly el: HTMLElement;
   /** Start a spell's cooldown sweep (also done automatically on cast). */
-  triggerCooldown(id: string): void;
+  triggerCooldown(id: string, remainingMs?: number): void;
   setEnabled(id: string, enabled: boolean): void;
   setVisible(visible: boolean): void;
   destroy(): void;
@@ -96,19 +98,20 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
   interface Entry { btn: HTMLButtonElement; cd: HTMLElement; def: SpellDef; readyAt: number; timer?: ReturnType<typeof setTimeout> }
   const entries = new Map<string, Entry>();
 
-  function triggerCooldown(id: string): void {
+  function triggerCooldown(id: string, remainingMs?: number): void {
     const e = entries.get(id);
     if (!e) return;
-    e.readyAt = performance.now() + e.def.cooldownMs;
+    const duration = remainingMs ?? e.def.cooldownMs;
+    e.readyAt = performance.now() + duration;
     // Sweep: fill instantly, then shrink over the cooldown. Forcing a
     // reflow between the two transform writes makes the transition run.
     e.cd.style.transition = 'none';
-    e.cd.style.transform = 'scaleY(1)';
+    e.cd.style.transform = `scaleY(${duration / e.def.cooldownMs})`;
     void e.cd.offsetHeight;
-    e.cd.style.transition = `transform ${e.def.cooldownMs}ms linear`;
+    e.cd.style.transition = `transform ${duration}ms linear`;
     e.cd.style.transform = 'scaleY(0)';
     clearTimeout(e.timer);
-    e.timer = setTimeout(() => { e.readyAt = 0; }, e.def.cooldownMs);
+    e.timer = setTimeout(() => { e.readyAt = 0; }, duration);
   }
 
   // Fan the slots over the quarter circle: slot 1 sits straight left
@@ -146,9 +149,9 @@ export function createSpellBar(opts: SpellBarOptions): SpellBarHandle {
     btn.appendChild(cd);
     btn.addEventListener('pointerdown', () => {
       const e = entries.get(def.id);
-      if (!e || btn.disabled || performance.now() < e.readyAt) return;
+      if (!e || btn.disabled || (!opts.externalCooldown && performance.now() < e.readyAt)) return;
       opts.onCast(def.id);
-      triggerCooldown(def.id);
+      if (!opts.externalCooldown) triggerCooldown(def.id);
     });
     el.appendChild(btn);
     entries.set(def.id, { btn, cd, def, readyAt: 0 });

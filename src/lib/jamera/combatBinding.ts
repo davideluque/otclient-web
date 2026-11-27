@@ -22,6 +22,8 @@ import type { GameWorld } from '../GameWorld';
 export interface CombatBindingHandle {
   /** Re-read the configured spell slots (the customizer's apply hook). */
   reloadSpells(): void;
+  cast(words: string): boolean;
+  cooldownUntil(words: string): number;
   /** Whether auto-attack is engaged (tests + the Settings toggle read this). */
   readonly attacking: boolean;
   /** The currently attacked creature id (0 = none) — battle list highlight. */
@@ -59,18 +61,29 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   let currentTarget = 0;
   let monstersOnly = false;
 
-  const send = (packet: { toUint8Array(): Uint8Array }): void => {
+  const send = (packet: { toUint8Array(): Uint8Array }): boolean => {
     try {
       client.send(packet as Parameters<GameClient['send']>[0]);
+      return true;
     } catch (e) {
       debugConsole?.warn('[jamera] combat send failed:', e instanceof Error ? e.message : e);
+      return false;
     }
   };
 
-  let bar: SpellBarHandle = createSpellBar({
-    spells: slotSpells(),
-    onCast: (id) => send(protocol.chat.buildSay(id)),
-  });
+  const deadlines = new Map<string, number>();
+  const cooldownUntil = (words: string): number => deadlines.get(words) ?? 0;
+  function cast(words: string): boolean {
+    const spell = spellByWords(words);
+    const now = performance.now();
+    if (!spell || now < cooldownUntil(words) || client.getState() !== 'in_game') return false;
+    if (!send(protocol.chat.buildSay(spell.words))) return false;
+    deadlines.set(words, now + spell.cooldownMs);
+    bar.triggerCooldown(words);
+    return true;
+  }
+  const mountBar = () => createSpellBar({ spells: slotSpells(), onCast: cast, externalCooldown: true });
+  let bar: SpellBarHandle = mountBar();
 
   // The auto-attack toggle is the bar's corner anchor — the big button
   // the spell slots fan around (the MOBA basic-attack position). The
@@ -137,15 +150,18 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     // Rebuild the bar with the new slots; the ⚔ circle rides the bar,
     // so re-prepend it (it keeps its current visual state).
     bar.destroy();
-    bar = createSpellBar({
-      spells: slotSpells(),
-      onCast: (id) => send(protocol.chat.buildSay(id)),
-    });
+    bar = mountBar();
+    for (const [words, end] of deadlines) {
+      const remaining = end - performance.now();
+      if (remaining > 0) bar.triggerCooldown(words, remaining);
+    }
     bar.el.prepend(attackBtn);
   };
 
   return {
     reloadSpells,
+    cast,
+    cooldownUntil,
     get attacking() { return attacking; },
     get targetId() { return attacking ? currentTarget : 0; },
     setAttacking,

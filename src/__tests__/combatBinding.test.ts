@@ -135,4 +135,17 @@ describe('bindCombat', () => {
     expect(sent).toHaveLength(0);
     binding.destroy();
   });
+  it('shares spell readiness between touch and other inputs across slot reloads', () => {
+    const { client, sent } = makeClient();
+    const combat = bindCombat(client, makeWorld([]));
+    expect(combat.cast('missing spell')).toBe(false);
+    expect(combat.cast('exura')).toBe(true);
+    combat.reloadSpells();
+    document.querySelector('.spell-bar button[title*="Light"]')!
+      .dispatchEvent(new PointerEvent('pointerdown'));
+    expect(sent).toHaveLength(1);
+    vi.advanceTimersByTime(1001);
+    expect(combat.cast('exura')).toBe(true);
+    combat.destroy();
+  });
 });

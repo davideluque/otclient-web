@@ -30,3 +30,8 @@ dist-ssr
 *.sw?
 .playwright-mcp/
 test-results/
+
+dist-tv/
+.webos-build/
+docs/tv/device-report.json
+docs/tv/device-events.jsonl

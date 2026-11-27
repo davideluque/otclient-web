@@ -15,7 +15,9 @@
     "test:e2e": "playwright test --config scripts/playwright.config.mjs",
     "test:watch": "vitest",
     "proxy": "npx tsx proxy/server.ts",
-    "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts"
+    "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts",
+    "tv:build": "tsc && vite build --config vite.tv.config.ts --mode tv && node scripts/tv-bundle.mjs",
+    "tv:check": "node scripts/tv-bundle.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

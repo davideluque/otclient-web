@@ -1,0 +1,126 @@
+import { Direction } from '../player';
+
+const surfaces = [
+  '[data-pad-dialog]', '.jamera-login:not([hidden])', '.game-menu-pane.open', '[role="dialog"]',
+  '.settings-pane', '.changelog-pane', '.vip-list', '.spell-customizer', '.death-dialog',
+  '.action-sheet-backdrop', '.full-chat', '.skill-pane', '.inventory-pane', '.battle-list',
+  '.text-window', '.container-pane .window', '.shop-pane', '.trade-pane',
+].join(',');
+const selectable = 'button:enabled,input:enabled,textarea:enabled,select:enabled,[tabindex="0"]';
+function visible(el: HTMLElement): boolean {
+  return el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+}
+export function topSurface(): HTMLElement | null {
+  let best: HTMLElement | null = null;
+  let height = -Infinity;
+  for (const el of document.querySelectorAll<HTMLElement>(surfaces)) {
+    if (!visible(el)) continue;
+    let node: HTMLElement | null = el;
+    let z = 0;
+    while (node && !z) { z = Number.parseInt(getComputedStyle(node).zIndex) || 0; node = node.parentElement; }
+    if (z >= height) { height = z; best = el; }
+  }
+  return best;
+}
+
+/** Directional search in CSS pixels. Prefer the same row/column where possible. */
+export function neighbour(rects: readonly DOMRect[], index: number, dir: Direction): number {
+  if (index < 0) return 0;
+  const vertical = dir === Direction.North || dir === Direction.South;
+  const sign = dir === Direction.North || dir === Direction.West ? -1 : 1;
+  const origin = rects[index];
+  let winner = index, best = Infinity;
+  rects.forEach((rect, i) => {
+    const dx = rect.left + rect.width/2 - origin.left - origin.width/2;
+    const dy = rect.top + rect.height/2 - origin.top - origin.height/2;
+    const forward = (vertical ? dy : dx) * sign;
+    if (forward < 1) return;
+    const cross = Math.abs(vertical ? dx : dy);
+    const cost = forward + cross * 3;
+    if (cost < best) { best = cost; winner = i; }
+  });
+  return winner;
+}
+
+export function dialog(title: string) {
+  const el = document.createElement('section');
+  el.dataset.padDialog = '';
+  el.setAttribute('role','dialog');
+  el.setAttribute('aria-label', title);
+  const heading = document.createElement('h2');
+  heading.textContent = title;
+  el.appendChild(heading);
+  document.body.appendChild(el);
+  const button = (label: string, click: () => void, parent: HTMLElement = el) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', click);
+    parent.appendChild(b);
+    return b;
+  };
+  return { el, button, close: () => el.remove() };
+}
+
+// A webOS keyboard may require a trusted activation event. Provide text
+// entry from real gamepad edges even on browsers that ignore scripted click.
+function textEntry(field: HTMLInputElement | HTMLTextAreaElement): void {
+  const panel = dialog(field.getAttribute('aria-label') || 'Enter text');
+  const secret = field instanceof HTMLInputElement && field.type === 'password';
+  const output = document.createElement('output');
+  let value = field.value;
+  const show = () => { output.textContent = secret ? '•'.repeat(value.length) : value; };
+  show();
+  panel.el.appendChild(output);
+  const grid = document.createElement('div');
+  grid.className = 'pad-keys';
+  panel.el.appendChild(grid);
+  const numeric = field instanceof HTMLInputElement && field.type === 'number';
+  let shifted = false;
+  const draw = () => {
+    grid.replaceChildren();
+    const letters = shifted ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' : 'abcdefghijklmnopqrstuvwxyz';
+    for (const char of numeric ? '1234567890' : '1234567890' + letters + ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~') {
+      panel.button(char === ' ' ? 'Space' : char, () => { value += char; show(); }, grid);
+    }
+  };
+  draw();
+  if (!numeric) panel.button('Shift', () => { shifted = !shifted; draw(); });
+  panel.button('Delete', () => { value = value.slice(0,-1); show(); });
+  panel.button('Done', () => {
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    panel.close();
+    field.focus();
+  });
+  panel.button('Cancel', () => { panel.close(); field.focus(); }).dataset.padBack = '';
+  grid.querySelector('button')?.focus();
+}
+
+export function focusAction(scope: HTMLElement, action: 'activate' | Direction): void {
+  const items = Array.from(scope.querySelectorAll<HTMLElement>(selectable)).filter(visible);
+  if (!items.length) return;
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const item = items[Math.max(0,index)];
+  if (action === 'activate') {
+    item.focus();
+    if (item instanceof HTMLTextAreaElement || item instanceof HTMLInputElement && ['text','number','password'].includes(item.type)) textEntry(item);
+    else item.click();
+  } else if (item instanceof HTMLInputElement && item.type === 'range' && [1,3].includes(action)) {
+    if (action === Direction.East) item.stepUp(); else item.stepDown();
+    item.dispatchEvent(new Event('input', { bubbles: true }));
+  } else {
+    const next = neighbour(items.map((el) => el.getBoundingClientRect()), index, action);
+    items[next].focus();
+    items[next].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+}
+
+export function back(scope: HTMLElement | null): void {
+  if (!scope) { document.querySelector<HTMLButtonElement>('.game-menu-btn')?.click(); return; }
+  const close = scope.querySelector<HTMLButtonElement>('[data-pad-back],button[aria-label^="Close" i],.action-sheet .cancel,.death-dialog .continue,.trade-actions button:not(.accept)');
+  if (close) { close.click(); return; }
+  if (scope.matches('.game-menu-pane')) { document.querySelector<HTMLElement>('.game-menu-backdrop')?.click(); return; }
+  document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', code:'Escape', bubbles:true }));
+}

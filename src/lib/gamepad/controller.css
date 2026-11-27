@@ -1,0 +1,7 @@
+[data-pad-dialog] { position:fixed; z-index:140; top:8%; bottom:8%; left:10%; right:10%; overflow:auto;
+  color:#f1f0e7;background:#202329;border:2px solid #959184;border-radius:10px;padding:1.2rem;font:1rem/1.4 system-ui,sans-serif; }
+[data-pad-dialog] h2 { margin-bottom:.7rem }
+[data-pad-dialog] button { color:inherit;background:#383c42;border:1px solid #777;border-radius:5px;padding:.45em .7em;font:inherit;margin:2px }
+[data-pad-dialog] output { display:block; min-height:1.5em; overflow-wrap:anywhere }
+.pad-keys { display:grid; grid-template-columns:repeat(10,1fr) }
+.pad-active :focus { outline:3px solid #ffdc68 !important; outline-offset:-3px }

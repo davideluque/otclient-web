@@ -105,4 +105,34 @@ describe('bindCombat', () => {
 
     binding.destroy();
   });
+  it('cycles monsters by distance and keeps replacement targets monster-only', () => {
+    const { client, sent } = makeClient();
+    const ids = [0x10000002, 0x80000001, 0x40000003, 0x40000004];
+    const creatures = ids.map((id, i) => ({ id, x: [100, 100, 103, 102][i], y: 100, z: 7, health: 100 }));
+    const binding = bindCombat(client, makeWorld(creatures));
+    binding.attackNextMonster();
+    expect(binding.targetId).toBe(ids[3]);
+    binding.attackNextMonster();
+    expect(binding.targetId).toBe(ids[2]);
+    creatures[2].z++;
+    vi.advanceTimersByTime(500);
+    expect(binding.targetId).toBe(ids[3]);
+    binding.attackNextMonster();
+    expect(sent).toHaveLength(3);
+    creatures[3].health = 0;
+    vi.advanceTimersByTime(500);
+    expect(binding.targetId).toBe(0);
+    binding.destroy();
+  });
+  it('disarms unrestricted auto-attack when a monster search is empty', () => {
+    const { client, sent } = makeClient();
+    const creatures = [{ id: 0x10000002, x: 101, y: 100, z: 7, health: 0 }];
+    const binding = bindCombat(client, makeWorld(creatures));
+    binding.setAttacking(true);
+    binding.attackNextMonster();
+    creatures[0].health = 100;
+    vi.advanceTimersByTime(500);
+    expect(sent).toHaveLength(0);
+    binding.destroy();
+  });
 });

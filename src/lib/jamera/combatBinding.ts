@@ -1,3 +1,4 @@
+import { battleCandidates } from './battleBinding';
 import { debugConsole } from '../debugConsole';
 import { createSpellBar, type SpellBarHandle } from '../spellBar';
 import { loadSpellSlots, spellByWords, spellIconUrl } from '../spells';
@@ -33,6 +34,7 @@ export interface CombatBindingHandle {
    * The same id again disengages (classic battle-list toggle).
    */
   attackTarget(id: number): void;
+  attackNextMonster(): void;
   destroy(): void;
 }
 
@@ -55,6 +57,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   const protocol = client.getProtocol();
   let attacking = false;
   let currentTarget = 0;
+  let monstersOnly = false;
 
   const send = (packet: { toUint8Array(): Uint8Array }): void => {
     try {
@@ -86,17 +89,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
       const current = world.getAllCreatures().find((c) => c.id === currentTarget);
       if (current && current.z === world.playerZ && current.health > 0) return currentTarget;
     }
-    let best = 0;
-    let bestDist = Infinity;
-    for (const c of world.getAllCreatures()) {
-      if (c.id === world.playerCreatureId || c.z !== world.playerZ || c.health <= 0) continue;
-      const d = Math.max(Math.abs(c.x - world.playerX), Math.abs(c.y - world.playerY));
-      if (d < bestDist) {
-        bestDist = d;
-        best = c.id;
-      }
-    }
-    return best;
+    return battleCandidates(world, monstersOnly)[0]?.id ?? 0;
   }
 
   const retarget = (): void => {
@@ -113,6 +106,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   // and the menu's Settings toggle) so they can't drift apart.
   const setAttacking = (on: boolean): void => {
     if (on === attacking) return;
+    monstersOnly = false;
     attacking = on;
     attackBtn.textContent = attacking ? '✋' : '⚔';
     attackBtn.style.borderColor = attacking ? '#d9534f' : '#555';
@@ -126,7 +120,8 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
 
   attackBtn.addEventListener('click', () => setAttacking(!attacking));
 
-  const attackTarget = (id: number): void => {
+  const attackTarget = (id: number, restrictToMonsters = false): void => {
+    monstersOnly = restrictToMonsters;
     if (attacking && currentTarget === id) {
       setAttacking(false); // tap the engaged target again = stop
       return;
@@ -155,6 +150,17 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     get targetId() { return attacking ? currentTarget : 0; },
     setAttacking,
     attackTarget,
+    attackNextMonster() {
+      const candidates = battleCandidates(world, true);
+      if (!candidates.length) {
+        setAttacking(false);
+        return;
+      }
+      const index = candidates.findIndex((entry) => entry.id === currentTarget);
+      const next = candidates[(index + 1) % candidates.length].id;
+      monstersOnly = true;
+      if (next !== currentTarget) attackTarget(next, true);
+    },
     destroy: () => {
       clearInterval(timer);
       if (attacking && currentTarget !== 0) send(protocol.actions.buildAttack(0));

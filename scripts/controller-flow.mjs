@@ -100,8 +100,10 @@ export async function controllerFlow(page, url, production = false, interruptedL
   await until(() => page.evaluate(() => window.padPolls > 2), 'controller polling');
   for (const label of ['Account number','Password']) {
     await select(page,'.jamera-login',label);
+    assert.equal(await page.evaluate(() => document.activeElement.tagName),'BUTTON');
     await select(page,'[data-pad-dialog]','1');
     await select(page,'[data-pad-dialog]','Done');
+    assert.equal(await page.evaluate(() => document.activeElement.tagName === 'INPUT'),false);
   }
   await select(page,'.jamera-login','Log in');
   if (interruptedLogin) {

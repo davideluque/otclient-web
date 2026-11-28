@@ -221,3 +221,20 @@ test('Battle stays open during controller and keyboard walking', async ({page}) 
   await page.getByRole('button',{name:'Battle',exact:true}).click();
   await expect(battle).toBeHidden();
 });
+
+test('pad focus suppresses the native input mode until pointer activation or grid dismissal', async ({page}) => {
+  await page.addInitScript(fakeController);
+  await page.goto('/jamera.html?tv=1&autologin=0');
+  await expect.poll(() => page.evaluate(() => window.padPolls)).toBeGreaterThan(2);
+  const {press} = await import('./controller-flow.mjs');
+  const tap = async index => { await press(page,index); await press(page,index,false); };
+  await tap(13);
+  const account = page.getByLabel('Account number');
+  await expect(account).toBeFocused();
+  await expect(account).toHaveAttribute('inputmode','none');
+  await account.dispatchEvent('pointerdown');
+  await expect(account).not.toHaveAttribute('inputmode','none');
+  await tap(0); await tap(1);
+  await tap(13);
+  await expect(page.getByLabel('Password',{exact:true})).toBeFocused();
+});

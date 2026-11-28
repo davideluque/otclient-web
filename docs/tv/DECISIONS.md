@@ -48,3 +48,7 @@ Keep Battle, Skills, Inventory and containers visible while playing. Close conta
 ### B2 · Modal measurement cost
 
 Track mounted modal roots. Only their insertion, removal, visibility or a relevant ancestor change invalidates the cached layout. The walker reads that same cache.
+
+### B3 · Login keyboard ownership
+
+Set inputmode to none before pad-driven focus enters a text field and restore its previous value on blur. Open and close the text grid without focusing the editable field. Keyboard and remote navigation retain normal field behavior.

@@ -100,7 +100,9 @@ export function dialog(title: string) {
 
 // A webOS keyboard may require a trusted activation event. Provide text
 // entry from real gamepad edges even on browsers that ignore scripted click.
-function textEntry(field: HTMLInputElement | HTMLTextAreaElement): void {
+const gridOrigin = new WeakMap<HTMLElement, HTMLElement>();
+function textEntry(scope: HTMLElement, field: HTMLInputElement | HTMLTextAreaElement): void {
+  gridOrigin.set(scope,field);
   const panel = dialog(field.getAttribute('aria-label') || 'Enter text');
   const secret = field instanceof HTMLInputElement && field.type === 'password';
   const output = document.createElement('output');
@@ -128,27 +130,49 @@ function textEntry(field: HTMLInputElement | HTMLTextAreaElement): void {
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.dispatchEvent(new Event('change', { bubbles: true }));
     panel.close();
-    field.focus();
   });
-  panel.button('Cancel', () => { panel.close(); field.focus(); }).dataset.padBack = '';
+  panel.button('Cancel', panel.close).dataset.padBack = '';
   grid.querySelector('button')?.focus();
 }
 
-export function focusAction(scope: HTMLElement, action: 'activate' | Direction): void {
+function isTextField(item: HTMLElement): item is HTMLInputElement | HTMLTextAreaElement {
+  return item instanceof HTMLTextAreaElement || item instanceof HTMLInputElement
+    && ['text','number','password'].includes(item.type);
+}
+
+function focusFromPad(item: HTMLElement) {
+  if (isTextField(item) && document.activeElement !== item) {
+    const original = item.getAttribute('inputmode');
+    item.setAttribute('inputmode','none');
+    const restore = () => {
+      if (original === null) item.removeAttribute('inputmode');
+      else item.setAttribute('inputmode',original);
+      item.removeEventListener('blur',restore);
+      item.removeEventListener('pointerdown',restore);
+      item.removeEventListener('keydown',restore);
+    };
+    item.addEventListener('blur',restore);
+    item.addEventListener('pointerdown',restore);
+    item.addEventListener('keydown',restore);
+  }
+  item.focus();
+}
+
+export function focusAction(scope: HTMLElement, action: 'activate' | Direction, fromPad = true): void {
   const items = Array.from(scope.querySelectorAll<HTMLElement>(selectable)).filter(visible);
   if (!items.length) return;
-  const index = items.indexOf(document.activeElement as HTMLElement);
+  const origin = document.activeElement === document.body ? gridOrigin.get(scope) : document.activeElement;
+  const index = items.indexOf(origin as HTMLElement);
   const item = items[Math.max(0,index)];
   if (action === 'activate') {
-    item.focus();
-    if (item instanceof HTMLTextAreaElement || item instanceof HTMLInputElement && ['text','number','password'].includes(item.type)) textEntry(item);
-    else item.click();
+    if (isTextField(item)) textEntry(scope,item);
+    else { item.focus(); item.click(); }
   } else if (item instanceof HTMLInputElement && item.type === 'range' && [1,3].includes(action)) {
     if (action === Direction.East) item.stepUp(); else item.stepDown();
     item.dispatchEvent(new Event('input', { bubbles: true }));
   } else {
     const next = neighbour(items.map((el) => el.getBoundingClientRect()), index, action);
-    items[next].focus();
+    if (fromPad) focusFromPad(items[next]); else items[next].focus();
     items[next].scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 }

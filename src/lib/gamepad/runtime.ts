@@ -198,7 +198,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       const surface = direction >= 0 ? currentScope() : null;
       if (surface) {
         e.preventDefault(); e.stopImmediatePropagation();
-        focusAction(surface, direction as 0|1|2|3);
+        focusAction(surface, direction as 0|1|2|3, false);
       }
     }
   }

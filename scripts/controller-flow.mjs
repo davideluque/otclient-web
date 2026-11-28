@@ -142,7 +142,6 @@ export async function controllerFlow(page, url, production = false, interruptedL
     await until(() => page.evaluate(() => !!document.querySelector('[aria-label^="Controller disconnected"]')), 'disconnect notice');
     await page.evaluate(() => { window.testPad.connected = true; });
     await press(page,15,false);
-    await tap(page,0);
     await until(() => page.evaluate(() => !document.querySelector('[aria-label^="Controller disconnected"]')), 'controller retry');
   }
   if (production) {

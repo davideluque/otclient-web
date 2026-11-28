@@ -145,3 +145,31 @@ test('launch reset and green remote key recover an unusable profile', async ({pa
   await green(); await page.getByText('Continue without controller',{exact:true}).click();
   await expect(page.getByRole('dialog',{name:'Controller recovery'})).toHaveCount(0);
 });
+
+test('sleeping controller and closed game can both be dismissed with no pad', async ({page}) => {
+  await fallbackSession(page);
+  const disconnected = page.getByRole('dialog',{name:/Controller disconnected/});
+  async function unplug() {
+    await page.evaluate(() => { window.testPad.connected = false; });
+    await expect(disconnected).toBeVisible();
+  }
+  async function reconnect() {
+    await page.evaluate(() => { window.testPad.connected = true; window.testPad.buttons[8].pressed = true; });
+    await expect(disconnected).toHaveCount(0);
+    await page.evaluate(() => { window.testPad.buttons[8].pressed = false; });
+  }
+  await unplug();
+  await page.keyboard.press('Enter');
+  await expect(disconnected).toHaveCount(0);
+  await reconnect(); await page.waitForTimeout(150);
+  await unplug(); await reconnect();
+  await page.waitForTimeout(150); await unplug();
+  await page.getByRole('button',{name:'Continue without controller'}).click();
+  await expect(disconnected).toHaveCount(0);
+  await page.evaluate(() => window.dropMockSession());
+  const network = page.getByRole('dialog',{name:/Game connection closed/});
+  await expect(network).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown',{keyCode:461,bubbles:true})));
+  await expect(network).toHaveCount(0);
+  await expect(page.getByLabel('Account number')).toBeVisible();
+});

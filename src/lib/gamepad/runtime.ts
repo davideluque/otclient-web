@@ -31,7 +31,8 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   let hud: ReturnType<typeof createControllerHUD> | null = null;
   let sheet: ReturnType<typeof openBindings> | null = null;
   let editor: ReturnType<typeof openBindings> | null = null;
-  let recovery: ReturnType<typeof dialog> | null = null;
+  let disconnectedPad: ReturnType<typeof dialog> | null = null;
+  let closedGame: ReturnType<typeof dialog> | null = null;
   let wizard: ReturnType<typeof calibrate> | null = null;
   let id: string | null = null;
   let profile: Profile | null = null;
@@ -86,9 +87,10 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   function showRescue() {
     stopWizard();
     rescue?.close();
+    closePadNotice();
     const panel = dialog('Controller recovery');
     rescue = panel;
-    function close() { panel.close(); rescue = null; reset(); }
+    function close() { panel.close(); rescue = null; reset(); closedGame?.el.querySelector('button')?.focus(); }
     const calibrateButton = panel.button('Recalibrate', () => { close(); startCalibration(); });
     const standard = panel.button('Use standard mapping', () => {
       if (!id) return;
@@ -103,16 +105,25 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     without.dataset.padBack = '';
     (id ? calibrateButton : without).focus();
   }
-  function recover(message: string) {
-    recovery?.close();
-    recovery = dialog(message);
-    const reconnect = recovery.button('Retry', () => {
-      if (id === null) return;
-      recovery?.close();
-      recovery = null;
-      reset();
+  function closePadNotice() {
+    disconnectedPad?.close(); disconnectedPad = null; reset();
+  }
+  function padNotice() {
+    closePadNotice();
+    disconnectedPad = dialog('Controller disconnected. Reconnect and press a button.');
+    const button = disconnectedPad.button('Continue without controller', closePadNotice);
+    button.dataset.padBack = '';
+    button.focus();
+  }
+  function networkNotice() {
+    const panel = dialog('Game connection closed. Retry to return to login.');
+    closedGame = panel;
+    const retry = panel.button('Retry', () => {
+      panel.close(); closedGame = null; reset();
+      if (id && !profile && !controllerPaused) startCalibration();
     });
-    reconnect.focus();
+    retry.dataset.padBack = '';
+    retry.focus();
   }
   function showEditor() {
     editor?.close();
@@ -130,8 +141,9 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       hint.hidden = id !== null;
       stopWizard();
       profile = pad ? loadProfile(pad) : null;
-      if (!controllerPaused && hadPad && !pad) recover('Controller disconnected. Reconnect and press a button.');
-      if (!rescue && !controllerPaused && pad && !profile) startCalibration();
+      if (pad && disconnectedPad) closePadNotice();
+      if (!rescue && !closedGame && !controllerPaused && hadPad && !pad) padNotice();
+      if (!rescue && !closedGame && !controllerPaused && pad && !profile) startCalibration();
       if (rescue) showRescue();
     }
     if (retryOnPress && pad?.buttons.some(b => b.pressed)) { retryOnPress = false; startCalibration(); }
@@ -165,7 +177,9 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (combat && hud) hud.update(next.layer, words, combat.cooldownUntil, now);
   });
   function keydown(e: KeyboardEvent) {
-    if (tv && e.keyCode === 404) {
+    if (e.key === 'Escape' && currentScope()?.matches('[data-pad-dialog]')) {
+      e.preventDefault(); e.stopImmediatePropagation(); goBack(currentScope());
+    } else if (tv && e.keyCode === 404) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (!e.repeat) showRescue();
     } else if (tv && e.keyCode === 461) {
@@ -202,9 +216,9 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     sheet?.close(); sheet = null;
     editor?.close(); editor = null;
     document.querySelectorAll('[data-pad-dialog]').forEach(el => el.remove());
-    stopWizard(); recovery = null; rescue = null;
+    stopWizard(); disconnectedPad = null; closedGame = null; rescue = null;
     reset();
-    if (disconnected) recover('Game connection closed. Retry to return to login.');
+    if (disconnected) networkNotice();
   }
   return { get heldDirection() { return state.held; }, get blocksMovement() { return !!currentScope() || document.hidden; },
     enter(binding: CombatBindingHandle) { combat = binding; hud?.destroy(); hud = createControllerHUD(); reset(); },

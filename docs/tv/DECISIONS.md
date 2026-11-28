@@ -32,3 +32,7 @@ Match Arrow and Enter against their individual pad events for 80 ms. Adjust with
 ### A3 · Controller profile recovery
 
 Use the LG green key (404) to open recovery without using any mapped button. Continue pauses the controller for this page. Recalibrate or Use standard mapping resumes it. The shell forwards a one-shot reset on launch or deploy.
+
+### A4 · Sleep and network recovery
+
+The pad notice dismisses on reconnection or Continue. The game connection notice has its own Retry and Back route. A sleeping pad can reconnect during keyboard play.

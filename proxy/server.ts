@@ -7,6 +7,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import * as net from 'node:net';
 import * as http from 'node:http';
+import { handleTVReport } from './tvDiagnostics';
 import * as fs from 'node:fs';
 
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '8090', 10);
@@ -89,6 +90,10 @@ function handleTelemetry(req: http.IncomingMessage, res: http.ServerResponse): v
 }
 
 const httpServer = http.createServer((req, res) => {
+  if (process.env.TV_DIAGNOSTICS === '1' && ['/tv/report','/tv/log'].includes(req.url ?? '')) {
+    void handleTVReport(req, res, ALLOWED_ORIGINS);
+    return;
+  }
   if ((req.url ?? '').split('?')[0] === '/telemetry') {
     handleTelemetry(req, res);
     return;
@@ -109,6 +114,13 @@ wss.on('connection', (ws: WebSocket, req) => {
   // Exact-path routing only. The old `path.includes('game')` heuristic
   // silently mapped any unknown path to the login port — refuse instead.
   const path = (req.url ?? '').split('?')[0];
+  if (process.env.TV_DIAGNOSTICS === '1' && path === '/tv/ping' && ALLOWED_ORIGINS.includes(req.headers.origin ?? '')) {
+    const timeout = setTimeout(() => ws.terminate(), 5000);
+    ws.once('close', () => clearTimeout(timeout));
+    ws.once('error', () => ws.terminate());
+    ws.once('message', (data) => { if (data.toString() === 'ping') ws.send('pong'); ws.close(); });
+    return;
+  }
   const targetPort = TARGET_PORTS[path];
   if (targetPort === undefined) {
     console.warn(`Rejected connection: unknown path ${req.url}`);

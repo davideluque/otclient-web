@@ -25,7 +25,8 @@ export default defineConfig({
     {
       command: 'npm run proxy',
       cwd: root,
-      env: { ...mockPorts, OT_HOST: '127.0.0.1', WS_PORT: '18090' },
+      env: { ...mockPorts, TV_DIAGNOSTICS: '1', WS_ALLOWED_ORIGINS: 'http://127.0.0.1:15180',
+        TV_REPORT_DIR: resolve(root, 'test-results/tv-diagnostics'), OT_HOST: '127.0.0.1', WS_PORT: '18090' },
       port: 18090,
     },
     {

@@ -9,6 +9,7 @@ import type { ThingRef } from './interactions';
 
 export interface ContainerBindingHandle {
   readonly manager: ContainerManager;
+  closeAll(): void;
   destroy(): void;
 }
 
@@ -55,17 +56,18 @@ export function bindContainers(
     sheet?.close();
     sheet = null;
   };
+  const send = (packet: Parameters<GameClient['send']>[0]): void => {
+    try {
+      client.send(packet);
+    } catch (e) {
+      debugConsole?.warn('[jamera] container send failed:', e instanceof Error ? e.message : e);
+    }
+  };
+  const requestClose = (id: number) => send(protocol.containers.buildClose(id));
   if (parent) {
-    const send = (packet: Parameters<GameClient['send']>[0]): void => {
-      try {
-        client.send(packet);
-      } catch (e) {
-        debugConsole?.warn('[jamera] container send failed:', e instanceof Error ? e.message : e);
-      }
-    };
     pane = createContainerPane(parent, {
       renderThumb: opts.renderThumb,
-      onClose: (cid) => send(protocol.containers.buildClose(cid)),
+      onClose: requestClose,
       onUp: (cid) => send(protocol.containers.buildUp(cid)),
       onItemTap: (cid, slot, item) => {
         const from = containerSlotPosition(cid, slot);
@@ -143,6 +145,7 @@ export function bindContainers(
 
   return {
     manager,
+    closeAll() { for (const container of manager.list) requestClose(container.id); },
     destroy: () => {
       dispatcher.off(op.ContainerOpen);
       dispatcher.off(op.ContainerClose);

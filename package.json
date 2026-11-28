@@ -15,10 +15,20 @@
     "test:e2e": "playwright test --config scripts/playwright.config.mjs",
     "test:watch": "vitest",
     "proxy": "npx tsx proxy/server.ts",
-    "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts"
+    "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts",
+    "tv:build": "tsc && vite build --config vite.tv.config.ts --mode tv && node scripts/tv-bundle.mjs",
+    "tv:check": "node scripts/tv-bundle.mjs --check",
+    "tv:smoke": "npm run tv:build && TV_SMOKE=1 npm run test:e2e",
+    "tv:package": "node scripts/tv.mjs package",
+    "tv:install": "node scripts/tv.mjs install",
+    "tv:launch": "node scripts/tv.mjs launch",
+    "tv:inspect": "node scripts/tv.mjs inspect",
+    "tv:serve": "node scripts/tv.mjs serve",
+    "tv:deploy": "node scripts/tv.mjs deploy"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@jridgewell/sourcemap-codec": "^1.6.0",
     "@playwright/test": "^1.65.1",
     "@types/node": "^24.19.4",
     "@types/ws": "^8.18.2",

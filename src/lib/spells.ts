@@ -20,6 +20,8 @@ export interface SpellDef {
   cooldownMs: number;
   /** Conjure spells produce runes/ammo (need blank rune or hands free). */
   conjure?: boolean;
+  /** Additional words required after this incantation. */
+  parameter?: 'player name' | 'creature name' | 'up or down';
 }
 
 /**
@@ -59,7 +61,7 @@ export const SPELLS: readonly SpellDef[] = [
   { words: 'exura', name: 'Light Healing', icon: '💚', cooldownMs: 1000 },
   { words: 'exura gran', name: 'Intense Healing', icon: '💖', cooldownMs: 1000 },
   { words: 'exura vita', name: 'Ultimate Healing', icon: '✨', cooldownMs: 2000 },
-  { words: 'exura sio', name: 'Heal Friend', icon: '🤝', cooldownMs: 2000 },
+  { words: 'exura sio', parameter: 'player name', name: 'Heal Friend', icon: '🤝', cooldownMs: 2000 },
   { words: 'exura gran mas res', name: 'Mass Healing', icon: '💞', cooldownMs: 4000 },
   { words: 'exana pox', name: 'Antidote', icon: '🧪', cooldownMs: 1000 },
   { words: 'exana flam', name: 'Antidote Fire', icon: '🚒', cooldownMs: 1000 },
@@ -73,12 +75,12 @@ export const SPELLS: readonly SpellDef[] = [
   { words: 'utamo vita', name: 'Magic Shield', icon: '🔮', cooldownMs: 2000 },
   { words: 'utana vid', name: 'Invisibility', icon: '👻', cooldownMs: 2000 },
   { words: 'exana ina', name: 'Cancel Invisibility', icon: '👁️', cooldownMs: 2000 },
-  { words: 'exani hur', name: 'Levitate', icon: '🪶', cooldownMs: 2000 },
+  { words: 'exani hur', parameter: 'up or down', name: 'Levitate', icon: '🪶', cooldownMs: 2000 },
   { words: 'exani tera', name: 'Magic Rope', icon: '🪢', cooldownMs: 1000 },
-  { words: 'exiva', name: 'Find Person', icon: '🧭', cooldownMs: 2000 },
+  { words: 'exiva', parameter: 'player name', name: 'Find Person', icon: '🧭', cooldownMs: 2000 },
   { words: 'exeta res', name: 'Challenge', icon: '🗯️', cooldownMs: 2000 },
-  { words: 'utevo res', name: 'Summon Creature', icon: '🐺', cooldownMs: 4000 },
-  { words: 'utevo res ina', name: 'Creature Illusion', icon: '🎭', cooldownMs: 2000 },
+  { words: 'utevo res', parameter: 'creature name', name: 'Summon Creature', icon: '🐺', cooldownMs: 4000 },
+  { words: 'utevo res ina', parameter: 'creature name', name: 'Creature Illusion', icon: '🎭', cooldownMs: 2000 },
 
   // Attack
   { words: 'exori', name: 'Berserk', icon: '⚔️', cooldownMs: 4000 },
@@ -137,7 +139,7 @@ export const SPELLS: readonly SpellDef[] = [
   { words: 'aleta sio', name: 'House Guest List', icon: '🏠', cooldownMs: 1000 },
   { words: 'aleta som', name: 'House Subowner List', icon: '🏠', cooldownMs: 1000 },
   { words: 'aleta grav', name: 'House Door List', icon: '🚪', cooldownMs: 1000 },
-  { words: 'alana sio', name: 'House Kick', icon: '🥾', cooldownMs: 1000 },
+  { words: 'alana sio', parameter: 'player name', name: 'House Kick', icon: '🥾', cooldownMs: 1000 },
 ] as const;
 
 export function spellByWords(words: string): SpellDef | undefined {

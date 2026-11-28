@@ -3,7 +3,7 @@
     /* Explicit z-index above the PIXI canvas (which is appended later to
        document.body with z-index: 0). Both are position: fixed at the
        root, so without this the canvas would paint on top by DOM order. */
-    position: fixed; inset: 0; z-index: 10;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 10;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 1rem;
     background: #161616; color: #e0e0e0;

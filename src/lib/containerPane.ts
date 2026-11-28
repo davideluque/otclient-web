@@ -39,7 +39,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .container-pane {
-      position: fixed; top: 35%; left: calc(12px + env(safe-area-inset-left, 0px)); z-index: 30;
+      position: fixed; top: 35%; left: calc(12px + var(--game-inset-left, env(safe-area-inset-left, 0px))); z-index: 30;
       display: flex; flex-direction: column; gap: 8px;
       max-height: 55vh; overflow-y: auto;
       font-family: system-ui, sans-serif; user-select: none;
@@ -119,7 +119,7 @@ export function createContainerPane(
     cell.addEventListener('click', () => opts.onItemTap?.(container.id, slot, item));
     const thumb = opts.renderThumb?.(item.id) ?? null;
     if (thumb) {
-      thumb.style.cssText = 'position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
+      thumb.style.cssText = 'position:absolute;top: 2px; right: 2px; bottom: 2px; left: 2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
       cell.appendChild(thumb);
     } else {
       cell.textContent = `#${item.id}`;

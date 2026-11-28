@@ -27,7 +27,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .death-dialog {
-      position: fixed; inset: 0; z-index: 100;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100;
       display: flex; align-items: center; justify-content: center;
       background: rgba(0,0,0,0.75);
       font-family: system-ui, sans-serif;

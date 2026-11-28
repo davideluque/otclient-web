@@ -66,6 +66,18 @@ function openFrame(cid: number, name: string, items: Array<{ id: number; count?:
 }
 
 describe('bindContainers', () => {
+  it('requests closure of every open container and waits for the server confirmation', () => {
+    const {client,dispatcher,protocol} = makeClient();
+    const sent: ArrayBuffer[] = [];
+    client.send = packet => { sent.push(packet.toArrayBuffer()); };
+    const binding = bindContainers(client);
+    for (const id of [1,3]) dispatcher.dispatch(new InputPacket(openFrame(id,'Bag',[]).toArrayBuffer()));
+    binding.closeAll();
+    expect(sent).toEqual([1,3].map(id => protocol.containers.buildClose(id).toArrayBuffer()));
+    expect(binding.manager.list).toHaveLength(2);
+    binding.destroy();
+  });
+
   it('overrides the wireSkips and mirrors a full open/add/update/remove/close cycle', () => {
     const { client, dispatcher } = makeClient();
     registerWireSkips(dispatcher, client.getProtocol());

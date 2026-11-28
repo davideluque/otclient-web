@@ -123,6 +123,28 @@ describe('GameClient credential retention', () => {
     expect(client.password).toBe('');
   });
 
+  it('allows login retry if the socket closes before the list, and keeps a received list', async () => {
+    const onLoginError = vi.fn();
+    const client = new GameClient('ws://proxy', {onLoginError}, new GameProtocol());
+    const attempt = client.login(1, 'mock');
+    const socket = MockWebSocket.instances.at(-1)!;
+    socket.open();
+    await attempt;
+    socket.emitClose();
+    expect(client.getState()).toBe('disconnected');
+    expect(onLoginError).toHaveBeenCalledOnce();
+
+    const retry = client.login(1, 'mock');
+    const second = MockWebSocket.instances.at(-1)!;
+    second.open();
+    await retry;
+    // An empty character list with zero premium days is still a valid response.
+    second.onmessage?.({data: Uint8Array.of(4,0,0x64,0,0,0).buffer} as MessageEvent);
+    second.emitClose();
+    expect(client.getState()).toBe('character_list');
+    expect(onLoginError).toHaveBeenCalledOnce();
+  });
+
   it('drops the stored password on any transition to disconnected', () => {
     const client = new GameClient('ws://proxy', {}, new GameProtocol());
     // @ts-expect-error seeding private state for the test

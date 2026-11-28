@@ -38,10 +38,11 @@ class Rolling {
   get count(): number { return this.values.length; }
 }
 
-export function createMetricsOverlay(parent: HTMLElement = document.body): MetricsOverlayHandle {
+export function createMetricsOverlay(parent: HTMLElement = document.body, memory?: () => string): MetricsOverlayHandle {
   const el = document.createElement('div');
+  el.className = 'game-metrics';
   el.style.cssText = [
-    'position:fixed', 'top:calc(8px + env(safe-area-inset-top, 0px))', 'left:50%',
+    'position:fixed', 'top:calc(8px + var(--game-inset-top, env(safe-area-inset-top, 0px)))', 'left:50%',
     'transform:translateX(-50%)',
     'background:rgba(0,0,0,0.7)', 'color:#9f9',
     'font:11px/1.5 ui-monospace,monospace', 'padding:4px 10px',
@@ -67,7 +68,7 @@ export function createMetricsOverlay(parent: HTMLElement = document.body): Metri
       windowStart = now;
       const fmt = (r: Rolling): string =>
         r.count === 0 ? '—' : `${r.last.toFixed(0)}ms (avg ${r.avg().toFixed(0)})`;
-      const text = `fps ${fps}\nstep ${fmt(stats.step)}\nrepaint ${fmt(stats.repaint)}`;
+      const text = `fps ${fps}\nstep ${fmt(stats.step)}\nrepaint ${fmt(stats.repaint)}${memory ? `\n${memory()}` : ''}`;
       if (text !== lastText) {
         lastText = text;
         el.textContent = text;

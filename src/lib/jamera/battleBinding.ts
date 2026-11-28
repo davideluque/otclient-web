@@ -18,6 +18,18 @@ export interface BattleBindingHandle {
 
 const REFRESH_MS = 500;
 
+/** Living neighbours on this floor, nearest first. Ties keep world order. */
+export function battleCandidates(world: GameWorld, monstersOnly = false) {
+  return world.getAllCreatures()
+    .filter((c) => c.id !== world.playerCreatureId && c.z === world.playerZ && c.health > 0
+      && (!monstersOnly || (c.id >>> 28) === 4))
+    .map((c) => ({
+      id: c.id, name: c.name, healthPercent: c.health,
+      dist: Math.max(Math.abs(c.x - world.playerX), Math.abs(c.y - world.playerY)),
+    }))
+    .sort((a, b) => a.dist - b.dist);
+}
+
 export function bindBattleList(
   world: GameWorld,
   combat: () => CombatBindingHandle | null,
@@ -31,17 +43,8 @@ export function bindBattleList(
 
   const refresh = (): void => {
     const targetId = combat()?.targetId ?? 0;
-    const entries = world.getAllCreatures()
-      .filter((c) => c.id !== world.playerCreatureId && c.z === world.playerZ && c.health > 0)
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-        healthPercent: c.health,
-        targeted: c.id === targetId,
-        dist: Math.max(Math.abs(c.x - world.playerX), Math.abs(c.y - world.playerY)),
-      }))
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, 25);
+    const entries = battleCandidates(world).slice(0, 25)
+      .map((entry) => ({ ...entry, targeted: entry.id === targetId }));
     list.setEntries(entries);
   };
 

@@ -93,8 +93,8 @@ export function createJoystick(opts: JoystickOptions): JoystickHandle {
   base.className = 'joystick';
   base.style.cssText = [
     'position:fixed',
-    'bottom:calc(24px + env(safe-area-inset-bottom, 0px))',
-    'left:calc(24px + env(safe-area-inset-left, 0px))',
+    'bottom:calc(24px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)))',
+    'left:calc(24px + var(--game-inset-left, env(safe-area-inset-left, 0px)))',
     `width:${BASE_SIZE_PX}px`,
     `height:${BASE_SIZE_PX}px`,
     'border-radius:50%',

@@ -46,7 +46,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .inventory-pane {
-      position: fixed; top: 50%; right: calc(12px + env(safe-area-inset-right, 0px)); transform: translateY(-50%);
+      position: fixed; top: 50%; right: calc(12px + var(--game-inset-right, env(safe-area-inset-right, 0px))); transform: translateY(-50%);
       display: grid; grid-template-columns: repeat(3, 46px);
       grid-template-rows: 22px repeat(4, 46px); gap: 4px;
       padding: 10px; background: rgba(22,22,22,0.95);
@@ -157,7 +157,7 @@ export function createInventoryPane(
         s.cell.classList.add('filled');
         const thumb = opts.renderThumb?.(itemId) ?? null;
         if (thumb) {
-          thumb.style.cssText = 'position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
+          thumb.style.cssText = 'position:absolute;top: 2px; right: 2px; bottom: 2px; left: 2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain;image-rendering:pixelated;';
           s.cell.appendChild(thumb);
           s.label.textContent = '';
         } else {

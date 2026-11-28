@@ -18,7 +18,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .game-message-overlay {
-      position: fixed; left: 50%; bottom: calc(21vh + env(safe-area-inset-bottom, 0px));
+      position: fixed; left: 50%; bottom: calc(21vh + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       transform: translateX(-50%); z-index: ${zIndex.hud};
       width: min(86vw, 560px); display: flex; flex-direction: column;
       align-items: center; gap: ${space.sm}px; pointer-events: none;

@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-You'll need Tibia 7.6 client files (`.dat`, `.spr`) — these are not included in the repo. Place them in the project root.
+For online play, place your own `Tibia.dat`, `Tibia.spr` and `items.otb` in `public/assets/760/`. The repository includes the manifest for these files.
 
 ## Connecting to an OT server
 
@@ -85,6 +85,10 @@ page**, so once you serve over the LAN there's no URL to hand-edit.
 Development builds write browser diagnostics to the console. Run
 `VITE_DEBUG_LOGS=0 npm run dev` to silence them. New diagnostics can use
 `debugConsole?.warn(...)` or another console method from `src/lib/debugConsole.ts`.
+
+## Playing on an LG TV
+
+After Developer Mode setup, `npm run tv:deploy` builds, installs and launches the hosted client and keeps its HTTP server and WebSocket proxy running. The hardware checklist covers the three asset files, local settings, pairing, diagnostics and controller-only login. [TV setup and first play session](docs/tv/TOMORROW.md)
 
 ## Project structure
 

@@ -7,13 +7,13 @@ const mockPorts = { OT_LOGIN_PORT: '17171', OT_GAME_PORT: '17172' };
 export default defineConfig({
   testDir: '.',
   timeout: 60_000,
-  testMatch: 'e2e-mock-server.mjs',
+  testMatch: process.env.TV_SMOKE === '1' ? 'e2e-controller.mjs' : 'e2e-*.mjs',
   outputDir: '../test-results',
   use: {
     baseURL: 'http://127.0.0.1:15180',
     viewport: { width: 1100, height: 700 },
     screenshot: 'only-on-failure',
-    launchOptions: { executablePath: process.env.PW_CHROME },
+    launchOptions: { executablePath: process.env.PW_CHROME, args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] },
   },
   webServer: [
     {
@@ -25,11 +25,14 @@ export default defineConfig({
     {
       command: 'npm run proxy',
       cwd: root,
-      env: { ...mockPorts, OT_HOST: '127.0.0.1', WS_PORT: '18090' },
+      env: { ...mockPorts, TV_DIAGNOSTICS: '1', WS_ALLOWED_ORIGINS: 'http://127.0.0.1:15180',
+        TV_REPORT_DIR: resolve(root, 'test-results/tv-diagnostics'), OT_HOST: '127.0.0.1', WS_PORT: '18090' },
       port: 18090,
     },
     {
-      command: 'npm run dev -- --host 127.0.0.1 --port 15180 --strictPort',
+      command: process.env.TV_SMOKE === '1'
+        ? 'npm exec -- vite preview --config vite.tv.config.ts --host 127.0.0.1 --port 15180 --strictPort'
+        : 'npm run dev -- --host 127.0.0.1 --port 15180 --strictPort',
       cwd: root,
       url: 'http://127.0.0.1:15180/jamera.html',
     },

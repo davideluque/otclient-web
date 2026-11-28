@@ -32,11 +32,11 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .full-chat {
-      position: fixed; inset: 0; z-index: 60;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 60;
       display: none; align-items: stretch; justify-content: center;
       background: rgba(0,0,0,0.6);
       font-family: system-ui, sans-serif;
-      padding: calc(10px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px));
+      padding: calc(10px + var(--game-inset-top, env(safe-area-inset-top, 0px))) calc(10px + var(--game-inset-right, env(safe-area-inset-right, 0px))) calc(10px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px))) calc(10px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
     }
     .full-chat.open { display: flex; }
     .full-chat-card {

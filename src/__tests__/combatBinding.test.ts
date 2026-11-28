@@ -105,4 +105,61 @@ describe('bindCombat', () => {
 
     binding.destroy();
   });
+  it('cycles monsters by distance and keeps replacement targets monster-only', () => {
+    const { client, sent } = makeClient();
+    const ids = [0x10000002, 0x80000001, 0x40000003, 0x40000004];
+    const creatures = ids.map((id, i) => ({ id, x: [100, 100, 103, 102][i], y: 100, z: 7, health: 100 }));
+    const binding = bindCombat(client, makeWorld(creatures));
+    binding.attackNextMonster();
+    expect(binding.targetId).toBe(ids[3]);
+    binding.attackNextMonster();
+    expect(binding.targetId).toBe(ids[2]);
+    creatures[2].z++;
+    vi.advanceTimersByTime(500);
+    expect(binding.targetId).toBe(ids[3]);
+    binding.attackNextMonster();
+    expect(sent).toHaveLength(3);
+    creatures[3].health = 0;
+    vi.advanceTimersByTime(500);
+    expect(binding.targetId).toBe(0);
+    binding.destroy();
+  });
+  it('disarms unrestricted auto-attack when a monster search is empty', () => {
+    const { client, sent } = makeClient();
+    const creatures = [{ id: 0x10000002, x: 101, y: 100, z: 7, health: 0 }];
+    const binding = bindCombat(client, makeWorld(creatures));
+    binding.setAttacking(true);
+    binding.attackNextMonster();
+    creatures[0].health = 100;
+    vi.advanceTimersByTime(500);
+    expect(sent).toHaveLength(0);
+    binding.destroy();
+  });
+  it('shares spell readiness between touch and other inputs across slot reloads', () => {
+    const { client, sent } = makeClient();
+    const combat = bindCombat(client, makeWorld([]));
+    expect(combat.cast('missing spell')).toBe(false);
+    expect(combat.cast('exura')).toBe(true);
+    combat.reloadSpells();
+    document.querySelector('.spell-bar button[title*="Light"]')!
+      .dispatchEvent(new PointerEvent('pointerdown'));
+    expect(sent).toHaveLength(1);
+    vi.advanceTimersByTime(1001);
+    expect(combat.cast('exura')).toBe(true);
+    combat.destroy();
+  });
+  it('also restricts Battle and Settings attacks in a controller session', () => {
+    const { client, sent } = makeClient();
+    const player = { id: 0x10000002, x: 100, y: 99, z: 7, health: 100 };
+    const rat = { ...player, id: 0x40000001, x: 103 };
+    const binding = bindCombat(client, makeWorld([player,rat]), true);
+    binding.attackTarget(player.id);
+    expect(sent).toHaveLength(0);
+    binding.setAttacking(true);
+    expect(binding.targetId).toBe(rat.id);
+    rat.health = 0;
+    vi.advanceTimersByTime(500);
+    expect(binding.targetId).toBe(0);
+    binding.destroy();
+  });
 });

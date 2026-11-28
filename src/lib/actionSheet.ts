@@ -33,14 +33,14 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .action-sheet-backdrop {
-      position: fixed; inset: 0; z-index: ${zIndex.modal};
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: ${zIndex.modal};
       background: rgba(0,0,0,0.45);
       font-family: system-ui, sans-serif; user-select: none;
     }
     .action-sheet {
       position: fixed; left: 0; right: 0; bottom: 0;
       display: flex; flex-direction: column; gap: 6px;
-      padding: 10px calc(10px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px));
+      padding: 10px calc(10px + var(--game-inset-right, env(safe-area-inset-right, 0px))) calc(10px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px))) calc(10px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
       background: rgba(22,22,22,0.97); border-top: 1px solid #9a9a9a;
       border-radius: 14px 14px 0 0;
     }

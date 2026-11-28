@@ -31,7 +31,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .hud {
-      position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(8px + env(safe-area-inset-left, 0px));
+      position: fixed; top: calc(8px + var(--game-inset-top, env(safe-area-inset-top, 0px))); left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
       display: flex; align-items: center; gap: 8px;
       font-family: system-ui, sans-serif; z-index: 30;
       user-select: none; pointer-events: none;
@@ -55,7 +55,7 @@ function ensureStyles(): void {
     .hud .hud-bar.hp .fill { background: linear-gradient(#d9534f, #a02622); }
     .hud .hud-bar.mp .fill { background: linear-gradient(#4f74d9, #2243a0); }
     .hud .hud-bar .num {
-      position: absolute; inset: 0; text-align: center;
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0; text-align: center;
       font-size: 9px; line-height: 12px; color: #fff;
       text-shadow: 0 1px 1px #000;
     }

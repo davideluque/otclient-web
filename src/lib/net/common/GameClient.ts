@@ -109,6 +109,13 @@ export class GameClient {
       this.handleLoginResponse(packet);
     });
 
+    this.loginConn.setCloseHandler(() => {
+      // Login sockets normally close after delivering the list. Only an
+      // earlier close strands the form waiting for a reply that cannot arrive.
+      if (this.state !== 'logging_in') return;
+      this.events.onLoginError?.('Login connection closed. Please retry.');
+      this.setState('disconnected');
+    });
     this.loginConn.setErrorHandler((err) => {
       this.events.onLoginError?.(err);
       this.setState('disconnected');

@@ -1,3 +1,4 @@
+import type { Controller } from '../gamepad/runtime';
 import { debugConsole } from '../debugConsole';
 import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
@@ -55,7 +56,32 @@ if (!root) {
 }
 
 const params = new URLSearchParams(window.location.search);
+const tvFlag = params.get('tv');
+const tvMode = tvFlag === '1' || (tvFlag !== '0' && /web0s/i.test(navigator.userAgent));
+const padMode = tvMode || params.get('gamepad') === '1';
+let controller: Controller | null = null;
+let requestedLogout = false;
+if (padMode) {
+  void import('../gamepad/runtime').then(({ mountController }) => {
+    controller = mountController(tvMode, () => {
+      if (login.client.getState() === 'character_list') login.client.disconnect();
+    });
+    if (teardownCombat) controller.enter(teardownCombat);
+  });
+}
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
+if (tvMode) {
+  void import('../tv/setup').then(({ configureTV, rememberField }) => {
+    configureTV();
+    rememberField('account', ' Remember account on this device');
+    if (import.meta.env.MODE === 'tv') {
+      rememberField('password', ' Save password in plain text on this TV. Anyone using this app can log in.');
+    }
+  });
+}
+if (tvMode && params.get('tvlogs') === '1' && proxyUrl) {
+  void import('../tv/logs').then(({ startTVLogs }) => startTVLogs(proxyUrl));
+}
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
 // Self-movement algorithm A/B switch (see motion/selfMotion.ts):
@@ -81,7 +107,7 @@ if (import.meta.env.DEV && params.get('telemetry') !== '0' && proxyUrl) {
   }
 }
 
-mountLoginScreen(root, {
+const login = mountLoginScreen(root, {
   proxyUrl,
   clientVersion,
   autoLogin,
@@ -94,6 +120,12 @@ mountLoginScreen(root, {
     return assetPipeline.ready();
   },
   onLeaveGame: () => {
+    if (tvMode) {
+      window.dispatchEvent(new Event('tv-world-left'));
+      document.querySelector('.tv-render-error')?.remove();
+    }
+    controller?.leave(!requestedLogout);
+    requestedLogout = false;
     // Disconnect/kick: drop the per-session surfaces instead of leaving
     // a live joystick and chat floating over the re-shown login screen.
     // The atlas waiter goes too — the game can be entered before the
@@ -149,16 +181,6 @@ mountLoginScreen(root, {
   onEnterGame: (client) => {
     screenWakeLock?.destroy();
     screenWakeLock = bindScreenWakeLock();
-    // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
-    // live-map renderer, chat UI, and movement input. Surface the live
-    // client on `window` only in dev builds, never in production: the
-    // GameClient instance retains the player's password (private field,
-    // but readable from any code that gets the reference) so exposing
-    // it on `window` would be a credential leak.
-    if (import.meta.env.DEV) {
-      (window as unknown as { jameraClient: typeof client }).jameraClient = client;
-      debugConsole?.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
-    }
     // Baseline consumers for the full 7.6 wire vocabulary — without
     // these, the first unhandled opcode in a frame silently drops the
     // rest of it. GameWorld registers after and overrides per opcode.
@@ -185,7 +207,8 @@ mountLoginScreen(root, {
     const world = bindGameWorld(client);
     bindMovementInput(client, world);
     teardownCombat?.destroy();
-    teardownCombat = bindCombat(client, world);
+    teardownCombat = bindCombat(client, world, padMode);
+    controller?.enter(teardownCombat);
     teardownChat?.destroy();
     teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
@@ -249,6 +272,17 @@ mountLoginScreen(root, {
     // current session even across re-logins.
     settingsPane?.destroy();
     settingsPane = createSettingsPane([
+      ...(tvMode ? [
+        { kind: 'slider' as const, label: 'Fight stance', min: 1, max: 3, step: 1, unit: '',
+          hint: '1 Offensive · 2 Balanced · 3 Defensive',
+          get: () => teardownCombatModes?.modes.state.fightMode ?? 2,
+          set: (value: number) => teardownCombatModes?.update({fightMode: value === 1 || value === 3 ? value : 2}) },
+        { kind: 'toggle' as const, label: 'Chase opponent', get: () => teardownCombatModes?.modes.state.chase ?? false,
+          set: (on: boolean) => teardownCombatModes?.update({chase:on}) },
+        { kind: 'toggle' as const, label: 'Secure mode', hint: 'Prevent attacks on other players.',
+          get: () => teardownCombatModes?.modes.state.secure ?? true,
+          set: (on: boolean) => teardownCombatModes?.update({secure:on}) },
+      ] : []),
       {
         kind: 'toggle',
         label: 'Auto-attack',
@@ -302,6 +336,11 @@ mountLoginScreen(root, {
     // lag trace) — the Settings toggle does the same thing in-game.
     if (params.get('metrics') === '1') setMetricsVisible(true);
     teardownStats = bindStats(client, document.body, [
+      ...(padMode ? [
+        { label: 'Controller spells', onSelect: () => controller?.showEditor() },
+        { label: 'Close containers', onSelect: () => teardownContainers?.closeAll() },
+        { label: 'Calibrate controller', onSelect: () => controller?.startCalibration() },
+      ] : []),
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
       { label: 'Chat', onSelect: () => teardownChat?.presentation.openFull() },
       { label: 'Battle', onSelect: () => teardownBattle?.setVisible(!teardownBattle.visible) },
@@ -334,6 +373,7 @@ mountLoginScreen(root, {
         onSelect: () => {
           try {
             client.send(client.getProtocol().actions.buildLogout());
+            requestedLogout = true;
           } catch (e) {
             debugConsole?.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
           }
@@ -470,6 +510,7 @@ let mountEpoch = 0;
 
 async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client?: GameClient): Promise<void> {
   const epoch = ++mountEpoch;
+  if (tvMode) document.querySelector('.tv-render-error')?.remove();
   teardownRenderer?.();
   teardownRenderer = null;
   // Cancel a waiter queued by a previous session — its world is dead.
@@ -479,6 +520,15 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
   try {
     app = await ensurePixiApp();
   } catch (err) {
+    if (tvMode && epoch === mountEpoch && client?.getState() === 'in_game') {
+      const message = err instanceof Error ? err.message : String(err);
+      const notice = document.createElement('p');
+      notice.className = 'tv-render-error';
+      notice.setAttribute('role', 'alert');
+      notice.textContent = 'WebGL initialization failed. ' + message;
+      document.body.appendChild(notice);
+      window.dispatchEvent(new CustomEvent('tv-render-error', { detail: { message, stack: err instanceof Error ? err.stack : '' } }));
+    }
     debugConsole?.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
     return;
   }
@@ -527,6 +577,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
       world, atlas, app, chatManager,
       selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
     );
+    if (tvMode) window.dispatchEvent(new Event('tv-world-ready'));
     debugConsole?.info('[jamera] renderer bound to GameWorld');
   };
 
@@ -668,7 +719,7 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
   const walker = createWalkController({
     client,
     world,
-    getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
+    getHeldDirection: () => joystickDir ?? keyboard.heldDirection ?? (controller?.blocksMovement ? null : controller?.heldDirection ?? null),
     // Pre-walk: predict the step the packet will cause so the renderer
     // glides from the send instant instead of standing out the
     // confirmation round-trip (the level-1 step-pause-step stutter).
@@ -744,7 +795,12 @@ let metricsOverlay: MetricsOverlayHandle | null = null;
 
 function setMetricsVisible(on: boolean): void {
   if (on && !metricsOverlay) {
-    metricsOverlay = createMetricsOverlay();
+    metricsOverlay = createMetricsOverlay(document.body, tvMode ? () => {
+      const pages = assetPipeline.atlas?.atlasPages;
+      const bytes = pages ? Array.from(pages.values()).reduce((total, page) => total + page.byteLength, 0) : 0;
+      const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+      return `heap ${memory ? (memory.usedJSHeapSize / 1048576).toFixed(1) + ' MiB' : 'unavailable'}\natlas ${pages?.size ?? 0} pages · ${bytes / 1048576} MiB CPU`;
+    } : undefined);
   } else if (!on && metricsOverlay) {
     metricsOverlay.destroy();
     metricsOverlay = null;

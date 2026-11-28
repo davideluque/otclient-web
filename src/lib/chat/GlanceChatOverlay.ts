@@ -25,14 +25,14 @@ function ensureStyles(): void {
     }
     @media (orientation: portrait) {
       .chat-glance-stack {
-        left: calc(8px + env(safe-area-inset-left, 0px));
-        bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+        left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
+        bottom: calc(148px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       }
     }
     @media (orientation: landscape) {
       .chat-glance-stack {
-        left: calc(8px + env(safe-area-inset-left, 0px));
-        top: calc(52px + env(safe-area-inset-top, 0px));
+        left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
+        top: calc(52px + var(--game-inset-top, env(safe-area-inset-top, 0px)));
         bottom: auto;
       }
     }
@@ -55,14 +55,14 @@ function ensureStyles(): void {
     }
     @media (orientation: portrait) {
       .chat-open-btn {
-        left: calc(8px + env(safe-area-inset-left, 0px));
-        bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+        left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
+        bottom: calc(96px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       }
     }
     @media (orientation: landscape) {
       .chat-open-btn {
-        left: calc(8px + env(safe-area-inset-left, 0px));
-        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
+        bottom: calc(8px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       }
     }
     .chat-open-btn .badge {

@@ -1,3 +1,4 @@
+import { battleCandidates } from './battleBinding';
 import { debugConsole } from '../debugConsole';
 import { createSpellBar, type SpellBarHandle } from '../spellBar';
 import { loadSpellSlots, spellByWords, spellIconUrl } from '../spells';
@@ -21,6 +22,8 @@ import type { GameWorld } from '../GameWorld';
 export interface CombatBindingHandle {
   /** Re-read the configured spell slots (the customizer's apply hook). */
   reloadSpells(): void;
+  cast(words: string): boolean;
+  cooldownUntil(words: string): number;
   /** Whether auto-attack is engaged (tests + the Settings toggle read this). */
   readonly attacking: boolean;
   /** The currently attacked creature id (0 = none) — battle list highlight. */
@@ -33,6 +36,7 @@ export interface CombatBindingHandle {
    * The same id again disengages (classic battle-list toggle).
    */
   attackTarget(id: number): void;
+  attackNextMonster(): void;
   destroy(): void;
 }
 
@@ -51,23 +55,35 @@ function slotSpells(): Array<{ id: string; label: string; iconUrl: string | null
   });
 }
 
-export function bindCombat(client: GameClient, world: GameWorld): CombatBindingHandle {
+export function bindCombat(client: GameClient, world: GameWorld, restrictTargets = false): CombatBindingHandle {
   const protocol = client.getProtocol();
   let attacking = false;
   let currentTarget = 0;
+  let monstersOnly = restrictTargets;
 
-  const send = (packet: { toUint8Array(): Uint8Array }): void => {
+  const send = (packet: { toUint8Array(): Uint8Array }): boolean => {
     try {
       client.send(packet as Parameters<GameClient['send']>[0]);
+      return true;
     } catch (e) {
       debugConsole?.warn('[jamera] combat send failed:', e instanceof Error ? e.message : e);
+      return false;
     }
   };
 
-  let bar: SpellBarHandle = createSpellBar({
-    spells: slotSpells(),
-    onCast: (id) => send(protocol.chat.buildSay(id)),
-  });
+  const deadlines = new Map<string, number>();
+  const cooldownUntil = (words: string): number => deadlines.get(words) ?? 0;
+  function cast(words: string): boolean {
+    const spell = spellByWords(words);
+    const now = performance.now();
+    if (!spell || now < cooldownUntil(words) || client.getState() !== 'in_game') return false;
+    if (!send(protocol.chat.buildSay(spell.words))) return false;
+    deadlines.set(words, now + spell.cooldownMs);
+    bar.triggerCooldown(words);
+    return true;
+  }
+  const mountBar = () => createSpellBar({ spells: slotSpells(), onCast: cast, externalCooldown: true });
+  let bar: SpellBarHandle = mountBar();
 
   // The auto-attack toggle is the bar's corner anchor — the big button
   // the spell slots fan around (the MOBA basic-attack position). The
@@ -86,17 +102,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
       const current = world.getAllCreatures().find((c) => c.id === currentTarget);
       if (current && current.z === world.playerZ && current.health > 0) return currentTarget;
     }
-    let best = 0;
-    let bestDist = Infinity;
-    for (const c of world.getAllCreatures()) {
-      if (c.id === world.playerCreatureId || c.z !== world.playerZ || c.health <= 0) continue;
-      const d = Math.max(Math.abs(c.x - world.playerX), Math.abs(c.y - world.playerY));
-      if (d < bestDist) {
-        bestDist = d;
-        best = c.id;
-      }
-    }
-    return best;
+    return battleCandidates(world, monstersOnly)[0]?.id ?? 0;
   }
 
   const retarget = (): void => {
@@ -113,6 +119,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   // and the menu's Settings toggle) so they can't drift apart.
   const setAttacking = (on: boolean): void => {
     if (on === attacking) return;
+    monstersOnly = restrictTargets;
     attacking = on;
     attackBtn.textContent = attacking ? '✋' : '⚔';
     attackBtn.style.borderColor = attacking ? '#d9534f' : '#555';
@@ -126,7 +133,9 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
 
   attackBtn.addEventListener('click', () => setAttacking(!attacking));
 
-  const attackTarget = (id: number): void => {
+  const attackTarget = (id: number, restrictToMonsters = restrictTargets): void => {
+    if (restrictToMonsters && !battleCandidates(world, true).some(c => c.id === id)) return;
+    monstersOnly = restrictToMonsters;
     if (attacking && currentTarget === id) {
       setAttacking(false); // tap the engaged target again = stop
       return;
@@ -142,19 +151,33 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
     // Rebuild the bar with the new slots; the ⚔ circle rides the bar,
     // so re-prepend it (it keeps its current visual state).
     bar.destroy();
-    bar = createSpellBar({
-      spells: slotSpells(),
-      onCast: (id) => send(protocol.chat.buildSay(id)),
-    });
+    bar = mountBar();
+    for (const [words, end] of deadlines) {
+      const remaining = end - performance.now();
+      if (remaining > 0) bar.triggerCooldown(words, remaining);
+    }
     bar.el.prepend(attackBtn);
   };
 
   return {
     reloadSpells,
+    cast,
+    cooldownUntil,
     get attacking() { return attacking; },
     get targetId() { return attacking ? currentTarget : 0; },
     setAttacking,
     attackTarget,
+    attackNextMonster() {
+      const candidates = battleCandidates(world, true);
+      if (!candidates.length) {
+        setAttacking(false);
+        return;
+      }
+      const index = candidates.findIndex((entry) => entry.id === currentTarget);
+      const next = candidates[(index + 1) % candidates.length].id;
+      monstersOnly = true;
+      if (next !== currentTarget) attackTarget(next, true);
+    },
     destroy: () => {
       clearInterval(timer);
       if (attacking && currentTarget !== 0) send(protocol.actions.buildAttack(0));

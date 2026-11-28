@@ -10,6 +10,11 @@ import './controller.css';
 
 export function mountController(tv: boolean, cancelCharacterSelect: () => void) {
   document.documentElement.classList.add('pad-active');
+  const hint = document.createElement('p');
+  hint.textContent = typeof navigator.getGamepads === 'function'
+    ? 'Press and release a controller button to connect.'
+    : 'Gamepad API unavailable. Open device diagnostics to check controller inputs.';
+  document.querySelector('.jamera-login')?.appendChild(hint);
   const words = loadBindings();
   let state = idle();
   let combat: CombatBindingHandle | null = null;
@@ -48,7 +53,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   function startCalibration() {
     stopWizard();
     wizard = calibrate((learned) => {
-      if (id) saveProfile(id, learned);
+      if (id !== null) saveProfile(id, learned);
       profile = learned;
       stopWizard();
     }, stopWizard);
@@ -57,7 +62,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     recovery?.close();
     recovery = dialog(message);
     const reconnect = recovery.button('Retry', () => {
-      if (!id) return;
+      if (id === null) return;
       recovery?.close();
       recovery = null;
       reset();
@@ -77,6 +82,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if ((pad?.id ?? null) !== id) {
       const hadPad = id !== null;
       id = pad?.id ?? null;
+      hint.hidden = id !== null;
       stopWizard();
       profile = pad ? loadProfile(pad) : null;
       if (hadPad && !pad) recover('Controller disconnected. Reconnect and press a button.');
@@ -115,9 +121,9 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       e.preventDefault(); e.stopImmediatePropagation();
       if (!e.repeat && performance.now()-lastCircle > 200) {
         clearTimeout(backTimer);
-        backTimer = setTimeout(() => goBack(currentScope()), id ? 100 : 0);
+        backTimer = setTimeout(() => goBack(currentScope()), id !== null ? 100 : 0);
       }
-    } else if (tv && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key) && id) {
+    } else if (tv && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key) && id !== null) {
       // A paired pad can synthesize keydown before its next polled snapshot.
       // Use the Gamepad API as the sole owner of these keys while attached.
       e.preventDefault(); e.stopImmediatePropagation();
@@ -140,7 +146,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     enter(binding: CombatBindingHandle) { combat = binding; hud?.destroy(); hud = createControllerHUD(); reset(); },
     leave, showEditor, startCalibration,
     destroy() {
-      leave(false); device.destroy(); observer.disconnect();
+      leave(false); device.destroy(); observer.disconnect(); hint.remove();
       window.removeEventListener('keydown', keydown, true);
       window.removeEventListener('blur', blur);
       window.removeEventListener('focus', focus);

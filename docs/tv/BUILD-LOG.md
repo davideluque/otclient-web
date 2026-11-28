@@ -85,3 +85,5 @@ Paths below are relative to the repository root. This inventory includes every p
 | `src/lib/vipList.ts` | Expand inset shorthand for Chromium 79. |
 
 - **A1 · Calibration** — Regression coverage for changed trigger rests, dual exposure, hat and split-axis pads, skipping and cancellation.
+
+- **A2 · Remote and keyboard fallback** — Browser regression exercises server-confirmed keyboard walking, native Enter and duplicate activation with an attached pad.

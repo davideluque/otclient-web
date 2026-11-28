@@ -9,7 +9,7 @@
 | What changed for existing users? | CSS longhands preserve pane positioning. Desktop and touch casts share cooldown per incantation even after slot edits. A failed send leaves the spell available. Removed the existing development window.jameraClient global because it retained the password. GameWorld, chat and Pixi development hooks remain available to tests. An early clean close of the login socket now re-enables the form instead of leaving every login control disabled. A normal close after the list arrives preserves selection. | Adjust the cooldown policy in combatBinding. Inspect non-secret data through dedicated hooks. |
 | How can login work without a trusted native keyboard event? | Provide a controller text-entry grid for activated fields, with masked password output. Physical keyboards and native field input still work. | Replace it with native OSK invocation if the TV proves that path reliable for every controller press. |
 | How is UI mode determined? | Use the visible login screen, open menu, known pane classes and dialogs. Compare stacking order and document order. Recheck on DOM changes. Scope directional focus and Back to the top surface. | Register future pane selectors in gamepad/focus.ts or mark a new dialog with data-pad-dialog. |
-| What about duplicate remote key events? | While the TV pad is connected, its normalized snapshot owns arrows and OK. Coalesce Back with the Circle edge. Measure the actual event pairs in diagnostics. | Adjust the deduplication window or key list after observing the device. |
+| Can the remote duplicate controller keys? | Compare matching events in an 80 ms window. Remote Back uses the pane back action. | Tune padKeyMs after measuring the device. |
 | Which resolution and which performance changes? | Start at 1280×720, keep WebGL, cover zoom, density, atlas construction and walk timing. Display JS heap when exposed plus exact retained CPU atlas bytes. GPU texture memory is additional. | Set TV_RESOLUTION=1920x1080 and redeploy only after a real measurement. |
 | Does this run need extra wire operations? | The existing say, attack and movement builders cover the requested play loop. No new wire operations. | Separate a future capability into a tested game-level change with protocol fixtures. |
 | Where can credentials and diagnostic data go? | Unchecked storage options by default. Password option requires TV runtime and TV build mode. Opt-in logs send lifecycle labels and error locations. Raw key codes are collected on the separate diagnostic page only. Host records are ignored by git. | Uncheck storage or clear site data. Omit --logs, or stop the local diagnostics-enabled proxy. |
@@ -24,3 +24,7 @@ Both 1280×720 and 1920×1080 IPKs were packaged with CLI 3.2.6 and their embedd
 ### A1 · Calibration
 
 Learn the resting axes after 160 ms of stable release. Finish becomes available once ✕, ○, Options and a complete direction source are assigned. Skip preserves an empty slot. A 15-second prompt leaves the decision to the player. Run calibration again to replace these assignments.
+
+### A2 · Remote and keyboard fallback
+
+Match Arrow and Enter against their individual pad events for 80 ms. Adjust with ?padKeyMs=0 through 250 after comparing diagnostics timestamps. Native Enter and gameplay arrow events otherwise keep their usual behavior.

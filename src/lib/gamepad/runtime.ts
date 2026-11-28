@@ -27,6 +27,17 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   let profile: Profile | null = null;
   let scope: HTMLElement | null = null;
   let dirty = true;
+  const arrowKeys = ['ArrowUp','ArrowRight','ArrowDown','ArrowLeft'];
+  const configuredWindow = new URLSearchParams(location.search).get('padKeyMs');
+  const duplicateMs = configuredWindow !== null && Number.isFinite(Number(configuredWindow))
+    ? Math.max(0, Math.min(250, Number(configuredWindow))) : 80;
+  const padKeys = new Map<string, number>();
+  const remoteKeys = new Map<string, number>();
+  function recentRemote(key: string) {
+    const at = remoteKeys.get(key);
+    remoteKeys.delete(key);
+    return duplicateMs > 0 && at !== undefined && performance.now()-at <= duplicateMs;
+  }
   let lastCircle = -Infinity;
   let backTimer: ReturnType<typeof setTimeout> | undefined;
   let suspended = false;
@@ -48,7 +59,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (surface?.matches('.jamera-login')) cancelCharacterSelect();
     else back(surface);
   }
-  function reset() { state = idle(); dirty = true; }
+  function reset() { padKeys.clear(); remoteKeys.clear(); state = idle(); dirty = true; }
   function stopWizard() { wizard?.close(); wizard = null; reset(); }
   function startCalibration() {
     stopWizard();
@@ -102,12 +113,19 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       lastCircle = performance.now();
       clearTimeout(backTimer);
     }
+    if (tv && next.connected && state.connected && next.mode === state.mode) {
+      if (next.held !== null && next.held !== state.held) padKeys.set(arrowKeys[next.held], performance.now());
+      if (next.pressed.has('cross') && !state.pressed.has('cross')) padKeys.set('Enter', performance.now());
+      for (const action of next.actions) {
+        if (typeof action === 'object' && 'focus' in action) padKeys.set(arrowKeys[action.focus], performance.now());
+      }
+    }
     state = next;
     for (const action of next.actions) {
       if (typeof action === 'object') {
         if ('cast' in action) combat?.cast(action.cast);
-        else if (ui) focusAction(ui, action.focus);
-      } else if (action === 'activate' && ui) focusAction(ui, action);
+        else if (ui && !recentRemote(arrowKeys[action.focus])) focusAction(ui, action.focus);
+      } else if (action === 'activate' && ui && !recentRemote('Enter')) focusAction(ui, action);
       else if (action === 'back') goBack(ui);
       else if (action === 'menu') document.querySelector<HTMLButtonElement>('.game-menu-btn')?.click();
       else if (action === 'next') combat?.attackNextMonster();
@@ -117,24 +135,29 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (combat && hud) hud.update(next.layer, words, combat.cooldownUntil, now);
   });
   function keydown(e: KeyboardEvent) {
-    if (tv && wizard && e.key.startsWith('Arrow')) {
-      const direction = ['ArrowUp','ArrowRight','ArrowDown','ArrowLeft'].indexOf(e.key);
-      const surface = currentScope();
-      if (direction >= 0 && surface) {
-        e.preventDefault(); e.stopImmediatePropagation(); focusAction(surface, direction as 0|1|2|3);
-      }
-      return;
-    }
     if (tv && e.keyCode === 461) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (!e.repeat && performance.now()-lastCircle > 200) {
         clearTimeout(backTimer);
         backTimer = setTimeout(() => goBack(currentScope()), id !== null ? 100 : 0);
       }
-    } else if (tv && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key) && profile && !wizard) {
-      // A paired pad can synthesize keydown before its next polled snapshot.
-      // Use the Gamepad API as the sole owner of these keys while attached.
-      e.preventDefault(); e.stopImmediatePropagation();
+    } else if (tv) {
+      const recent = padKeys.get(e.key);
+      if (duplicateMs > 0 && profile && !wizard && recent !== undefined && performance.now()-recent <= duplicateMs) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        return;
+      }
+      const direction = arrowKeys.indexOf(e.key);
+      if (profile && !wizard && (direction >= 0 || e.key === 'Enter' && e.target instanceof HTMLButtonElement)) {
+        remoteKeys.set(e.key, performance.now());
+      }
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement
+        && ['text','password','search','number'].includes(e.target.type)) return;
+      const surface = direction >= 0 ? currentScope() : null;
+      if (surface) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        focusAction(surface, direction as 0|1|2|3);
+      }
     }
   }
   window.addEventListener('keydown', keydown, true);

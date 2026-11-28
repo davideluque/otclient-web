@@ -49,7 +49,7 @@ test('flags off leave controller and TV modules unloaded', async ({page}) => {
   }
   await page.goto('/jamera.html?tv=0&gamepad=0&autologin=0&telemetry=0&proxy=ws://127.0.0.1:18090');
   await page.getByLabel('Account number').fill('1');
-  await page.getByLabel('Password').fill('1');
+  await page.getByLabel('Password',{exact:true}).fill('1');
   await page.getByRole('button',{name:'Log in'}).click();
   await page.getByRole('button',{name:/Trinity/}).click();
   await expect(page.locator('.hud')).toBeVisible();
@@ -74,4 +74,54 @@ if (production) test('diagnostics save the TV observations on the proxy host', a
     } catch { return false; }
   }, {timeout:15000}).toBe(true);
   await expect(page.locator('#status')).toHaveText('Report saved on host.');
+});
+
+async function fallbackSession(page) {
+  await page.addInitScript(fakeController);
+  for (const [name,body] of Object.entries(mockAssets)) {
+    await page.route('**/assets/760/' + name, r => r.fulfill({contentType:'application/octet-stream',body}));
+  }
+  await page.goto('/jamera.html?tv=1&autologin=0&telemetry=0&metrics=1&proxy=ws://127.0.0.1:18090');
+  await page.getByLabel('Account number').fill('1');
+  await page.getByLabel('Password',{exact:true}).fill('1');
+  await page.getByRole('button',{name:'Log in'}).click();
+  await page.getByRole('button',{name:/Trinity/}).click();
+  await expect(page.locator('.hud')).toBeVisible();
+}
+
+test('attached pad leaves keyboard walk and remote activation available', async ({page}) => {
+  await fallbackSession(page);
+  await page.keyboard.down('ArrowRight');
+  try { await expect.poll(() => page.evaluate(() => window.mockReplies.east)).toBeGreaterThan(0); }
+  finally { await page.keyboard.up('ArrowRight'); }
+  await page.locator('.game-menu-btn').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.game-menu-pane.open')).toBeVisible();
+  await page.waitForTimeout(200); // The following input is a separate press.
+  await page.evaluate(() => {
+    const button = document.querySelector('.game-menu-pane.open button');
+    button.focus();
+    window.activations = 0;
+    button.addEventListener('click', e => { e.stopImmediatePropagation(); window.activations++; }, true);
+    return new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => { window.testPad.buttons[0].pressed = true; }));
+      function check() {
+        if (!window.activations) { requestAnimationFrame(check); return; }
+        const enter = new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});
+        if (button.dispatchEvent(enter)) button.click();
+        resolve();
+      }
+      requestAnimationFrame(check);
+    });
+  });
+  expect(await page.evaluate(() => window.activations)).toBe(1);
+  await page.evaluate(() => { window.testPad.buttons[0].pressed = false; });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => {
+    const button = document.activeElement;
+    if (button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))) button.click();
+    window.testPad.buttons[0].pressed = true;
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  expect(await page.evaluate(() => window.activations)).toBe(2);
 });

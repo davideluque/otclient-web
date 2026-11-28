@@ -19,7 +19,16 @@ for (const [width,height] of sizes) {
     for (const [name,body] of Object.entries(mockAssets)) {
       await page.route('**/assets/760/' + name, r => r.fulfill({contentType:'application/octet-stream',body}));
     }
-    await controllerFlow(page,'/jamera.html?autologin=0&telemetry=0&metrics=1&' + (production ? 'tv=1&tvlogs=1' : 'gamepad=1') + '&proxy=ws://127.0.0.1:18090',production);
+    if (!production) {
+      let first = true;
+      await page.routeWebSocket(/\/login$/, socket => {
+        if (first) {
+          first = false;
+          socket.onMessage(() => socket.close({code:1000, reason:'mock early close'}));
+        } else socket.connectToServer();
+      });
+    }
+    await controllerFlow(page,'/jamera.html?autologin=0&telemetry=0&metrics=1&' + (production ? 'tv=1&tvlogs=1' : 'gamepad=1') + '&proxy=ws://127.0.0.1:18090',production,!production);
     expect(errors).toEqual([]);
     if (production) {
       const file = new URL('../test-results/tv-diagnostics/device-events.jsonl',import.meta.url);

@@ -89,7 +89,7 @@ async function select(page, selector, label) {
   throw Error('Failed to select ' + label);
 }
 
-export async function controllerFlow(page, url, production = false) {
+export async function controllerFlow(page, url, production = false, interruptedLogin = false) {
   await page.goto(url);
   await until(() => page.evaluate(() => window.padPolls > 2), 'controller polling');
   for (const label of ['Account number','Password']) {
@@ -98,6 +98,10 @@ export async function controllerFlow(page, url, production = false) {
     await select(page,'[data-pad-dialog]','Done');
   }
   await select(page,'.jamera-login','Log in');
+  if (interruptedLogin) {
+    await until(() => page.evaluate(() => document.querySelector('[data-role="error"]').textContent.includes('Please retry')), 'login retry');
+    await select(page,'.jamera-login','Log in');
+  }
   await select(page,'.jamera-login','Trinity');
   await until(() => page.evaluate(() => document.querySelector('.hud') && document.querySelector('body > canvas')), 'world HUD and canvas');
   await press(page,15);

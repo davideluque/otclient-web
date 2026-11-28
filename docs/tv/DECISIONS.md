@@ -64,3 +64,7 @@ Claim the controller that most recently had a rising button edge. Merely enumera
 ### B6 · Parse shipped HTML with JSDOM
 
 Use the HTML parser already present in the compatibility gate for inline classic and module scripts. Treat templates, comments and data scripts according to their DOM roles.
+
+### C1 · Spells with arguments
+
+Disable picker entries requiring an additional spoken argument. Metadata follows params="1" in data/spells/spells.xml of the local server checkout at 0eb87c7. Existing bindings and the touch bar retain their stored words.

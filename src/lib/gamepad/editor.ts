@@ -33,7 +33,11 @@ export function openBindings(words: string[], change: () => void, readOnly = fal
     panel.el.appendChild(list);
     const assign = (word: string) => { words[selected] = word; change(); grid(); };
     panel.button('Clear slot', () => assign(''), list).focus();
-    for (const spell of SPELLS) panel.button(spell.name + ' · ' + spell.words, () => assign(spell.words), list);
+    for (const spell of SPELLS) {
+      const reason = spell.parameter ? ' · requires ' + spell.parameter : '';
+      const choice = panel.button(spell.name + ' · ' + spell.words + reason, () => assign(spell.words), list);
+      choice.disabled = !!spell.parameter;
+    }
   }
   grid();
   return panel;

@@ -107,3 +107,5 @@ Paths below are relative to the repository root. This inventory includes every p
 - **B5 · Controller selection** — Device tests cover silent entries, late appearance, same-ID handover, held buttons, fresh snapshots and disconnects. Browser setup explicitly wakes the fake pad.
 
 - **B6 · Parse shipped HTML with JSDOM** — Gate rejected optional chaining in an inline module with a spaced closing tag. GitHub tracks this as CodeQL alert 2 on PR 427.
+
+- **C1 · Spells with arguments** — Unit test checks parameterized spells and verifies that clicking a disabled choice leaves the slot intact.

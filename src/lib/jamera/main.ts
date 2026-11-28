@@ -63,11 +63,22 @@ let controller: Controller | null = null;
 let requestedLogout = false;
 if (padMode) {
   void import('../gamepad/runtime').then(({ mountController }) => {
-    controller = mountController(tvMode);
+    controller = mountController(tvMode, () => {
+      if (login.client.getState() === 'character_list') login.client.disconnect();
+    });
     if (teardownCombat) controller.enter(teardownCombat);
   });
 }
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
+if (tvMode) {
+  void import('../tv/setup').then(({ configureTV, rememberField }) => {
+    configureTV();
+    rememberField('account', ' Remember account on this device');
+    if (import.meta.env.MODE === 'tv') {
+      rememberField('password', ' Save password in plain text on this TV. Anyone using this app can log in.');
+    }
+  });
+}
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
 // Self-movement algorithm A/B switch (see motion/selfMotion.ts):
@@ -93,7 +104,7 @@ if (import.meta.env.DEV && params.get('telemetry') !== '0' && proxyUrl) {
   }
 }
 
-mountLoginScreen(root, {
+const login = mountLoginScreen(root, {
   proxyUrl,
   clientVersion,
   autoLogin,
@@ -754,7 +765,12 @@ let metricsOverlay: MetricsOverlayHandle | null = null;
 
 function setMetricsVisible(on: boolean): void {
   if (on && !metricsOverlay) {
-    metricsOverlay = createMetricsOverlay();
+    metricsOverlay = createMetricsOverlay(document.body, tvMode ? () => {
+      const pages = assetPipeline.atlas?.atlasPages;
+      const bytes = pages ? Array.from(pages.values()).reduce((total, page) => total + page.byteLength, 0) : 0;
+      const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+      return `heap ${memory ? (memory.usedJSHeapSize / 1048576).toFixed(1) + ' MiB' : 'unavailable'}\natlas ${pages?.size ?? 0} pages · ${bytes / 1048576} MiB CPU`;
+    } : undefined);
   } else if (!on && metricsOverlay) {
     metricsOverlay.destroy();
     metricsOverlay = null;

@@ -42,7 +42,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .status-bar {
-      position: fixed; top: calc(86px + env(safe-area-inset-top, 0px)); left: calc(8px + env(safe-area-inset-left, 0px));
+      position: fixed; top: calc(86px + var(--game-inset-top, env(safe-area-inset-top, 0px))); left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
       display: flex; gap: 4px; z-index: 30; pointer-events: none;
     }
     .status-bar .chip {

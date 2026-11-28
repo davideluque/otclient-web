@@ -31,7 +31,7 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .hud {
-      position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(8px + env(safe-area-inset-left, 0px));
+      position: fixed; top: calc(8px + var(--game-inset-top, env(safe-area-inset-top, 0px))); left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
       display: flex; align-items: center; gap: 8px;
       font-family: system-ui, sans-serif; z-index: 30;
       user-select: none; pointer-events: none;

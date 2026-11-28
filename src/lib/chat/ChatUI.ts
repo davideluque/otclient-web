@@ -53,7 +53,7 @@ export function createChatUI(
       font-family: system-ui, sans-serif; font-size: 0.76rem;
       display: flex; flex-direction: column;
       z-index: 20; border-top: 1px solid #333;
-      padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+      padding: 0 var(--game-inset-right, env(safe-area-inset-right, 0px)) var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)) var(--game-inset-left, env(safe-area-inset-left, 0px));
     }
     .chat-tabs-row {
       display: flex; align-items: center;

@@ -12,7 +12,7 @@
 | Can the remote duplicate controller keys? | Compare matching events in an 80 ms window. Remote Back uses the pane back action. | Tune padKeyMs after measuring the device. |
 | Which resolution and which performance changes? | Start at 1280×720, keep WebGL, cover zoom, density, atlas construction and walk timing. Display JS heap when exposed plus exact retained CPU atlas bytes. GPU texture memory is additional. | Set TV_RESOLUTION=1920x1080 and redeploy only after a real measurement. |
 | Does this run need extra wire operations? | The existing say, attack and movement builders cover the requested play loop. No new wire operations. | Separate a future capability into a tested game-level change with protocol fixtures. |
-| Where can credentials and diagnostic data go? | Unchecked storage options by default. Password option requires TV runtime and TV build mode. Opt-in logs send lifecycle labels and error locations. Raw key codes are collected on the separate diagnostic page only. Host records are ignored by git. | Uncheck storage or clear site data. Omit --logs, or stop the local diagnostics-enabled proxy. |
+| Where can credentials and diagnostic data go? | Unchecked storage options by default. Password option requires TV runtime and TV build mode. Opt-in logs send lifecycle labels, error messages, locations and bounded stacks. Raw key codes are collected on the separate diagnostic page only. Host records are ignored by git. | Uncheck storage or clear site data. Omit --logs, or stop the local diagnostics-enabled proxy. |
 | Which assets and test tools were used? | Ignored asset files were present in this checkout. All game smoke flows intercept the three asset downloads with generated fixtures. Node 24, global LG CLI, Acorn and Playwright were available. The sandbox could not initialize its loopback namespace, so repository commands ran with reviewed escalation. | Use the documented host setup. Run the legacy browser check separately on x64. |
 
 LG documents launch parameters on cold launch and relaunch. The shell also reads the initial system launchParams string supported by the installed CLI. [LG app lifecycle](https://webostv.developer.lge.com/develop/guides/app-lifecycle-management)
@@ -36,3 +36,7 @@ Use the LG green key (404) to open recovery without using any mapped button. Con
 ### A4 · Sleep and network recovery
 
 The pad notice dismisses on reconnection or Continue. The game connection notice has its own Retry and Back route. A sleeping pad can reconnect during keyboard play.
+
+### A5 · Startup failure evidence
+
+Install the TV error handler before module evaluation. Display a text-only banner until the renderer is ready. With --logs and a same-host proxy, forward bounded messages and stacks. Serve source maps only in the TV build and adjust columns for the ES2019 rewrites.

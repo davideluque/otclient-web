@@ -2,6 +2,52 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Classic startup handler runs before the module graph, including on a failed import.
+      (function () {
+        var params = new URLSearchParams(location.search);
+        if (!(params.get('tv') === '1' || params.get('tv') !== '0' && /web0s/i.test(navigator.userAgent))) return;
+        var ready = false, endpoint;
+        if (params.get('tvlogs') === '1') {
+          try {
+            var proxy = new URL(params.get('proxy'));
+            if (/^wss?:$/.test(proxy.protocol) && proxy.hostname === location.hostname)
+              endpoint = proxy.origin.replace(/^ws/, 'http') + '/tv/log';
+          } catch (_) { /* Optional log destination. */ }
+        }
+        window.addEventListener('tv-world-ready', function () {
+          ready = true;
+          var banner = document.querySelector('.tv-render-error');
+          if (banner) banner.remove();
+        });
+        window.addEventListener('tv-world-left', function () { ready = false; });
+        function report(kind, reason, fallback, locationInfo) {
+          var message = typeof reason === 'string' ? reason : reason && typeof reason.message === 'string' ? reason.message : fallback;
+          var entry = Object.assign({kind:kind, message:message.slice(0,1000),
+            stack:reason && typeof reason.stack === 'string' ? reason.stack.slice(0,4000) : ''}, locationInfo);
+          if (endpoint) fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function () {});
+          if (ready) return;
+          var banner = document.querySelector('.tv-render-error');
+          if (!banner) {
+            banner = document.createElement('p');
+            banner.className = 'tv-render-error';
+            banner.setAttribute('role','alert');
+            banner.style.cssText = 'position:fixed;z-index:145;top:10%;left:10%;right:10%;padding:1em;background:#602d24;color:white';
+            (document.body || document.documentElement).appendChild(banner);
+          }
+          banner.textContent = 'Game startup failed. ' + entry.message;
+        }
+        window.addEventListener('error', function (e) {
+          if (e.target instanceof HTMLScriptElement) {
+            report('error', null, 'Could not load ' + new URL(e.target.src,location.href).pathname);
+          } else if (typeof e.message === 'string') {
+            report('error',e.error,e.message,{source:(e.filename || '').split('/').pop().split(/[?#]/)[0],
+              line:e.lineno,column:e.colno,type:e.error && e.error.name || 'Error'});
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) { report('unhandledrejection',e.reason,'Promise rejected'); });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />

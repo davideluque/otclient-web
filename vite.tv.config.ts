@@ -6,6 +6,7 @@ export default defineConfig({
     cssTarget: 'chrome79',
     outDir: 'dist-tv',
     modulePreload: false,
+    sourcemap: true,
     rolldownOptions: { input: 'jamera.html' },
   },
 });

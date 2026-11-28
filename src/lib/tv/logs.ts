@@ -1,4 +1,4 @@
-/** Send only lifecycle labels and error locations. Never serialize console args, events or user data. */
+/** Startup exceptions are reported by the classic handler in jamera.html. */
 export function startTVLogs(proxy: string): void {
   const endpoint = proxy.replace(/^ws/, 'http') + '/tv/log';
   const post = (event: Record<string, string | number>) => {
@@ -7,9 +7,9 @@ export function startTVLogs(proxy: string): void {
   };
   post({ kind: 'boot' });
   window.addEventListener('tv-world-ready', () => post({ kind:'renderer-ready' }));
-  window.addEventListener('tv-render-error', (e) => post({kind:'renderer-error', message:String((e as CustomEvent).detail).slice(0,500)}));
-  window.addEventListener('error', (e) => post({ kind: 'error', line: e.lineno, column: e.colno,
-    source: e.filename.split('/').pop()?.split(/[?#]/)[0] ?? '', type: e.error?.name ?? 'Error' }));
-  window.addEventListener('unhandledrejection', () => post({ kind: 'unhandledrejection' }));
+  window.addEventListener('tv-render-error', (e) => {
+    const { message, stack } = (e as CustomEvent<{message:string; stack?:string}>).detail;
+    post({kind:'renderer-error',message:message.slice(0,1000),stack:(stack || '').slice(0,4000)});
+  });
   document.addEventListener('visibilitychange', () => post({ kind: document.visibilityState }));
 }

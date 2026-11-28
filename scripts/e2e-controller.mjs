@@ -173,3 +173,24 @@ test('sleeping controller and closed game can both be dismissed with no pad', as
   await expect(network).toHaveCount(0);
   await expect(page.getByLabel('Account number')).toBeVisible();
 });
+
+test('pre-world errors and rejections show their message and forward a bounded stack', async ({page}) => {
+  const records = [];
+  await page.route('**/tv/log', async route => {
+    records.push(route.request().postDataJSON());
+    await route.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*'}});
+  });
+  await page.goto('/jamera.html?tv=1&tvlogs=1&autologin=0&proxy=ws://127.0.0.1:18090');
+  await page.evaluate(() => {
+    const error = new TypeError('Startup fixture');
+    error.stack = 'Test stack ' + 'x'.repeat(5000);
+    error.fieldValue = 'omit-this-field';
+    window.dispatchEvent(new ErrorEvent('error',{error,message:error.message,lineno:42,colno:8}));
+  });
+  await expect(page.locator('.tv-render-error')).toContainText('Startup fixture');
+  await expect.poll(() => records.some(r => r.message === 'Startup fixture' && r.line === 42 && r.stack.length === 4000)).toBe(true);
+  await page.evaluate(() => void Promise.reject(new Error('Rejected fixture')));
+  await expect(page.locator('.tv-render-error')).toContainText('Rejected fixture');
+  await expect.poll(() => records.some(r => r.kind === 'unhandledrejection' && r.stack.includes('Rejected fixture'))).toBe(true);
+  expect(JSON.stringify(records)).not.toContain('omit-this-field');
+});

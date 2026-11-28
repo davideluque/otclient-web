@@ -1,6 +1,7 @@
 import { cp, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'acorn';
+import { decode, encode } from '@jridgewell/sourcemap-codec';
 import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 
@@ -37,6 +38,23 @@ if (!checkOnly) {
       await write(facade.slice(1), 'import * as module from ' + JSON.stringify(specifier)
         + '; window.tvModules[' + JSON.stringify(facade) + '] = module;\n');
       replacements.push([n.start, n.end, 'window.tvImport(' + JSON.stringify(facade) + ')']);
+    }
+    // The ES2019 rewrites occur after Vite emits its maps. Move the generated
+    // columns on each affected line while preserving original source locations.
+    if (replacements.length) {
+      const map = JSON.parse(await read(name + '.map'));
+      const lines = decode(map.mappings);
+      const starts = [0];
+      for (let i = 0; i < code.length; i++) if (code[i] === '\n') starts.push(i + 1);
+      for (const [start,end,value] of replacements.slice().reverse()) {
+        const line = starts.findLastIndex(offset => offset <= start);
+        if (end > (starts[line+1] ?? Infinity) || value.includes('\n')) throw Error('Multiline module rewrite');
+        const from = start-starts[line], to = end-starts[line];
+        lines[line] = lines[line].filter(segment => segment[0] <= from || segment[0] >= to);
+        for (const segment of lines[line]) if (segment[0] >= to) segment[0] += value.length-(end-start);
+      }
+      map.mappings = encode(lines);
+      await write(name + '.map',JSON.stringify(map));
     }
     for (const [start, end, replacement] of replacements.reverse()) {
       code = code.slice(0, start) + replacement + code.slice(end);

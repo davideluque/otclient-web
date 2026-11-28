@@ -91,3 +91,5 @@ Paths below are relative to the repository root. This inventory includes every p
 - **A3 · Controller profile recovery** — Shell cold-launch and hosted-game tests cover scoped reset, standard override and forgetting a profile.
 
 - **A4 · Sleep and network recovery** — Reproduced stuck native Enter. Browser tests cover no-pad Enter, pointer continuation, reconnect and network Back.
+
+- **A5 · Startup failure evidence** — Browser regression checks banner, bounded stack, rejection and omission of unrelated error properties. Diagnostics displays and saves its own errors.

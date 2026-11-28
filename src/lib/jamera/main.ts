@@ -120,7 +120,10 @@ const login = mountLoginScreen(root, {
     return assetPipeline.ready();
   },
   onLeaveGame: () => {
-    if (tvMode) document.querySelector('.tv-render-error')?.remove();
+    if (tvMode) {
+      window.dispatchEvent(new Event('tv-world-left'));
+      document.querySelector('.tv-render-error')?.remove();
+    }
     controller?.leave(!requestedLogout);
     requestedLogout = false;
     // Disconnect/kick: drop the per-session surfaces instead of leaving
@@ -512,7 +515,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
       notice.setAttribute('role', 'alert');
       notice.textContent = 'WebGL initialization failed. ' + message;
       document.body.appendChild(notice);
-      window.dispatchEvent(new CustomEvent('tv-render-error', { detail: message }));
+      window.dispatchEvent(new CustomEvent('tv-render-error', { detail: { message, stack: err instanceof Error ? err.stack : '' } }));
     }
     debugConsole?.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
     return;
@@ -562,7 +565,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
       world, atlas, app, chatManager,
       selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
     );
-    if (tvMode && params.get('tvlogs') === '1') window.dispatchEvent(new Event('tv-world-ready'));
+    if (tvMode) window.dispatchEvent(new Event('tv-world-ready'));
     debugConsole?.info('[jamera] renderer bound to GameWorld');
   };
 

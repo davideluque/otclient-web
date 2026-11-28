@@ -1,4 +1,13 @@
 (function () {
+  var report = { userAgent: navigator.userAgent, pads: [], errors: [] };
+  window.onerror = function (message, source, line, column, error) {
+    var entry = {message:String(message).slice(0,1000), source:(source || '').split('/').pop().split(/[?#]/)[0],
+      line:line, column:column, stack:error && typeof error.stack === 'string' ? error.stack.slice(0,4000) : ''};
+    if (report.errors.length >= 8) report.errors.shift();
+    report.errors.push(entry);
+    document.getElementById('diagnostic-error').textContent = 'Diagnostics failed. ' + entry.message;
+    if (endpoint) changed();
+  };
   var params = new URLSearchParams(location.search);
   var ws = new URL(params.get('proxy') || ('ws://' + location.hostname + ':8090'));
   if (ws.hostname !== location.hostname || !/^wss?:$/.test(ws.protocol)) throw Error('Invalid diagnostics proxy');
@@ -15,12 +24,12 @@
       return result;
     } catch (e) { return { error: e.name }; }
   }
-  var report = { userAgent: navigator.userAgent, viewport: [innerWidth,innerHeight], dpr: devicePixelRatio,
+  Object.assign(report, { userAgent: navigator.userAgent, viewport: [innerWidth,innerHeight], dpr: devicePixelRatio,
     webgl1: graphics('webgl'), webgl2: graphics('webgl2'), websocket: 'connecting', fps: null,
     features: { gamepads: typeof navigator.getGamepads === 'function', indexedDB: !!window.indexedDB,
       replaceChildren: !!Element.prototype.replaceChildren, arrayAt: !!Array.prototype.at,
       cssInset: CSS.supports('inset', '0'), secureContext: window.isSecureContext },
-    keys: [], padChanges: [], controls: {}, pads: [] };
+    keys: [], padChanges: [], controls: {}, pads: [] });
   var lastValues = {};
   function transitions(index, kind, values, now) {
     var key = index + kind, old = lastValues[key] || [];
@@ -40,7 +49,16 @@
     busy = true;
     dirty = false;
     var status = document.getElementById('status');
-    fetch(endpoint, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(report) })
+    var body = JSON.stringify(report);
+    // Preserve the newest error and the current snapshot within the proxy's byte limit.
+    while (new Blob([body]).size > 64000) {
+      if (report.errors.length > 1) report.errors.shift();
+      else if (report.padChanges && report.padChanges.length) report.padChanges.splice(0,32);
+      else if (report.keys && report.keys.length) report.keys.splice(0,16);
+      else break;
+      body = JSON.stringify(report);
+    }
+    fetch(endpoint, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: body })
       .then(function (r) { if (!r.ok) throw Error('HTTP ' + r.status); status.textContent = 'Report saved on host.'; })
       .catch(function (e) { status.textContent = 'Save failed: ' + e.message; })
       .then(function () { busy = false; if (dirty) save(); });

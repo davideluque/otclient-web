@@ -3,7 +3,7 @@ import { captureSource, createDevice, normalize, standardProfile } from '../lib/
 
 it('re-reads snapshots on animation frames across user activation and disconnect', () => {
   let cb: FrameRequestCallback;
-  const pad = { id: 'first', index: 0, connected: true } as Gamepad;
+  const pad = { id: 'first', index: 0, connected: true, buttons:[{pressed:true,value:1}] } as unknown as Gamepad;
   const next = {...pad};
   const replacement = {...pad, id: 'second'};
   const read = vi.fn<() => (Gamepad | null)[]>().mockReturnValueOnce([]).mockReturnValueOnce([pad])
@@ -35,4 +35,25 @@ it('learns a hat, axis trigger and remapped button from neutral', () => {
   const pressed = normalize(pad, profile).pressed;
   expect([...pressed]).toEqual(expect.arrayContaining(['right','l2','cross']));
   expect([...pressed].filter((b) => ['up','left','down'].includes(b))).toEqual([]);
+});
+
+it('ignores silent devices and selects the newest press, including a second pad with the same id', () => {
+  const make = (index: number) => ({id:'Twin',index,connected:true, buttons:[{pressed:false,value:0}]});
+  const a = make(0), b = make(1);
+  let frame: FrameRequestCallback;
+  const output = vi.fn();
+  const device = createDevice(output, () => [a,b] as unknown as Gamepad[], cb => { frame = cb; return 1; },vi.fn());
+  const read = () => { frame!(0); return output.mock.lastCall![0]; };
+  expect(read()).toBeNull();
+  b.buttons[0].pressed = true;
+  expect(read()).toBe(b);
+  a.buttons[0].pressed = true;
+  expect(read()).toBeNull();
+  expect(read()).toBe(a);
+  expect(read()).toBe(a); // A held button on b never steals ownership.
+  b.buttons[0].pressed = false; read(); b.buttons[0].pressed = true;
+  expect(read()).toBeNull(); expect(read()).toBe(b);
+  b.connected = false;
+  expect(read()).toBeNull(); expect(read()).toBe(a);
+  device.destroy();
 });

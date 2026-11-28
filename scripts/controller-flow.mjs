@@ -53,7 +53,7 @@ export async function press(page, index, held = true) {
     requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done)));
   }), {index,held});
 }
-async function tap(page, index) { await press(page,index); await press(page,index,false); }
+export async function tap(page, index) { await press(page,index); await press(page,index,false); }
 
 // Drive focus using actual D-pad presses. The browser supplies geometry;
 // the test never calls focus(), click(), fill(), or dispatches a key.
@@ -98,6 +98,7 @@ export async function select(page, selector, label) {
 export async function controllerFlow(page, url, production = false, interruptedLogin = false) {
   await page.goto(url);
   await until(() => page.evaluate(() => window.padPolls > 2), 'controller polling');
+  await tap(page,9); // Wake the pad before its first mapped press.
   for (const label of ['Account number','Password']) {
     await select(page,'.jamera-login',label);
     assert.equal(await page.evaluate(() => document.activeElement.tagName),'BUTTON');
@@ -149,7 +150,7 @@ export async function controllerFlow(page, url, production = false, interruptedL
     await page.evaluate(() => { window.testPad.connected = false; });
     await until(() => page.evaluate(() => !!document.querySelector('[aria-label^="Controller disconnected"]')), 'disconnect notice');
     await page.evaluate(() => { window.testPad.connected = true; });
-    await press(page,15,false);
+    await press(page,15,false); await tap(page,9);
     await until(() => page.evaluate(() => !document.querySelector('[aria-label^="Controller disconnected"]')), 'controller retry');
   }
   if (production) {

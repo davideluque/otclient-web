@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { controllerFlow, fakeController, press, select } from './controller-flow.mjs';
+import { controllerFlow, fakeController, press, select, tap } from './controller-flow.mjs';
 import { mockAssets } from './mock-assets.mjs';
 
 const production = process.env.TV_SMOKE === '1';
@@ -82,6 +82,8 @@ async function fallbackSession(page) {
     await page.route('**/assets/760/' + name, r => r.fulfill({contentType:'application/octet-stream',body}));
   }
   await page.goto('/jamera.html?tv=1&autologin=0&telemetry=0&metrics=1&proxy=ws://127.0.0.1:18090');
+  await expect.poll(() => page.evaluate(() => window.padPolls)).toBeGreaterThan(0);
+  await tap(page,9);
   await page.getByLabel('Account number').fill('1');
   await page.getByLabel('Password',{exact:true}).fill('1');
   await page.getByRole('button',{name:'Log in'}).click();
@@ -141,6 +143,7 @@ test('launch reset and green remote key recover an unusable profile', async ({pa
   await page.goto('/jamera.html?tv=1&autologin=0&reset-pad=1');
   await expect.poll(() => new URL(page.url()).searchParams.has('reset-pad')).toBe(false);
   expect(await page.evaluate(() => [localStorage.getItem('jamera.pad.old'),localStorage.getItem('keep')])).toEqual([null,'yes']);
+  await tap(page,9);
   const green = () => page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown',{keyCode:404,bubbles:true})));
   await green();
   await expect(page.getByRole('button',{name:'Recalibrate'})).toBeFocused();
@@ -160,9 +163,9 @@ test('sleeping controller and closed game can both be dismissed with no pad', as
     await expect(disconnected).toBeVisible();
   }
   async function reconnect() {
-    await page.evaluate(() => { window.testPad.connected = true; window.testPad.buttons[8].pressed = true; });
+    await page.evaluate(() => { window.testPad.connected = true; });
+    await tap(page,8);
     await expect(disconnected).toHaveCount(0);
-    await page.evaluate(() => { window.testPad.buttons[8].pressed = false; });
   }
   await unplug();
   await page.keyboard.press('Enter');
@@ -226,15 +229,15 @@ test('pad focus suppresses the native input mode until pointer activation or gri
   await page.addInitScript(fakeController);
   await page.goto('/jamera.html?tv=1&autologin=0');
   await expect.poll(() => page.evaluate(() => window.padPolls)).toBeGreaterThan(2);
-  const tap = async index => { await press(page,index); await press(page,index,false); };
-  await tap(13);
+  await tap(page,9);
+  await tap(page,13);
   const account = page.getByLabel('Account number');
   await expect(account).toBeFocused();
   await expect(account).toHaveAttribute('inputmode','none');
   await account.dispatchEvent('pointerdown');
   await expect(account).not.toHaveAttribute('inputmode','none');
-  await tap(0); await tap(1);
-  await tap(13);
+  await tap(page,0); await tap(page,1);
+  await tap(page,13);
   await expect(page.getByLabel('Password',{exact:true})).toBeFocused();
 });
 
@@ -270,4 +273,20 @@ test('TV battle list clears the minimap and combat modes are available in Settin
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jamera.combatModes')));
   expect(saved.fightMode).toBe(3); expect(saved.chase).toBe(true); expect(saved.secure).toBe(false);
   await expect(page.getByRole('switch',{name:'Secure mode'})).toBeVisible();
+});
+
+test('remote can leave login fields while enumerated pads are idle', async ({page}) => {
+  await page.addInitScript(fakeController);
+  await page.goto('/jamera.html?tv=1&autologin=0');
+  await expect.poll(() => page.evaluate(() => window.padPolls)).toBeGreaterThan(0);
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByLabel('Account number')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  const password = page.getByLabel('Password',{exact:true});
+  await expect(password).toBeFocused();
+  await password.fill('sample');
+  await page.keyboard.press('ArrowLeft');
+  expect(await password.evaluate(el => el.selectionStart)).toBe(5);
+  await page.keyboard.press('ArrowDown');
+  await expect(password).not.toBeFocused();
 });

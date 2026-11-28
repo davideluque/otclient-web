@@ -128,7 +128,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (sheet?.el.isConnected) { sheet.close(); sheet = null; }
     else if (!currentScope()) sheet = openBindings(words, () => {}, true);
   }
-  const device = createDevice((pad, now) => {
+  const device = createDevice((pad, now, switching) => {
     if (document.hidden || suspended) { if (state.connected) reset(); return; }
     if ((pad?.id ?? null) !== id) {
       const hadPad = id !== null;
@@ -137,7 +137,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       stopWizard();
       profile = pad ? loadProfile(pad) : null;
       if (pad && disconnectedPad) closePadNotice();
-      if (!rescue && !closedGame && !controllerPaused && hadPad && !pad) padNotice();
+      if (!switching && !rescue && !closedGame && !controllerPaused && hadPad && !pad) padNotice();
       if (!rescue && !closedGame && !controllerPaused && pad && !profile) startCalibration();
       if (rescue) showRescue();
     }
@@ -193,8 +193,10 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       if (profile && !wizard && (direction >= 0 || e.key === 'Enter' && e.target instanceof HTMLButtonElement)) {
         remoteKeys.set(e.key, performance.now());
       }
-      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement
-        && ['text','password','search','number'].includes(e.target.type)) return;
+      // Keep native horizontal caret movement. Vertical remote keys can leave a login field
+      // even when every enumerated gamepad is still idle or unconfigured.
+      if (e.target instanceof HTMLTextAreaElement || (direction === 1 || direction === 3)
+        && e.target instanceof HTMLInputElement && ['text','password','search','number'].includes(e.target.type)) return;
       const surface = direction >= 0 ? currentScope() : null;
       if (surface) {
         e.preventDefault(); e.stopImmediatePropagation();

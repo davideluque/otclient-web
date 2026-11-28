@@ -56,3 +56,7 @@ Set inputmode to none before pad-driven focus enters a text field and restore it
 ### B4 · TV play layout
 
 Place Battle below the minimap and show incantations in all HUD slots at a minimum of 21 CSS pixels on the target sizes. Expose the three combat-mode settings through the existing persisted state and packet path.
+
+### B5 · Controller selection
+
+Claim the controller that most recently had a rising button edge. Merely enumerating, or continuing to hold a button, does not claim a device. Clear held state at handover, including identical model IDs at different indices. Before a pad claims ownership, remote up/down can leave a login field and left/right still move the text caret.

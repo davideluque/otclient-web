@@ -67,22 +67,44 @@ export function saveProfile(id: string, profile: Profile | 'standard'): void {
   try { localStorage.setItem('jamera.pad.' + id, JSON.stringify(profile)); } catch { /* Session profile remains usable. */ }
 }
 
-export function createDevice(onFrame: (pad: Gamepad | null, time: number) => void,
+export function createDevice(onFrame: (pad: Gamepad | null, time: number, switching: boolean) => void,
   read: () => (Gamepad | null)[] = () => navigator.getGamepads?.() ?? [],
   request = requestAnimationFrame, cancel = cancelAnimationFrame) {
-  let activeIndex = -1;
-  let activeId: string | null = null;
+  // Gamepad objects may be mutated in place. Remember button levels, never the snapshot.
+  const activity = new Map<number,{id:string; held:boolean[]; lastPress:number; frame:number}>();
+  let frame = 0, sequence = 0;
+  let previous: {id:string; index:number} | null = null;
   let raf = 0;
   let running = true;
   const tick = (now: number) => {
     let pads: (Gamepad | null)[] = [];
-    try { pads = Array.from(read()); } catch { /* API denied by the browser. */ }
-    // Emit a disconnected frame before handing over to another device.
-    const pad = activeIndex >= 0 ? pads[activeIndex] : pads.find((p) => p?.connected);
-    const replacement = activeIndex >= 0 && pad?.id !== activeId;
-    activeIndex = pad?.connected && !replacement ? pad.index : -1;
-    activeId = activeIndex >= 0 ? pad!.id : null;
-    onFrame(activeIndex >= 0 ? pad! : null, now);
+    try { pads = read(); } catch { /* API denied by the browser. */ }
+    frame++;
+    let selected: Gamepad | null = null;
+    let latest = 0;
+    for (const pad of pads) {
+      if (!pad?.connected) continue;
+      let entry = activity.get(pad.index);
+      if (!entry || entry.id !== pad.id) {
+        entry = {id:pad.id,held:[],lastPress:0,frame};
+        activity.set(pad.index,entry);
+      }
+      entry.frame = frame;
+      for (let i = 0; i < pad.buttons.length; i++) {
+        const down = pad.buttons[i].pressed || pad.buttons[i].value > .6;
+        if (down && !entry.held[i]) entry.lastPress = ++sequence;
+        entry.held[i] = down;
+      }
+      entry.held.length = pad.buttons.length;
+      if (entry.lastPress > latest) { selected = pad; latest = entry.lastPress; }
+    }
+    for (const [index,entry] of activity) if (entry.frame !== frame) activity.delete(index);
+    // Clear held actions before emitting a different controller, including equal ids in different slots.
+    const switching = !!(previous && selected && (selected.id !== previous.id || selected.index !== previous.index));
+    if (switching) selected = null;
+    if (!selected) previous = null;
+    else if (!previous) previous = {id:selected.id,index:selected.index};
+    onFrame(selected,now,switching);
     if (running) raf = request(tick);
   };
   raf = request(tick);

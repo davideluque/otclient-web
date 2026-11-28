@@ -110,6 +110,8 @@ export async function controllerFlow(page, url, production = false) {
   await tap(page,11); await reply('Target 1073741825');
   await tap(page,11); await reply('Target 1073741826');
   await tap(page,10); await reply('Target 0');
+  const targets = await page.evaluate(() => window.mockReplies.messages.map(m => /Target (\d+)$/.exec(m)).filter(Boolean).map(match => Number(match[1])));
+  assert.deepEqual(targets,[0x40000001,0x40000002,0]);
   if (!production) {
     await tap(page,9);
     await select(page,'.game-menu-pane.open','Controller spells');

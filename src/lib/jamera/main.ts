@@ -79,6 +79,9 @@ if (tvMode) {
     }
   });
 }
+if (tvMode && params.get('tvlogs') === '1' && proxyUrl) {
+  void import('../tv/logs').then(({ startTVLogs }) => startTVLogs(proxyUrl));
+}
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
 // Self-movement algorithm A/B switch (see motion/selfMotion.ts):
@@ -117,6 +120,7 @@ const login = mountLoginScreen(root, {
     return assetPipeline.ready();
   },
   onLeaveGame: () => {
+    if (tvMode) document.querySelector('.tv-render-error')?.remove();
     controller?.leave(!requestedLogout);
     requestedLogout = false;
     // Disconnect/kick: drop the per-session surfaces instead of leaving
@@ -491,6 +495,7 @@ let mountEpoch = 0;
 
 async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client?: GameClient): Promise<void> {
   const epoch = ++mountEpoch;
+  if (tvMode) document.querySelector('.tv-render-error')?.remove();
   teardownRenderer?.();
   teardownRenderer = null;
   // Cancel a waiter queued by a previous session — its world is dead.
@@ -500,6 +505,15 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
   try {
     app = await ensurePixiApp();
   } catch (err) {
+    if (tvMode && epoch === mountEpoch && client?.getState() === 'in_game') {
+      const message = err instanceof Error ? err.message : String(err);
+      const notice = document.createElement('p');
+      notice.className = 'tv-render-error';
+      notice.setAttribute('role', 'alert');
+      notice.textContent = 'WebGL initialization failed. ' + message;
+      document.body.appendChild(notice);
+      window.dispatchEvent(new CustomEvent('tv-render-error', { detail: message }));
+    }
     debugConsole?.warn('[jamera] renderer: PIXI not ready, aborting:', err instanceof Error ? err.message : err);
     return;
   }
@@ -548,6 +562,7 @@ async function mountRenderer(world: GameWorld, chatManager?: ChatManager, client
       world, atlas, app, chatManager,
       selfMotionMode === 'prewalk' ? selfPrewalk : undefined,
     );
+    if (tvMode && params.get('tvlogs') === '1') window.dispatchEvent(new Event('tv-world-ready'));
     debugConsole?.info('[jamera] renderer bound to GameWorld');
   };
 

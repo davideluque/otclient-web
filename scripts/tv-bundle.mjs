@@ -58,7 +58,7 @@ async function check(dir) {
       ? Array.from(code.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi), (match) => match[1])
       : name.endsWith('css') ? [] : [code];
     for (const script of scripts) {
-      try { parse(script, { ecmaVersion: 2019, sourceType: 'module' }); }
+      try { parse(script, { ecmaVersion: name === 'diagnostics.js' ? 2017 : 2019, sourceType: 'module' }); }
       catch (error) { throw Error(name + ' fails ES2019: ' + error.message); }
       for (const [call, owner] of [['replaceChildren', 'Element'], ['at', 'Array']]) {
         if (script.includes('.' + call + '(') && !polyfills.includes("Object.defineProperty(" + owner + ".prototype, '" + call + "'")) {

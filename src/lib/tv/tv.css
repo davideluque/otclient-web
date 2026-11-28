@@ -8,3 +8,4 @@ html.tv-layout {font-size:calc(14px + .55vw)}
 .tv-layout .game-menu-pane button,.tv-layout .settings-pane button {font-size:1rem}
 .tv-layout .settings-card,.tv-layout .changelog-card,.tv-layout .spell-customizer .card {max-height:85vh}
 .tv-layout .game-metrics {font-size:.8rem!important}
+.tv-render-error {position:fixed;z-index:145;top:10%;left:10%;right:10%;padding:1em;color:white;background:#602d24}

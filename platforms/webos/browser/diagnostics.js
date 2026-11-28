@@ -24,18 +24,54 @@
       return result;
     } catch (e) { return { error: e.name }; }
   }
+  function flexGap() {
+    var box = document.createElement('div');
+    box.style.cssText = 'position:absolute;visibility:hidden;display:flex;flex-direction:column;row-gap:1px';
+    box.appendChild(document.createElement('div')); box.appendChild(document.createElement('div'));
+    document.body.appendChild(box);
+    var supported = box.scrollHeight === 1;
+    box.remove();
+    return supported;
+  }
   Object.assign(report, { userAgent: navigator.userAgent, viewport: [innerWidth,innerHeight], dpr: devicePixelRatio,
     webgl1: graphics('webgl'), webgl2: graphics('webgl2'), websocket: 'connecting', fps: null,
     features: { gamepads: typeof navigator.getGamepads === 'function', indexedDB: !!window.indexedDB,
       replaceChildren: !!Element.prototype.replaceChildren, arrayAt: !!Array.prototype.at,
+      performanceMemory: !!performance.memory, flexGap: flexGap(), moduleScript: null, dynamicImport: null,
       cssInset: CSS.supports('inset', '0'), secureContext: window.isSecureContext },
     keys: [], padChanges: [], controls: {}, pads: [] });
+  var moduleScript = document.createElement('script');
+  moduleScript.type = 'module'; moduleScript.src = '/module-probe.js';
+  moduleScript.onload = function () { report.features.moduleScript = true; changed(); };
+  moduleScript.onerror = function () { report.features.moduleScript = false; changed(); };
+  document.head.appendChild(moduleScript);
+  // Keep the diagnostic entry ES2017. Only the isolated probe parses import().
+  try {
+    var importProbe = new Function('return import("/module-probe.js")');
+    importProbe().then(function (module) {
+      report.features.dynamicImport = module.loaded === true; changed();
+    },function () { report.features.dynamicImport = false; changed(); });
+  } catch (_) { report.features.dynamicImport = false; }
+  setTimeout(function () {
+    if (report.features.moduleScript === null) report.features.moduleScript = false;
+    if (report.features.dynamicImport === null) report.features.dynamicImport = false;
+    changed();
+  },3000);
   var lastValues = {};
+  function correlate(change,key) {
+    var delta = key.ms - change[0];
+    if (Math.abs(delta) <= 100 && (!change[5] || Math.abs(delta) < Math.abs(change[5].deltaMs))) {
+      change[5] = {deltaMs:delta,code:key.code,keyCode:key.keyCode};
+    }
+  }
   function transitions(index, kind, values, now) {
     var key = index + kind, old = lastValues[key] || [];
     values.forEach(function (v, i) {
       if (old[i] === undefined || Math.abs(old[i] - v) >= 0.1 || (v === 0 && old[i] !== 0)) {
-        report.padChanges.push([Math.round(now), index, kind, i, v]);
+        var change = [Math.round(now), index, kind, i, v, null];
+        for (var j = report.keys.length-1; j >= 0 && change[0]-report.keys[j].ms <= 100; j--)
+          correlate(change,report.keys[j]);
+        report.padChanges.push(change);
         old[i] = v;
       }
     });
@@ -66,11 +102,21 @@
   function changed() { if (!timer) timer = setTimeout(function () { timer = null; save(); }, 650); }
   document.onkeydown = function (e) {
     if (e.keyCode === 461) { e.preventDefault(); document.getElementById('save').focus(); }
-    report.keys.push({ ms: Math.round(performance.now()), code: e.code, keyCode: e.keyCode, repeat: e.repeat });
+    var key = { ms: Math.round(performance.now()), code: e.code, keyCode: e.keyCode, repeat: e.repeat };
+    report.keys.push(key);
+    for (var i = report.padChanges.length-1; i >= 0 && key.ms-report.padChanges[i][0] <= 100; i--)
+      correlate(report.padChanges[i],key);
     if (report.keys.length > 256) report.keys.shift();
     changed();
   };
-  document.getElementById('save').onclick = save;
+  document.getElementById('save').onclick = function () {
+    // Only the operator knows that a stable trigger is resting, rather than held.
+    report.pads.forEach(function (pad) {
+      var samples = report.controls[pad.index].axisSamples;
+      pad.axes.forEach(function (value,i) { if (samples[i].used) samples[i].resting = value; });
+    });
+    save();
+  };
   document.getElementById('play').onclick = function () {
     var game = '/jamera.html' + location.search;
     if (params.has('reset-pad')) {
@@ -100,13 +146,23 @@
       report.pads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean).map(function (p) {
         var values = p.buttons.map(function (b) { return b.value; });
         var axes = p.axes.map(function (v) { return Math.round(v*1000)/1000; });
-        transitions(p.index, 'button', values, now);
-        transitions(p.index, 'axis', axes, now);
-        var limits = report.controls[p.index] || { buttons: [], axes: [] };
+        var limits = report.controls[p.index];
+        if (!limits || limits.id !== p.id) {
+          limits = {id:p.id,buttons:[],axes:[],axisSamples:[]};
+          delete lastValues[p.index + 'button']; delete lastValues[p.index + 'axis'];
+        }
+        var sampledAt = performance.now();
+        transitions(p.index, 'button', values, sampledAt);
+        transitions(p.index, 'axis', axes, sampledAt);
+        axes.forEach(function (value,i) {
+          var sample = limits.axisSamples[i] || {first:value,used:false,resting:null};
+          if (Math.abs(value-sample.first) >= .12) sample.used = true;
+          limits.axisSamples[i] = sample;
+        });
         values.forEach(function (v,i) { limits.buttons[i] = Math.max(v, limits.buttons[i] || 0); });
         axes.forEach(function (v,i) { var a = limits.axes[i] || [v,v]; limits.axes[i] = [Math.min(a[0],v), Math.max(a[1],v)]; });
         report.controls[p.index] = limits;
-        return { id: p.id, mapping: p.mapping, buttonCount: values.length, axisCount: axes.length, buttons: values, axes: axes };
+        return { index:p.index, id: p.id, mapping: p.mapping, buttonCount: values.length, axisCount: axes.length, buttons: values, axes: axes };
       });
     } catch (e) { report.gamepadError = e.name; }
     if (now >= nextDraw) {

@@ -86,6 +86,8 @@ Paths below are relative to the repository root. This inventory includes every p
 
 ## PR 427 hardware-session fixes
 
+Each entry updates [the draft integration PR](https://github.com/davideluque/otclient-web/pull/427).
+
 - **A1 · Calibration** — Regression coverage for changed trigger rests, dual exposure, hat and split-axis pads, skipping and cancellation.
 
 - **A2 · Remote and keyboard fallback** — Browser regression exercises server-confirmed keyboard walking, native Enter and duplicate activation with an attached pad.
@@ -109,3 +111,5 @@ Paths below are relative to the repository root. This inventory includes every p
 - **B6 · Parse shipped HTML with JSDOM** — Gate rejected optional chaining in an inline module with a spaced closing tag. GitHub tracks this as CodeQL alert 2 on PR 427.
 
 - **C1 · Spells with arguments** — Unit test checks parameterized spells and verifies that clicking a disabled choice leaves the slot intact.
+
+- **C2 · Measurements for the hardware session** — Production smoke injects axis motion and a key, captures a changed resting value, and checks features and a diagnostics exception in the saved host report.

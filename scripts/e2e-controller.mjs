@@ -63,13 +63,31 @@ if (production) test('diagnostics save the TV observations on the proxy host', a
   await page.addInitScript(fakeController);
   await page.goto('/diagnostics.html?proxy=ws://127.0.0.1:18090');
   await page.evaluate(() => { window.testPad.buttons[1].pressed = true; window.testPad.buttons[1].value = 1; });
-  await page.keyboard.press('ArrowDown');
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => {
+    const read = navigator.getGamepads;
+    Object.defineProperty(navigator,'getGamepads',{configurable:true,value:function () {
+      Object.defineProperty(navigator,'getGamepads',{configurable:true,value:read});
+      window.testPad.axes[2] = 1;
+      document.dispatchEvent(new KeyboardEvent('keydown',{code:'ArrowDown',keyCode:40,bubbles:true}));
+      requestAnimationFrame(() => { window.testPad.axes[2] = -1; requestAnimationFrame(done); });
+      return read.call(navigator);
+    }});
+  })));
+  await page.waitForTimeout(180);
+  await page.locator('#save').click();
+  await page.evaluate(() => { setTimeout(() => { throw new Error('Diagnostics fixture'); },0); });
+  await expect(page.locator('#diagnostic-error')).toContainText('Diagnostics fixture');
   const file = new URL('../test-results/tv-diagnostics/device-report.json',import.meta.url);
   await expect.poll(async () => {
     try {
       const report = JSON.parse(await readFile(file,'utf8'));
       return report.fps > 0 && report.websocket.roundTripMs >= 0 && report.pads[0].buttonCount === 17
         && report.keys.some(e => e.code === 'ArrowDown' && e.ms >= 0)
+        && report.features.moduleScript && report.features.dynamicImport && report.features.flexGap
+        && typeof report.features.performanceMemory === 'boolean'
+        && report.errors.some(error => error.message.includes('Diagnostics fixture'))
+        && report.controls[0].axisSamples[2].first === 0 && report.controls[0].axisSamples[2].resting === -1
+        && report.padChanges.some(([, , kind,i,v,key]) => kind === 'axis' && i === 2 && v === 1 && key?.code === 'ArrowDown')
         && report.padChanges.some(([, , kind, i, v]) => kind === 'button' && i === 1 && v === 1);
     } catch { return false; }
   }, {timeout:15000}).toBe(true);

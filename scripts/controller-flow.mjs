@@ -6,6 +6,12 @@ export function fakeController() {
     id: 'Test standard controller', index: 0, mapping:'standard', connected: true,
     buttons: Array.from({length:17}, () => ({value:0, pressed:false})), axes:[0,0,0,0],
   };
+  window.surfaceScans = 0;
+  const query = document.querySelectorAll;
+  document.querySelectorAll = function (selector) {
+    if (selector.includes('.game-menu-pane.open') && selector.includes('[data-pad-dialog]')) window.surfaceScans++;
+    return query.call(this,selector);
+  };
   window.testPad = pad;
   window.padPolls = 0;
   Object.defineProperty(navigator, 'getGamepads', {configurable:true, value: function () {
@@ -146,6 +152,21 @@ export async function controllerFlow(page, url, production = false, interruptedL
   }
   if (production) {
     await until(() => page.evaluate(() => Array.from(document.body.children).some(e => /^fps \d+/m.test(e.textContent) && /atlas [1-9]/.test(e.textContent) && /repaint [0-9]+ms/.test(e.textContent))), 'renderer metrics');
+    const before = await page.evaluate(() => window.surfaceScans);
+    assert.ok(before > 0, 'surface scan counter observes real UI transitions');
+    const polls = await page.evaluate(() => window.padPolls);
+    await page.evaluate(async () => {
+      const metrics = document.querySelector('.game-metrics');
+      // Force several independent text mutations even when the sampled FPS stays constant.
+      for (let i = 0; i < 5; i++) {
+        metrics.replaceChildren(metrics.textContent);
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+    });
+    await delay(1250);
+    assert.ok(await page.evaluate(() => window.padPolls) > polls);
+    const idleScans = await page.evaluate(() => window.surfaceScans) - before;
+    assert.ok(idleScans <= 1,'Idle surface scans: ' + idleScans);
     const baseline = await page.evaluate(() => ({
       size:[innerWidth,innerHeight],
       heap: performance.memory ? performance.memory.usedJSHeapSize : null,

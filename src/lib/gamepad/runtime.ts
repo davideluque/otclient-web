@@ -1,6 +1,6 @@
 import { createDevice, normalize, consumeProfileReset, forgetProfile, standardProfile, loadProfile, saveProfile, type Profile } from './device';
 import { idle, mapFrame } from './mapping';
-import { back, dialog, focusAction, topSurface } from './focus';
+import { back, dialog, focusAction, observeSurfaces, topSurface } from './focus';
 import { loadBindings, saveBindings } from './bindings';
 import { createControllerHUD } from './hud';
 import { calibrate } from './calibration';
@@ -58,12 +58,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   let retryOnPress = false;
   let rescue: ReturnType<typeof dialog> | null = null;
 
-  // Most frames have no UI changes. Ignore HUD text/cooldowns and canvas
-  // repaints when deciding whether to measure visible panels again.
-  const observer = new MutationObserver(records => {
-    if (records.some(({target}) => target instanceof Element && !target.closest('.controller-hud,canvas'))) dirty = true;
-  });
-  observer.observe(document.body, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style','hidden','disabled'] });
+  const observer = observeSurfaces(() => { dirty = true; });
   function currentScope() {
     if (dirty) { scope = topSurface(); dirty = false; }
     return scope;

@@ -95,3 +95,5 @@ Paths below are relative to the repository root. This inventory includes every p
 - **A5 · Startup failure evidence** — Browser regression checks banner, bounded stack, rejection and omission of unrelated error properties. Diagnostics displays and saves its own errors.
 
 - **B1 · Passive game panes** — Browser regression reproduces blocked steps and checks server confirmation from both controller and keyboard with Battle visible.
+
+- **B2 · Modal measurement cost** — Production smoke instruments the actual document query, verifies a nonzero counter during navigation and permits at most one scan over 1.25 seconds of idle play with metrics.

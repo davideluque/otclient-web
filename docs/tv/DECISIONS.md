@@ -44,3 +44,7 @@ Install the TV error handler before module evaluation. Display a text-only banne
 ### B1 · Passive game panes
 
 Keep Battle, Skills, Inventory and containers visible while playing. Close containers sends the existing close request for each open window. Only controller direction consults modal state in the walker input expression.
+
+### B2 · Modal measurement cost
+
+Track mounted modal roots. Only their insertion, removal, visibility or a relevant ancestor change invalidates the cached layout. The walker reads that same cache.

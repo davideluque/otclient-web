@@ -1,7 +1,7 @@
 import { Direction } from '../player';
 
-const surfaces = [
-  '[data-pad-dialog]', '.jamera-login:not([hidden])', '.game-menu-pane.open', '[role="dialog"]',
+const dialogs = [
+  '[data-pad-dialog]', '[role="dialog"]',
   '.settings-pane', '.changelog-pane', '.vip-list', '.spell-customizer', '.death-dialog',
   '.action-sheet-backdrop', '.full-chat',
   '.text-window', '.shop-pane', '.trade-pane',
@@ -10,10 +10,46 @@ const selectable = 'button:enabled,input:enabled,textarea:enabled,select:enabled
 function visible(el: HTMLElement): boolean {
   return el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
 }
+// A closed menu is translated off screen and still has a layout rectangle.
+const surfaces = dialogs + ',.jamera-login,.game-menu-pane';
+const openSurfaces = dialogs + ',.jamera-login:not([hidden]),.game-menu-pane.open';
+export function observeSurfaces(changed: () => void) {
+  const roots = new Set<Element>(document.querySelectorAll(surfaces));
+  function discover(node: Node) {
+    if (!(node instanceof Element)) return;
+    if (node.matches(surfaces)) { roots.add(node); changed(); }
+    if (node.childElementCount) {
+      for (const surface of node.querySelectorAll(surfaces)) { roots.add(surface); changed(); }
+    }
+  }
+  const observer = new MutationObserver(records => {
+    for (const record of records) {
+      if (record.type === 'attributes') {
+        const target = record.target as Element;
+        if (roots.has(target)) {
+          if (!target.matches(surfaces)) roots.delete(target);
+          changed(); continue;
+        }
+        if (target.matches(surfaces)) { roots.add(target); changed(); continue; }
+        // A wrapper can hide or reveal a mounted dialog.
+        if (target.childElementCount && [...roots].some(root => target.contains(root))) changed();
+      } else {
+        for (const node of record.addedNodes) discover(node);
+        for (const node of record.removedNodes) {
+          if (!(node instanceof Element)) continue;
+          for (const root of roots) if (node.contains(root) && !root.isConnected) { roots.delete(root); changed(); }
+        }
+      }
+    }
+  });
+  observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','hidden','role','data-pad-dialog']});
+  return observer;
+}
+
 export function topSurface(): HTMLElement | null {
   let best: HTMLElement | null = null;
   let height = -Infinity;
-  for (const el of document.querySelectorAll<HTMLElement>(surfaces)) {
+  for (const el of document.querySelectorAll<HTMLElement>(openSurfaces)) {
     if (!visible(el)) continue;
     let node: HTMLElement | null = el;
     let z = 0;

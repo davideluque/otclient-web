@@ -119,8 +119,14 @@ test('attached pad leaves keyboard walk and remote activation available', async 
   await page.waitForTimeout(150);
   await page.evaluate(() => {
     const button = document.activeElement;
-    if (button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))) button.click();
-    window.testPad.buttons[0].pressed = true;
+    // Deliver key-first immediately before a poll, even on slow software WebGL frames.
+    const read = navigator.getGamepads;
+    Object.defineProperty(navigator,'getGamepads',{configurable:true,value:function () {
+      Object.defineProperty(navigator,'getGamepads',{configurable:true,value:read});
+      if (button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))) button.click();
+      window.testPad.buttons[0].pressed = true;
+      return read.call(navigator);
+    }});
     return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
   expect(await page.evaluate(() => window.activations)).toBe(2);
@@ -193,4 +199,25 @@ test('pre-world errors and rejections show their message and forward a bounded s
   await expect(page.locator('.tv-render-error')).toContainText('Rejected fixture');
   await expect.poll(() => records.some(r => r.kind === 'unhandledrejection' && r.stack.includes('Rejected fixture'))).toBe(true);
   expect(JSON.stringify(records)).not.toContain('omit-this-field');
+});
+
+test('Battle stays open during controller and keyboard walking', async ({page}) => {
+  await fallbackSession(page);
+  await page.locator('.game-menu-btn').click();
+  await page.getByRole('button',{name:'Battle',exact:true}).click();
+  const battle = page.locator('.battle-list');
+  await expect(battle).toBeVisible();
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await page.evaluate(() => { window.testPad.buttons[15].pressed = true; });
+  await expect.poll(() => page.evaluate(() => window.mockReplies.east)).toBeGreaterThan(0);
+  await page.evaluate(() => { window.testPad.buttons[15].pressed = false; });
+  await page.waitForTimeout(450);
+  const before = await page.evaluate(() => window.mockReplies.east);
+  await page.keyboard.down('ArrowRight');
+  try { await expect.poll(() => page.evaluate(() => window.mockReplies.east)).toBeGreaterThan(before); }
+  finally { await page.keyboard.up('ArrowRight'); }
+  await expect(battle).toBeVisible();
+  await page.locator('.game-menu-btn').click();
+  await page.getByRole('button',{name:'Battle',exact:true}).click();
+  await expect(battle).toBeHidden();
 });

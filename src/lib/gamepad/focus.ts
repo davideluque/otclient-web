@@ -3,8 +3,8 @@ import { Direction } from '../player';
 const surfaces = [
   '[data-pad-dialog]', '.jamera-login:not([hidden])', '.game-menu-pane.open', '[role="dialog"]',
   '.settings-pane', '.changelog-pane', '.vip-list', '.spell-customizer', '.death-dialog',
-  '.action-sheet-backdrop', '.full-chat', '.skill-pane', '.inventory-pane', '.battle-list',
-  '.text-window', '.container-pane .window', '.shop-pane', '.trade-pane',
+  '.action-sheet-backdrop', '.full-chat',
+  '.text-window', '.shop-pane', '.trade-pane',
 ].join(',');
 const selectable = 'button:enabled,input:enabled,textarea:enabled,select:enabled,[tabindex="0"]';
 function visible(el: HTMLElement): boolean {

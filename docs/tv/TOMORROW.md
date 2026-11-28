@@ -72,3 +72,5 @@ PUPPETEER_2_DIR="<directory containing node_modules/puppeteer>" \
   node scripts/chromium79-smoke.mjs "<path to Chromium 79 executable>" \
   'http://127.0.0.1:8180/jamera.html?tv=1&metrics=1&proxy=ws://127.0.0.1:8090'
 ```
+
+Battle, Skills, Inventory and open containers are view-only with the controller. Walking and casting continue with these panes visible. Select Battle, Skills or Inventory again to hide it, or choose Close containers.

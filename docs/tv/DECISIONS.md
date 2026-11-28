@@ -40,3 +40,7 @@ The pad notice dismisses on reconnection or Continue. The game connection notice
 ### A5 · Startup failure evidence
 
 Install the TV error handler before module evaluation. Display a text-only banner until the renderer is ready. With --logs and a same-host proxy, forward bounded messages and stacks. Serve source maps only in the TV build and adjust columns for the ES2019 rewrites.
+
+### B1 · Passive game panes
+
+Keep Battle, Skills, Inventory and containers visible while playing. Close containers sends the existing close request for each open window. Only controller direction consults modal state in the walker input expression.

@@ -327,6 +327,7 @@ const login = mountLoginScreen(root, {
     teardownStats = bindStats(client, document.body, [
       ...(padMode ? [
         { label: 'Controller spells', onSelect: () => controller?.showEditor() },
+        { label: 'Close containers', onSelect: () => teardownContainers?.closeAll() },
         { label: 'Calibrate controller', onSelect: () => controller?.startCalibration() },
       ] : []),
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
@@ -707,7 +708,7 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
   const walker = createWalkController({
     client,
     world,
-    getHeldDirection: () => controller?.blocksMovement ? null : joystickDir ?? keyboard.heldDirection ?? controller?.heldDirection ?? null,
+    getHeldDirection: () => joystickDir ?? keyboard.heldDirection ?? (controller?.blocksMovement ? null : controller?.heldDirection ?? null),
     // Pre-walk: predict the step the packet will cause so the renderer
     // glides from the send instant instead of standing out the
     // confirmation round-trip (the level-1 step-pause-step stutter).

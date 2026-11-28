@@ -83,3 +83,5 @@ Paths below are relative to the repository root. This inventory includes every p
 | `src/lib/storageNotice.ts` | Use the TV overscan variable with the existing safe-area fallback. |
 | `src/lib/textWindow.ts` | Expand inset shorthand for Chromium 79. |
 | `src/lib/vipList.ts` | Expand inset shorthand for Chromium 79. |
+
+- **A1 · Calibration** — Regression coverage for changed trigger rests, dual exposure, hat and split-axis pads, skipping and cancellation.

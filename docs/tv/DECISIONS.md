@@ -20,3 +20,7 @@ LG documents launch parameters on cold launch and relaunch. The shell also reads
 The shell requests the 720p resolution and direct Back events. Its two icon sizes follow the LG metadata specification. LG documents cloudgame_active for webOS TV 23 and later, so the 2021 device report remains essential. [LG app metadata](https://webostv.developer.lge.com/develop/references/appinfo-json)
 
 Both 1280×720 and 1920×1080 IPKs were packaged with CLI 3.2.6 and their embedded appinfo.json files inspected. The last local package is 720p. The hosted server and proxy also answered an HTTP request and a WebSocket ping together on loopback.
+
+### A1 · Calibration
+
+Learn the resting axes after 160 ms of stable release. Finish becomes available once ✕, ○, Options and a complete direction source are assigned. Skip preserves an empty slot. A 15-second prompt leaves the decision to the player. Run calibration again to replace these assignments.

@@ -43,16 +43,22 @@ export function normalize(pad: RawPad, profile: Profile): Snapshot {
   };
 }
 
+export function hasNavigation(profile: Profile): boolean {
+  if (!profile.cross || !profile.circle || !profile.options) return false;
+  return (['up','down','left','right'] as const).every(key => !!profile[key])
+    || (['leftX+','leftX-','leftY+','leftY-'] as const).every(key => !!profile[key]);
+}
+
 export function loadProfile(pad: RawPad): Profile | null {
   try {
     const saved = JSON.parse(localStorage.getItem('jamera.pad.' + pad.id) ?? 'null');
     if (saved && controls.every((name) => {
       const src = saved[name];
-      if (src === null) return /^right[XY]/.test(name);
+      if (src === null) return true;
       return src && (Number.isInteger(src.button) && src.button >= 0 && src.button < pad.buttons.length
         || Number.isInteger(src.axis) && src.axis >= 0 && src.axis < pad.axes.length
         && Number.isFinite(src.active) && Number.isFinite(src.neutral) && src.active !== src.neutral);
-    })) return saved as Profile;
+    }) && hasNavigation(saved)) return saved as Profile;
   } catch { /* Storage can be disabled. */ }
   return pad.mapping === 'standard' ? standardProfile() : null;
 }

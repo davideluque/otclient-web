@@ -117,13 +117,21 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (combat && hud) hud.update(next.layer, words, combat.cooldownUntil, now);
   });
   function keydown(e: KeyboardEvent) {
+    if (tv && wizard && e.key.startsWith('Arrow')) {
+      const direction = ['ArrowUp','ArrowRight','ArrowDown','ArrowLeft'].indexOf(e.key);
+      const surface = currentScope();
+      if (direction >= 0 && surface) {
+        e.preventDefault(); e.stopImmediatePropagation(); focusAction(surface, direction as 0|1|2|3);
+      }
+      return;
+    }
     if (tv && e.keyCode === 461) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (!e.repeat && performance.now()-lastCircle > 200) {
         clearTimeout(backTimer);
         backTimer = setTimeout(() => goBack(currentScope()), id !== null ? 100 : 0);
       }
-    } else if (tv && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key) && id !== null) {
+    } else if (tv && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key) && profile && !wizard) {
       // A paired pad can synthesize keydown before its next polled snapshot.
       // Use the Gamepad API as the sole owner of these keys while attached.
       e.preventDefault(); e.stopImmediatePropagation();

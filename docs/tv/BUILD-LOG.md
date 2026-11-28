@@ -84,6 +84,8 @@ Paths below are relative to the repository root. This inventory includes every p
 | `src/lib/textWindow.ts` | Expand inset shorthand for Chromium 79. |
 | `src/lib/vipList.ts` | Expand inset shorthand for Chromium 79. |
 
+## PR 427 hardware-session fixes
+
 - **A1 · Calibration** — Regression coverage for changed trigger rests, dual exposure, hat and split-axis pads, skipping and cancellation.
 
 - **A2 · Remote and keyboard fallback** — Browser regression exercises server-confirmed keyboard walking, native Enter and duplicate activation with an attached pad.
@@ -103,3 +105,5 @@ Paths below are relative to the repository root. This inventory includes every p
 - **B4 · TV play layout** — Browser checks both viewports, saves screenshots, checks text size and exercises the Settings controls. Sofa readability still needs David.
 
 - **B5 · Controller selection** — Device tests cover silent entries, late appearance, same-ID handover, held buttons, fresh snapshots and disconnects. Browser setup explicitly wakes the fake pad.
+
+- **B6 · Parse shipped HTML with JSDOM** — Gate rejected optional chaining in an inline module with a spaced closing tag. GitHub tracks this as CodeQL alert 2 on PR 427.

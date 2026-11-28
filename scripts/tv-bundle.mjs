@@ -86,6 +86,20 @@ try {
 
 const page = await read('jamera.html');
 if (!page.includes('<head><script src="/compat.js"></script>')) throw Error('Missing early compatibility script');
+const jsTypes = new Set([
+  'application/ecmascript','application/javascript','application/x-ecmascript','application/x-javascript',
+  'text/ecmascript','text/javascript','text/javascript1.0','text/javascript1.1','text/javascript1.2',
+  'text/javascript1.3','text/javascript1.4','text/javascript1.5','text/jscript','text/livescript',
+  'text/x-ecmascript','text/x-javascript',
+]);
+function inlineJavaScript(script) {
+  if (script.closest('noscript') || script.hasAttribute('src') || script.hasAttribute('href')
+    || script.hasAttributeNS('http://www.w3.org/1999/xlink','href')) return false;
+  const language = script.getAttribute('language');
+  const raw = script.getAttribute('type') ?? (language ? 'text/' + language : '');
+  const type = raw.trim().toLowerCase().split(';')[0].trim();
+  return !type || type === 'module' || jsTypes.has(type);
+}
 async function check(dir) {
   for (const entry of await readdir(path.join(out, dir), { withFileTypes: true })) {
     const name = path.join(dir, entry.name);
@@ -93,9 +107,12 @@ async function check(dir) {
     if (!/\.(?:js|mjs|html|css)$/.test(name)) continue;
     const code = await read(name);
     if (/(?:^|[;{\x22\x27\x60])\s*inset\s*:/m.test(code)) throw Error(name + ' uses inset shorthand');
-    const scripts = name.endsWith('.html')
-      ? Array.from(code.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi), (match) => match[1])
-      : name.endsWith('css') ? [] : [code];
+    let scripts = name.endsWith('.css') ? [] : [code];
+    if (name.endsWith('.html')) {
+      const page = JSDOM.fragment(code);
+      scripts = Array.from(page.querySelectorAll('script')).filter(inlineJavaScript)
+        .map(script => script.textContent);
+    }
     for (const script of scripts) {
       try { parse(script, { ecmaVersion: name === 'diagnostics.js' ? 2017 : 2019, sourceType: 'module' }); }
       catch (error) { throw Error(name + ' fails ES2019: ' + error.message); }

@@ -1,6 +1,8 @@
 import { cp, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'acorn';
+import { JSDOM } from 'jsdom';
+import assert from 'node:assert/strict';
 
 const out = 'dist-tv';
 const read = (name) => readFile(path.join(out, name), 'utf8');
@@ -45,6 +47,25 @@ if (!checkOnly) {
 }
 
 const polyfills = await read('compat.js');
+// Run the shipped file in a separate realm with the two native APIs removed.
+// Checking behavior also catches bracket notation, renamed helpers and no-op shims.
+const realm = new JSDOM('<div></div>', { runScripts: 'outside-only' });
+try {
+  const { window } = realm;
+  delete window.Array.prototype.at;
+  delete window.Element.prototype.replaceChildren;
+  window.eval(polyfills);
+  assert.equal(window.Array.of(3, 7).at(-1), 7);
+  assert.equal(window.Array.of(3, 7).at(2), undefined);
+  const host = window.document.querySelector('div');
+  const child = window.document.createElement('i');
+  host.replaceChildren('text', child);
+  assert.equal(host.lastChild, child);
+  assert.equal(host.textContent, 'text');
+  host.replaceChildren();
+  assert.equal(host.childNodes.length, 0);
+} finally { realm.window.close(); }
+
 const page = await read('jamera.html');
 if (!page.includes('<head><script src="/compat.js"></script>')) throw Error('Missing early compatibility script');
 async function check(dir) {
@@ -60,11 +81,7 @@ async function check(dir) {
     for (const script of scripts) {
       try { parse(script, { ecmaVersion: name === 'diagnostics.js' ? 2017 : 2019, sourceType: 'module' }); }
       catch (error) { throw Error(name + ' fails ES2019: ' + error.message); }
-      for (const [call, owner] of [['replaceChildren', 'Element'], ['at', 'Array']]) {
-        if (script.includes('.' + call + '(') && !polyfills.includes("Object.defineProperty(" + owner + ".prototype, '" + call + "'")) {
-          throw Error(name + ' needs a polyfill for ' + call);
-        }
-      }
+
     }
   }
 }

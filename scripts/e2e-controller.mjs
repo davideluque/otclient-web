@@ -12,6 +12,10 @@ for (const [width,height] of sizes) {
     page.on('pageerror', e => errors.push(e.message));
     await page.setViewportSize({width,height});
     await page.addInitScript(fakeController);
+    if (production) await page.addInitScript(() => {
+      delete Element.prototype.replaceChildren;
+      delete Array.prototype.at;
+    });
     for (const [name,body] of Object.entries(mockAssets)) {
       await page.route('**/assets/760/' + name, r => r.fulfill({contentType:'application/octet-stream',body}));
     }
@@ -26,7 +30,7 @@ for (const [width,height] of sizes) {
     }
   });
 }
-if (!production) test('flags off leave controller and TV modules unloaded', async ({page}) => {
+test('flags off leave controller and TV modules unloaded', async ({page}) => {
   const paths = [];
   page.on('request', r => paths.push(new URL(r.url()).pathname));
   await page.addInitScript(fakeController);
@@ -42,7 +46,7 @@ if (!production) test('flags off leave controller and TV modules unloaded', asyn
   await expect(page.locator('.hud')).toBeVisible();
   await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
   expect(await page.evaluate(() => window.padPolls)).toBe(0);
-  expect(paths.filter(p => /\/lib\/(gamepad|tv)\//.test(p))).toEqual([]);
+  expect(paths.filter(p => /\/lib\/(gamepad|tv)\//.test(p) || /\/assets\/(?:lazy-)?(?:runtime|setup|logs)-/.test(p))).toEqual([]);
   await expect(page.locator('.pad-active,.tv-layout,.controller-hud,[data-pad-dialog]')).toHaveCount(0);
 });
 

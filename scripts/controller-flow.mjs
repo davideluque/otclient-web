@@ -151,6 +151,10 @@ export async function controllerFlow(page, url, production = false) {
     }));
     assert.deepEqual(baseline.globals,[]);
     console.log('MOCK_BASELINE', JSON.stringify(baseline));
+    await tap(page,9);
+    assert.equal(await page.evaluate(() => !!document.querySelector('.game-menu-pane.open')),true);
+    assert.equal(await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown',{keyCode:461,bubbles:true,cancelable:true}))),false);
+    await until(() => page.evaluate(() => !document.querySelector('.game-menu-pane.open')), 'remote Back');
     await page.evaluate(() => window.dropMockSession());
     await until(() => page.evaluate(() => !!document.querySelector('[aria-label^="Game connection closed"]')), 'connection retry');
     await tap(page,0);

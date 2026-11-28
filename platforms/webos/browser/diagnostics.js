@@ -86,7 +86,18 @@
     } catch (e) { report.gamepadError = e.name; }
     if (now >= nextDraw) {
       var text = JSON.stringify(report,null,2);
-      document.getElementById('screen').textContent = text;
+      var lines = [report.userAgent, 'Viewport ' + report.viewport.join(' × ') + ' · DPR ' + report.dpr,
+        'WebGL 1 ' + JSON.stringify(report.webgl1), 'WebGL 2 ' + JSON.stringify(report.webgl2),
+        'WebSocket ' + JSON.stringify(report.websocket) + ' · rAF ' + (report.fps === null ? 'measuring…' : report.fps.toFixed(1) + ' fps'),
+        'Features ' + JSON.stringify(report.features)];
+      if (report.gamepadError) lines.push('Gamepad API error: ' + report.gamepadError);
+      else if (!report.pads.length) lines.push('No visible controller. Press and release a button.');
+      report.pads.forEach(function (p) {
+        lines.push(p.id + ' · mapping ' + JSON.stringify(p.mapping), p.buttonCount + ' buttons: ' + p.buttons.join(' '),
+          p.axisCount + ' axes: ' + p.axes.join(' '));
+      });
+      lines.push('Recent keys ' + report.keys.slice(-5).map(function (k) { return k.code + '/' + k.keyCode; }).join(', '));
+      document.getElementById('screen').textContent = lines.join('\n');
       if (last !== text) changed();
       last = text; nextDraw = now + 150;
     }

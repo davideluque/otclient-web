@@ -1,0 +1,13 @@
+{
+  "id": "org.otclient.tv",
+  "version": "1.0.0",
+  "vendor": "OTClient Web",
+  "type": "web",
+  "main": "index.html",
+  "title": "OTClient",
+  "icon": "icon.png",
+  "largeIcon": "large-icon.png",
+  "resolution": "1280x720",
+  "disableBackHistoryAPI": true,
+  "requiredACG": []
+}

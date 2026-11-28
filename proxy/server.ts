@@ -103,7 +103,9 @@ const httpServer = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server: httpServer, maxPayload: MAX_PAYLOAD_BYTES });
-httpServer.listen(WS_PORT);
+httpServer.listen(WS_PORT, () => {
+  if (process.env.TV_DIAGNOSTICS === '1') process.send?.('tv-proxy-listening');
+});
 
 console.log(`WebSocket proxy listening on ws://0.0.0.0:${WS_PORT}`);
 console.log(`Telemetry sink: POST /telemetry → ${TELEMETRY_FILE}`);

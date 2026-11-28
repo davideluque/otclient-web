@@ -67,15 +67,22 @@ function writeMapArea(w: FrameWriter, width: number, height: number, playerZ: nu
       // the creature or every step would duplicate the player.
       const isFullMap = width === 18 && height === 14;
       const playerCell = 8 * height + 6;
+      const neighbours = new Map<number, [number, string]>([
+        [playerCell, [PLAYER_ID, 'Trinity']],
+        [playerCell - 1, [0x10000002, 'Other player']],
+        [playerCell + 2, [0x40000001, 'Rat']],
+        [playerCell + 4, [0x40000002, 'Wolf']],
+      ]);
       for (let i = 0; i < width * height; i++) {
         w.u16(GROUND_ID);
-        if (isFullMap && i === playerCell && z === SPAWN.z) {
+        const creature = isFullMap && z === SPAWN.z ? neighbours.get(i) : undefined;
+        if (creature) {
           // The player stands on the first tile (known-creature form not
           // needed — 0x61 introduces it with name + outfit).
           w.u16(0x61);
           w.u32(0); // removeKnown
-          w.u32(PLAYER_ID);
-          w.str('Trinity');
+          w.u32(creature[0]);
+          w.str(creature[1]);
           w.u8(100); // health %
           w.u8(2);   // direction: south
           w.u8(128); // lookType (citizen)
@@ -159,6 +166,10 @@ const gameServer = net.createServer((socket) => {
       case 0x66: move(1, 0, 0x66); break;
       case 0x67: move(0, 1, 0x67); break;
       case 0x68: move(-1, 0, 0x68); break;
+      case 0xa1: { // Test acknowledgement of the existing attack packet.
+        if (payload.length === 5) send(new FrameWriter().u8(0xb4).u8(0x11).str('Target ' + payload.readUInt32LE(1)));
+        break;
+      }
       case 0x96: { // say → echo back as creature speech
         // payload: opcode, U8 type, string text
         const len = payload[2] | (payload[3] << 8);

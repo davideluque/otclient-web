@@ -12,6 +12,7 @@
       destination.searchParams.set('metrics', '1');
       var port = params && params.proxyPort || localStorage.getItem('proxyPort') || '8090';
       destination.searchParams.set('proxy', 'ws://' + url.hostname + ':' + port);
+      if (params && String(params.resetPad) === 'true') destination.searchParams.set('reset-pad', '1');
       if (params && String(params.logs) === 'true') destination.searchParams.set('tvlogs', '1');
       try { localStorage.setItem('origin', url.origin); localStorage.setItem('proxyPort', port); } catch (_) {}
     } catch (_) {

@@ -125,3 +125,23 @@ test('attached pad leaves keyboard walk and remote activation available', async 
   });
   expect(await page.evaluate(() => window.activations)).toBe(2);
 });
+
+test('launch reset and green remote key recover an unusable profile', async ({page}) => {
+  await page.addInitScript(fakeController);
+  await page.addInitScript(() => {
+    localStorage.setItem('jamera.pad.old','old');
+    localStorage.setItem('keep','yes');
+  });
+  await page.goto('/jamera.html?tv=1&autologin=0&reset-pad=1');
+  await expect.poll(() => new URL(page.url()).searchParams.has('reset-pad')).toBe(false);
+  expect(await page.evaluate(() => [localStorage.getItem('jamera.pad.old'),localStorage.getItem('keep')])).toEqual([null,'yes']);
+  const green = () => page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown',{keyCode:404,bubbles:true})));
+  await green();
+  await expect(page.getByRole('button',{name:'Recalibrate'})).toBeFocused();
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('jamera.pad.' + window.testPad.id)))).toBe('standard');
+  await green(); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => localStorage.getItem('jamera.pad.' + window.testPad.id))).toBeNull();
+  await green(); await page.getByText('Continue without controller',{exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'Controller recovery'})).toHaveCount(0);
+});

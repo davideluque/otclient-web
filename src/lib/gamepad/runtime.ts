@@ -1,4 +1,4 @@
-import { createDevice, normalize, loadProfile, saveProfile, type Profile } from './device';
+import { createDevice, normalize, consumeProfileReset, forgetProfile, standardProfile, loadProfile, saveProfile, type Profile } from './device';
 import { idle, mapFrame } from './mapping';
 import { back, dialog, focusAction, topSurface } from './focus';
 import { loadBindings, saveBindings } from './bindings';
@@ -9,6 +9,16 @@ import type { CombatBindingHandle } from '../jamera/combatBinding';
 import './controller.css';
 
 export function mountController(tv: boolean, cancelCharacterSelect: () => void) {
+  function relaunch(event: Event) {
+    if (String((event as CustomEvent).detail?.resetPad) !== 'true') return;
+    const url = new URL(location.href);
+    url.searchParams.set('reset-pad','1');
+    location.replace(url.href);
+  }
+  if (tv) {
+    consumeProfileReset();
+    document.addEventListener('webOSRelaunch', relaunch);
+  }
   document.documentElement.classList.add('pad-active');
   const hint = document.createElement('p');
   hint.textContent = typeof navigator.getGamepads === 'function'
@@ -43,7 +53,9 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   let suspended = false;
   const blur = () => { suspended = true; reset(); };
   const focus = () => { suspended = false; reset(); };
-  let retryCalibration = false;
+  let controllerPaused = false;
+  let retryOnPress = false;
+  let rescue: ReturnType<typeof dialog> | null = null;
 
   // Most frames have no UI changes. Ignore HUD text/cooldowns and canvas
   // repaints when deciding whether to measure visible panels again.
@@ -62,12 +74,34 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   function reset() { padKeys.clear(); remoteKeys.clear(); state = idle(); dirty = true; }
   function stopWizard() { wizard?.close(); wizard = null; reset(); }
   function startCalibration() {
+    if (!id) { showRescue(); return; }
+    controllerPaused = false;
     stopWizard();
     wizard = calibrate((learned) => {
       if (id !== null) saveProfile(id, learned);
       profile = learned;
       stopWizard();
-    }, stopWizard);
+    }, () => { controllerPaused = !profile; retryOnPress = !tv && !profile; stopWizard(); });
+  }
+  function showRescue() {
+    stopWizard();
+    rescue?.close();
+    const panel = dialog('Controller recovery');
+    rescue = panel;
+    function close() { panel.close(); rescue = null; reset(); }
+    const calibrateButton = panel.button('Recalibrate', () => { close(); startCalibration(); });
+    const standard = panel.button('Use standard mapping', () => {
+      if (!id) return;
+      saveProfile(id,'standard'); profile = standardProfile(); controllerPaused = false; close();
+    });
+    const forget = panel.button('Forget this controller', () => {
+      if (id) forgetProfile(id);
+      profile = null; controllerPaused = true; close();
+    });
+    for (const button of [calibrateButton,standard,forget]) button.disabled = id === null;
+    const without = panel.button('Continue without controller', () => { controllerPaused = true; close(); });
+    without.dataset.padBack = '';
+    (id ? calibrateButton : without).focus();
   }
   function recover(message: string) {
     recovery?.close();
@@ -96,18 +130,14 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       hint.hidden = id !== null;
       stopWizard();
       profile = pad ? loadProfile(pad) : null;
-      if (hadPad && !pad) recover('Controller disconnected. Reconnect and press a button.');
-      if (pad && !profile) startCalibration();
+      if (!controllerPaused && hadPad && !pad) recover('Controller disconnected. Reconnect and press a button.');
+      if (!rescue && !controllerPaused && pad && !profile) startCalibration();
+      if (rescue) showRescue();
     }
+    if (retryOnPress && pad?.buttons.some(b => b.pressed)) { retryOnPress = false; startCalibration(); }
     if (wizard && pad) { wizard.sample(pad, now); return; }
-    if (pad && !profile) {
-      const down = pad.buttons.some(b => b.pressed);
-      if (down && !retryCalibration) startCalibration();
-      retryCalibration = down;
-      return;
-    }
     const ui = currentScope();
-    const snapshot = pad && profile ? normalize(pad, profile) : null;
+    const snapshot = !rescue && !controllerPaused && pad && profile ? normalize(pad, profile) : null;
     const next = mapFrame(state, snapshot, ui || !combat ? 'ui' : 'game', words, now);
     if (next.pressed.has('circle') && !state.pressed.has('circle')) {
       lastCircle = performance.now();
@@ -135,7 +165,10 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (combat && hud) hud.update(next.layer, words, combat.cooldownUntil, now);
   });
   function keydown(e: KeyboardEvent) {
-    if (tv && e.keyCode === 461) {
+    if (tv && e.keyCode === 404) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (!e.repeat) showRescue();
+    } else if (tv && e.keyCode === 461) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (!e.repeat && performance.now()-lastCircle > 200) {
         clearTimeout(backTimer);
@@ -169,7 +202,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     sheet?.close(); sheet = null;
     editor?.close(); editor = null;
     document.querySelectorAll('[data-pad-dialog]').forEach(el => el.remove());
-    stopWizard(); recovery = null;
+    stopWizard(); recovery = null; rescue = null;
     reset();
     if (disconnected) recover('Game connection closed. Retry to return to login.');
   }
@@ -182,6 +215,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
       window.removeEventListener('blur', blur);
       window.removeEventListener('focus', focus);
       clearTimeout(backTimer);
+      document.removeEventListener('webOSRelaunch', relaunch);
       document.removeEventListener('visibilitychange', reset);
       document.documentElement.classList.remove('pad-active');
     },

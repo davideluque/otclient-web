@@ -53,7 +53,14 @@
     changed();
   };
   document.getElementById('save').onclick = save;
-  document.getElementById('play').onclick = function () { location.href = '/jamera.html' + location.search; };
+  document.getElementById('play').onclick = function () {
+    var game = '/jamera.html' + location.search;
+    if (params.has('reset-pad')) {
+      params.delete('reset-pad');
+      history.replaceState(history.state, '', location.pathname + '?' + params.toString());
+    }
+    location.href = game;
+  };
   var start = performance.now();
   try {
     var socket = new WebSocket(ws.origin + '/tv/ping');

@@ -50,7 +50,7 @@ async function pack() {
 function launch() {
   return run('ares-launch', ['-d', device, id, '-p', JSON.stringify({
     origin: origin(), proxyPort: env.WS_PORT || '8090',
-    diagnostics: process.argv.includes('--diagnostics'), logs: process.argv.includes('--logs'),
+    resetPad: process.argv.includes('--reset-pad'), diagnostics: process.argv.includes('--diagnostics'), logs: process.argv.includes('--logs'),
   })]);
 }
 async function serve(onReady) {

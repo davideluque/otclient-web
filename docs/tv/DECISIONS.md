@@ -28,3 +28,7 @@ Learn the resting axes after 160 ms of stable release. Finish becomes available 
 ### A2 · Remote and keyboard fallback
 
 Match Arrow and Enter against their individual pad events for 80 ms. Adjust with ?padKeyMs=0 through 250 after comparing diagnostics timestamps. Native Enter and gameplay arrow events otherwise keep their usual behavior.
+
+### A3 · Controller profile recovery
+
+Use the LG green key (404) to open recovery without using any mapped button. Continue pauses the controller for this page. Recalibrate or Use standard mapping resumes it. The shell forwards a one-shot reset on launch or deploy.

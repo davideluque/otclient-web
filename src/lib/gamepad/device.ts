@@ -52,6 +52,7 @@ export function hasNavigation(profile: Profile): boolean {
 export function loadProfile(pad: RawPad): Profile | null {
   try {
     const saved = JSON.parse(localStorage.getItem('jamera.pad.' + pad.id) ?? 'null');
+    if (saved === 'standard') return standardProfile();
     if (saved && controls.every((name) => {
       const src = saved[name];
       if (src === null) return true;
@@ -62,7 +63,7 @@ export function loadProfile(pad: RawPad): Profile | null {
   } catch { /* Storage can be disabled. */ }
   return pad.mapping === 'standard' ? standardProfile() : null;
 }
-export function saveProfile(id: string, profile: Profile): void {
+export function saveProfile(id: string, profile: Profile | 'standard'): void {
   try { localStorage.setItem('jamera.pad.' + id, JSON.stringify(profile)); } catch { /* Session profile remains usable. */ }
 }
 
@@ -102,4 +103,21 @@ export function captureSource(pad: RawPad, neutral: readonly number[]): Source |
     }
   });
   return result;
+}
+
+export function forgetProfile(id: string): void {
+  try { localStorage.removeItem('jamera.pad.' + id); } catch { /* Storage unavailable. */ }
+}
+export function consumeProfileReset(): void {
+  const url = new URL(location.href);
+  if (url.searchParams.get('reset-pad') !== '1') return;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('jamera.pad.')) localStorage.removeItem(key);
+    }
+  } catch { /* Storage unavailable. */ } finally {
+    url.searchParams.delete('reset-pad');
+    history.replaceState(history.state,'',url.href);
+  }
 }

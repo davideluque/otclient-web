@@ -166,7 +166,10 @@ export function focusAction(scope: HTMLElement, action: 'activate' | Direction, 
   const item = items[Math.max(0,index)];
   if (action === 'activate') {
     if (isTextField(item)) textEntry(scope,item);
-    else { item.focus(); item.click(); }
+    else {
+      item.focus();
+      if (!(item instanceof HTMLInputElement && item.type === 'range')) item.click();
+    }
   } else if (item instanceof HTMLInputElement && item.type === 'range' && [1,3].includes(action)) {
     if (action === Direction.East) item.stepUp(); else item.stepDown();
     item.dispatchEvent(new Event('input', { bubbles: true }));

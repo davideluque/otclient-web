@@ -57,7 +57,7 @@ async function tap(page, index) { await press(page,index); await press(page,inde
 
 // Drive focus using actual D-pad presses. The browser supplies geometry;
 // the test never calls focus(), click(), fill(), or dispatches a key.
-async function select(page, selector, label) {
+export async function select(page, selector, label) {
   for (let attempt = 0; attempt < 50; attempt++) {
     const decision = await page.evaluate(({selector,label}) => {
       const root = document.querySelector(selector);

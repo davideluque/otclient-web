@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { controllerFlow, fakeController } from './controller-flow.mjs';
+import { controllerFlow, fakeController, press, select } from './controller-flow.mjs';
 import { mockAssets } from './mock-assets.mjs';
 
 const production = process.env.TV_SMOKE === '1';
@@ -226,7 +226,6 @@ test('pad focus suppresses the native input mode until pointer activation or gri
   await page.addInitScript(fakeController);
   await page.goto('/jamera.html?tv=1&autologin=0');
   await expect.poll(() => page.evaluate(() => window.padPolls)).toBeGreaterThan(2);
-  const {press} = await import('./controller-flow.mjs');
   const tap = async index => { await press(page,index); await press(page,index,false); };
   await tap(13);
   const account = page.getByLabel('Account number');
@@ -237,4 +236,38 @@ test('pad focus suppresses the native input mode until pointer activation or gri
   await tap(0); await tap(1);
   await tap(13);
   await expect(page.getByLabel('Password',{exact:true})).toBeFocused();
+});
+
+test('TV battle list clears the minimap and combat modes are available in Settings', async ({page}, info) => {
+  test.setTimeout(90000);
+  await fallbackSession(page);
+  await page.locator('.game-menu-btn').click();
+  await page.getByRole('button',{name:'Battle',exact:true}).click();
+  for (const [width,height] of [[1280,720],[1920,1080]]) {
+    await page.setViewportSize({width,height});
+    await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--game-inset-top')))
+      .toBe(Math.round(height*.05) + 'px');
+    const battle = await page.locator('.battle-list').boundingBox();
+    const minimap = await page.locator('.minimap').boundingBox();
+    expect(battle.y).toBeGreaterThan(minimap.y + minimap.height);
+    expect(await page.locator('.controller-hud').evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(21);
+    await expect(page.locator('.controller-hud li')).toHaveText([
+      '✕ exura','○ exura vita','□ utevo lux','△ exana pox','R1 utamo vita','R2 utani hur',
+    ]);
+    await page.screenshot({path:info.outputPath('battle-' + width + '.png')});
+  }
+  await page.setViewportSize({width:1280,height:720});
+  await expect(page.locator('.combat-modes')).toBeHidden();
+  await page.locator('.game-menu-btn').click();
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await select(page,'.settings-pane','Fight stance');
+  // Hold to the upper endpoint regardless of the headless renderer's frame rate.
+  await press(page,15);
+  try { await expect(page.getByRole('slider',{name:'Fight stance'})).toHaveValue('3'); }
+  finally { await press(page,15,false); }
+  await select(page,'.settings-pane','Chase opponent');
+  await select(page,'.settings-pane','Secure mode');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jamera.combatModes')));
+  expect(saved.fightMode).toBe(3); expect(saved.chase).toBe(true); expect(saved.secure).toBe(false);
+  await expect(page.getByRole('switch',{name:'Secure mode'})).toBeVisible();
 });

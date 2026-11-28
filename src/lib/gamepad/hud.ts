@@ -39,7 +39,7 @@ export function createControllerHUD(parent: HTMLElement = document.body) {
           image.alt = spell.name;
           item.appendChild(image);
         }
-        item.append(icon ? words : spell?.name ?? '—');
+        item.append(words || '—');
         item.title = spell ? spell.name + ' · ' + words : 'Empty slot';
         item.dataset.words = words;
       }

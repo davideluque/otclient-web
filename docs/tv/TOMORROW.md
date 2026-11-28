@@ -74,3 +74,5 @@ PUPPETEER_2_DIR="<directory containing node_modules/puppeteer>" \
 ```
 
 Battle, Skills, Inventory and open containers are view-only with the controller. Walking and casting continue with these panes visible. Select Battle, Skills or Inventory again to hide it, or choose Close containers.
+
+Open Settings for Fight stance, Chase opponent and Secure mode. With Battle visible, check the whole first row and read all six HUD incantations from the sofa at 720p.

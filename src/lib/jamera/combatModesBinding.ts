@@ -9,6 +9,7 @@ import type { GameClient } from '../net/common/GameClient';
  * every login so the server matches what the buttons show.
  */
 export interface CombatModesBindingHandle {
+  update(next: Partial<CombatModesState>): void;
   readonly modes: CombatModesHandle;
   destroy(): void;
 }
@@ -33,21 +34,20 @@ export function bindCombatModes(client: GameClient, parent: HTMLElement = docume
     }
   };
 
-  const modes = createCombatModes({
-    initial: load(),
-    onChange: (state) => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch { /* storage full/blocked — modes still work for the session */ }
-      send(state);
-    },
-  }, parent);
+  const commit = (state: CombatModesState) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch { /* storage full/blocked — modes still work for the session */ }
+    send(state);
+  };
+  const modes = createCombatModes({ initial: load(), onChange: commit }, parent);
 
   // Sync the server with the restored state at bind time (login).
   send(modes.state);
 
   return {
     modes,
+    update(next) { modes.setState(next); commit(modes.state); },
     destroy: () => modes.destroy(),
   };
 }

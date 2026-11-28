@@ -52,3 +52,7 @@ Track mounted modal roots. Only their insertion, removal, visibility or a releva
 ### B3 · Login keyboard ownership
 
 Set inputmode to none before pad-driven focus enters a text field and restore its previous value on blur. Open and close the text grid without focusing the editable field. Keyboard and remote navigation retain normal field behavior.
+
+### B4 · TV play layout
+
+Place Battle below the minimap and show incantations in all HUD slots at a minimum of 21 CSS pixels on the target sizes. Expose the three combat-mode settings through the existing persisted state and packet path.

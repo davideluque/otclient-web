@@ -272,6 +272,17 @@ const login = mountLoginScreen(root, {
     // current session even across re-logins.
     settingsPane?.destroy();
     settingsPane = createSettingsPane([
+      ...(tvMode ? [
+        { kind: 'slider' as const, label: 'Fight stance', min: 1, max: 3, step: 1, unit: '',
+          hint: '1 Offensive · 2 Balanced · 3 Defensive',
+          get: () => teardownCombatModes?.modes.state.fightMode ?? 2,
+          set: (value: number) => teardownCombatModes?.update({fightMode: value === 1 || value === 3 ? value : 2}) },
+        { kind: 'toggle' as const, label: 'Chase opponent', get: () => teardownCombatModes?.modes.state.chase ?? false,
+          set: (on: boolean) => teardownCombatModes?.update({chase:on}) },
+        { kind: 'toggle' as const, label: 'Secure mode', hint: 'Prevent attacks on other players.',
+          get: () => teardownCombatModes?.modes.state.secure ?? true,
+          set: (on: boolean) => teardownCombatModes?.update({secure:on}) },
+      ] : []),
       {
         kind: 'toggle',
         label: 'Auto-attack',

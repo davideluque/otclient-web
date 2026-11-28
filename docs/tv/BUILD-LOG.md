@@ -99,3 +99,5 @@ Paths below are relative to the repository root. This inventory includes every p
 - **B2 · Modal measurement cost** — Production smoke instruments the actual document query, verifies a nonzero counter during navigation and permits at most one scan over 1.25 seconds of idle play with metrics.
 
 - **B3 · Login keyboard ownership** — Controller login flow asserts keyboard focus belongs to the grid and does not return to an input on Done; native LG keyboard remains a device check.
+
+- **B4 · TV play layout** — Browser checks both viewports, saves screenshots, checks text size and exercises the Settings controls. Sofa readability still needs David.

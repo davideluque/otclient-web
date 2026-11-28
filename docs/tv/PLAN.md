@@ -23,3 +23,5 @@ Reconnaissance used 1dcfcbb on the integration branch. The live entry is jamera.
 - Real server identifiers, LG keyboard invocation, duplicate remote events, GPU initialization, memory and frame pacing require the hardware session.
 - interactions.ts documents the Jamera allocator prefixes for players (1), monsters (4) and NPCs (8). Reject all other prefixes. Confirm the deployment uses that allocator before the first live fight.
 - The manifest also lists world.otbm for the offline map. Online play needs only the other three entries.
+
+A final source count at the baseline found 18 replaceChildren calls under src/lib (15 outside the gallery), one array .at call and four nullish assignments. Fifteen live component declarations use inset shorthand. The additional map.html declaration belongs to the offline page. Only the live declarations needed expansion.

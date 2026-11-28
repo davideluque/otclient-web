@@ -19,6 +19,7 @@ export function fakeController() {
     constructor(url, protocols) {
       super(url, protocols);
       if (new URL(url).pathname !== '/game') return;
+      window.dropMockSession = () => this.close();
       this.addEventListener('message', event => {
         const bytes = new Uint8Array(event.data);
         if (bytes[2] === 0x66) window.mockReplies.east++;
@@ -139,7 +140,7 @@ export async function controllerFlow(page, url, production = false) {
     await until(() => page.evaluate(() => !document.querySelector('[aria-label^="Controller disconnected"]')), 'controller retry');
   }
   if (production) {
-    await until(() => page.evaluate(() => Array.from(document.body.children).some(e => /^fps \d+/m.test(e.textContent) && /atlas [1-9]/.test(e.textContent))), 'renderer metrics');
+    await until(() => page.evaluate(() => Array.from(document.body.children).some(e => /^fps \d+/m.test(e.textContent) && /atlas [1-9]/.test(e.textContent) && /repaint [0-9]+ms/.test(e.textContent))), 'renderer metrics');
     const baseline = await page.evaluate(() => ({
       size:[innerWidth,innerHeight],
       heap: performance.memory ? performance.memory.usedJSHeapSize : null,
@@ -148,6 +149,10 @@ export async function controllerFlow(page, url, production = false) {
     }));
     assert.deepEqual(baseline.globals,[]);
     console.log('MOCK_BASELINE', JSON.stringify(baseline));
+    await page.evaluate(() => window.dropMockSession());
+    await until(() => page.evaluate(() => !!document.querySelector('[aria-label^="Game connection closed"]')), 'connection retry');
+    await tap(page,0);
+    assert.equal(await page.evaluate(() => document.querySelector('.jamera-login').hidden || !!document.querySelector('.controller-hud')),false);
     return baseline;
   }
 }

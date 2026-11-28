@@ -59,12 +59,12 @@ function ensureStyles(): void {
     .quick-chat.portrait {
       left: 0; right: 0;
       border-radius: 14px 14px 0 0;
-      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-bottom: var(--game-inset-bottom, env(safe-area-inset-bottom, 0px));
     }
     .quick-chat.landscape {
       top: 0; bottom: 0;
       border-radius: 0 12px 12px 0;
-      padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+      padding: var(--game-inset-top, env(safe-area-inset-top, 0px)) 0 var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)) var(--game-inset-left, env(safe-area-inset-left, 0px));
       width: 38vw; max-width: 420px; min-width: 240px;
     }
     .quick-chat-head {
@@ -124,8 +124,8 @@ function ensureStyles(): void {
     }
     .quick-chat-emergency {
       display: none; position: fixed; z-index: 26;
-      right: calc(8px + env(safe-area-inset-right, 0px));
-      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      right: calc(8px + var(--game-inset-right, env(safe-area-inset-right, 0px)));
+      bottom: calc(8px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       gap: 6px; flex-direction: row;
     }
     .quick-chat-emergency.visible { display: flex; }

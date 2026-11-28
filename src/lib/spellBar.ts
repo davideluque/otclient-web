@@ -50,8 +50,8 @@ function ensureStyles(): void {
   style.id = STYLE_ID;
   style.textContent = `
     .spell-bar {
-      position: fixed; right: calc(10px + env(safe-area-inset-right, 0px));
-      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      position: fixed; right: calc(10px + var(--game-inset-right, env(safe-area-inset-right, 0px)));
+      bottom: calc(16px + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       width: ${ANCHOR_SIZE / 2 + ARC_RADIUS + BUTTON_SIZE / 2 + 4}px;
       height: ${ANCHOR_SIZE / 2 + ARC_RADIUS + BUTTON_SIZE / 2 + 4}px;
       z-index: 30; user-select: none; pointer-events: none;

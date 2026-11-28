@@ -49,7 +49,7 @@ function ensureStyles(): void {
     .minimap {
       /* Left column, under the HUD (top 8, ~50px tall) and the
          status-bar condition row (top 86) — keeps top-right free. */
-      position: fixed; top: calc(112px + env(safe-area-inset-top, 0px)); left: calc(8px + env(safe-area-inset-left, 0px));
+      position: fixed; top: calc(112px + var(--game-inset-top, env(safe-area-inset-top, 0px))); left: calc(8px + var(--game-inset-left, env(safe-area-inset-left, 0px)));
       border: 1px solid #555; border-radius: 8px;
       background: #000; z-index: 35; overflow: hidden;
       opacity: 0.92;

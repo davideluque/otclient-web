@@ -8,7 +8,7 @@ import { openBindings } from './editor';
 import type { CombatBindingHandle } from '../jamera/combatBinding';
 import './controller.css';
 
-export function mountController(tv: boolean) {
+export function mountController(tv: boolean, cancelCharacterSelect: () => void) {
   document.documentElement.classList.add('pad-active');
   const words = loadBindings();
   let state = idle();
@@ -38,6 +38,10 @@ export function mountController(tv: boolean) {
   function currentScope() {
     if (dirty) { scope = topSurface(); dirty = false; }
     return scope;
+  }
+  function goBack(surface: HTMLElement | null) {
+    if (surface?.matches('.jamera-login')) cancelCharacterSelect();
+    else back(surface);
   }
   function reset() { state = idle(); dirty = true; }
   function stopWizard() { wizard?.close(); wizard = null; reset(); }
@@ -98,7 +102,7 @@ export function mountController(tv: boolean) {
         if ('cast' in action) combat?.cast(action.cast);
         else if (ui) focusAction(ui, action.focus);
       } else if (action === 'activate' && ui) focusAction(ui, action);
-      else if (action === 'back') back(ui);
+      else if (action === 'back') goBack(ui);
       else if (action === 'menu') document.querySelector<HTMLButtonElement>('.game-menu-btn')?.click();
       else if (action === 'next') combat?.attackNextMonster();
       else if (action === 'stop') combat?.setAttacking(false);
@@ -111,7 +115,7 @@ export function mountController(tv: boolean) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (!e.repeat && performance.now()-lastCircle > 200) {
         clearTimeout(backTimer);
-        backTimer = setTimeout(() => back(currentScope()), id ? 100 : 0);
+        backTimer = setTimeout(() => goBack(currentScope()), id ? 100 : 0);
       }
     } else if (tv && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key) && id) {
       // A paired pad can synthesize keydown before its next polled snapshot.

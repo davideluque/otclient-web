@@ -18,7 +18,7 @@ function ensureStyles(): void {
   style.textContent = `
     .storage-notice {
       position: fixed; left: 50%; transform: translateX(-50%);
-      bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+      bottom: calc(1rem + var(--game-inset-bottom, env(safe-area-inset-bottom, 0px)));
       max-width: min(90vw, 28rem); padding: 0.75rem 1rem;
       background: #161616; color: #e0e0e0;
       border: 1px solid #9a9a9a; border-radius: 8px;

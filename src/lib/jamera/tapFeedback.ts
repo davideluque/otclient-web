@@ -36,7 +36,7 @@ export function ensureHintStyles(): void {
   style.id = HINT_STYLE_ID;
   style.textContent = `
     .use-with-hint {
-      position: fixed; top: calc(${space.lg}px + env(safe-area-inset-top, 0px));
+      position: fixed; top: calc(${space.lg}px + var(--game-inset-top, env(safe-area-inset-top, 0px)));
       left: 50%; transform: translateX(-50%); z-index: ${zIndex.hud};
       display: flex; align-items: center; gap: ${space.lg}px;
       padding: ${space.lg}px ${space.xl}px;

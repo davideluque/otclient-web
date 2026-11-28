@@ -3,7 +3,7 @@ import { glyphs, layers } from './bindings';
 import { dialog } from './focus';
 
 /** All controls are ordinary focusable buttons so the same editor works with a mouse. */
-export function openBindings(words: string[], change: () => void, readOnly = false) {
+export function openBindings(words: string[], change: () => void, readOnly = false, repeatSlots?: boolean[]) {
   const panel = dialog(readOnly ? 'Controller layout' : 'Controller spells');
   let selected = 0;
   function grid() {
@@ -15,8 +15,8 @@ export function openBindings(words: string[], change: () => void, readOnly = fal
       rows.appendChild(document.createElement('strong')).textContent = layer;
       glyphs.forEach((glyph, i) => {
         const index = l*6+i;
-        const b = panel.button(glyph + ' ' + (words[index] || '—'), () => { selected = index; picker(); }, rows);
-        b.setAttribute('aria-label', layer + ' ' + glyph + ': ' + (words[index] || 'Empty'));
+        const b = panel.button(glyph + ' ' + (words[index] || '—') + (repeatSlots?.[index] ? ' ↻' : ''), () => { selected = index; picker(); }, rows);
+        b.setAttribute('aria-label', layer + ' ' + glyph + ': ' + (words[index] || 'Empty') + (repeatSlots?.[index] ? ' · repeats' : ''));
         b.disabled = readOnly;
         if (selected === index && !readOnly) b.focus();
       });
@@ -28,6 +28,14 @@ export function openBindings(words: string[], change: () => void, readOnly = fal
   function picker() {
     panel.el.querySelectorAll('div,button').forEach((el) => el.remove());
     panel.button('Back to slots', grid).dataset.padBack = '';
+    if (repeatSlots) {
+      const repeat = panel.button('Repeat while held', () => {
+        repeatSlots[selected] = !repeatSlots[selected];
+        repeat.setAttribute('aria-pressed',String(repeatSlots[selected]));
+        change();
+      });
+      repeat.setAttribute('aria-pressed',String(repeatSlots[selected]));
+    }
     const list = document.createElement('div');
     list.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr)';
     panel.el.appendChild(list);

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest';
 import { openBindings } from '../lib/gamepad/editor';
-import { loadBindings } from '../lib/gamepad/bindings';
+import { loadBindings, loadRepeatSlots, saveRepeatSlots } from '../lib/gamepad/bindings';
 afterEach(() => document.body.replaceChildren());
 
 it('assigns and clears one later-layer slot without changing the others', () => {
@@ -19,7 +19,7 @@ it('assigns and clears one later-layer slot without changing the others', () => 
   editor.close();
 });
 
-it('shows required spell arguments and skips their buttons during navigation', () => {
+it('disables picker buttons for spells with required arguments', () => {
   const words = loadBindings(), change = vi.fn();
   const editor = openBindings(words,change);
   editor.el.querySelector('button')!.click();
@@ -30,4 +30,18 @@ it('shows required spell arguments and skips their buttons during navigation', (
   }
   expect(change).not.toHaveBeenCalled();
   editor.close();
+});
+
+it('persists repeat for one slot and leaves the other 23 off', () => {
+  localStorage.clear();
+  const repeat = loadRepeatSlots();
+  expect(repeat).toEqual(Array(24).fill(false));
+  const editor = openBindings(loadBindings(),() => saveRepeatSlots(repeat),false,repeat);
+  editor.el.querySelectorAll('button')[12].click();
+  const toggle = editor.el.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
+  toggle.click();
+  expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  expect(loadRepeatSlots().map((on,i) => on ? i : -1).filter(i => i >= 0)).toEqual([12]);
+  editor.close();
+  localStorage.clear();
 });

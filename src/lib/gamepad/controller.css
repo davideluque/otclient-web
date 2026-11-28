@@ -5,3 +5,5 @@
 [data-pad-dialog] output { display:block; min-height:1.5em; overflow-wrap:anywhere }
 .pad-keys { display:grid; grid-template-columns:repeat(10,1fr) }
 .pad-active :focus { outline:3px solid #ffdc68 !important; outline-offset:-3px }
+
+[data-pad-dialog] button[aria-pressed=true] {background:#425f43;border-color:#a3d695}

@@ -1,7 +1,7 @@
 import { createDevice, normalize, consumeProfileReset, forgetProfile, standardProfile, loadProfile, saveProfile, type Profile } from './device';
 import { idle, mapFrame } from './mapping';
 import { back, dialog, focusAction, observeSurfaces, topSurface } from './focus';
-import { loadBindings, saveBindings } from './bindings';
+import { loadBindings, loadRepeatSlots, saveBindings, saveRepeatSlots } from './bindings';
 import { createControllerHUD } from './hud';
 import { calibrate } from './calibration';
 import { openBindings } from './editor';
@@ -26,6 +26,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     : 'Gamepad API unavailable. Open device diagnostics to check controller inputs.';
   document.querySelector('.jamera-login')?.appendChild(hint);
   const words = loadBindings();
+  const repeatSlots = loadRepeatSlots();
   let state = idle();
   let combat: CombatBindingHandle | null = null;
   let hud: ReturnType<typeof createControllerHUD> | null = null;
@@ -122,11 +123,11 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
   }
   function showEditor() {
     editor?.close();
-    editor = openBindings(words, () => saveBindings(words));
+    editor = openBindings(words, () => { saveBindings(words); saveRepeatSlots(repeatSlots); }, false, repeatSlots);
   }
   function showSheet() {
     if (sheet?.el.isConnected) { sheet.close(); sheet = null; }
-    else if (!currentScope()) sheet = openBindings(words, () => {}, true);
+    else if (!currentScope()) sheet = openBindings(words, () => {}, true, repeatSlots);
   }
   const device = createDevice((pad, now, switching) => {
     if (document.hidden || suspended) { if (state.connected) reset(); return; }
@@ -145,7 +146,7 @@ export function mountController(tv: boolean, cancelCharacterSelect: () => void) 
     if (wizard && pad) { wizard.sample(pad, now); return; }
     const ui = currentScope();
     const snapshot = !rescue && !controllerPaused && pad && profile ? normalize(pad, profile) : null;
-    const next = mapFrame(state, snapshot, ui || !combat ? 'ui' : 'game', words, now);
+    const next = mapFrame(state, snapshot, ui || !combat ? 'ui' : 'game', words, now, repeatSlots);
     if (next.pressed.has('circle') && !state.pressed.has('circle')) {
       lastCircle = performance.now();
       clearTimeout(backTimer);

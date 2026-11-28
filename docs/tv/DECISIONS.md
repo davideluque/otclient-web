@@ -72,3 +72,7 @@ Disable picker entries requiring an additional spoken argument. Metadata follows
 ### C2 · Measurements for the hardware session
 
 Pair raw transitions with the nearest keydown within ±100 ms. Save report captures the resting axes after the operator releases the pad. Actual flex layout, module evaluation and import probes run separately from the ES2017 diagnostic entry.
+
+### C3 · Opt-in repeat casting
+
+Store a repeat preference for each of the 24 slots, off by default. Only a new press arms repeat on its current layer. While held, the input core retries locally at most once every 120 ms and the shared combat binding enforces the actual spell cooldown. Turning the option off restores single-press casting.

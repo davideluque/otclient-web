@@ -18,10 +18,17 @@ export function fakeController() {
     window.padPolls++;
     return [pad.connected ? pad : null];
   }});
-  // Read server confirmations only. No client packets or credentials are captured.
+  // The repeat test arms a timestamp probe after world entry. Keep only times for its fixed spell.
   window.mockReplies = { east:0, messages:[] };
   const Native = window.WebSocket;
   window.WebSocket = class extends Native {
+    send(data) {
+      if (window.mockExuraTimes && new URL(this.url).pathname === '/game') {
+        const bytes = new Uint8Array(data);
+        if (String.fromCharCode.apply(null,bytes.slice(-5)) === 'exura') window.mockExuraTimes.push(performance.now());
+      }
+      return super.send(data);
+    }
     constructor(url, protocols) {
       super(url, protocols);
       if (new URL(url).pathname !== '/game') return;

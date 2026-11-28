@@ -88,28 +88,30 @@ Paths below are relative to the repository root. This inventory includes every p
 
 Each entry updates [the draft integration PR](https://github.com/davideluque/otclient-web/pull/427).
 
-- **A1 · Calibration** — Regression coverage for changed trigger rests, dual exposure, hat and split-axis pads, skipping and cancellation.
+- `e3e34c5` **A1 · Calibration** — Regression coverage for changed trigger rests, dual exposure, hat and split-axis pads, skipping and cancellation.
 
-- **A2 · Remote and keyboard fallback** — Browser regression exercises server-confirmed keyboard walking, native Enter and duplicate activation with an attached pad.
+- `11cd702` **A2 · Remote and keyboard fallback** — Browser regression exercises server-confirmed keyboard walking, native Enter and duplicate activation with an attached pad.
 
-- **A3 · Controller profile recovery** — Shell cold-launch and hosted-game tests cover scoped reset, standard override and forgetting a profile.
+- `5d045b9` **A3 · Controller profile recovery** — Shell cold-launch and hosted-game tests cover scoped reset, standard override and forgetting a profile.
 
-- **A4 · Sleep and network recovery** — Reproduced stuck native Enter. Browser tests cover no-pad Enter, pointer continuation, reconnect and network Back.
+- `331bd6c` **A4 · Sleep and network recovery** — Reproduced stuck native Enter. Browser tests cover no-pad Enter, pointer continuation, reconnect and network Back.
 
-- **A5 · Startup failure evidence** — Browser regression checks banner, bounded stack, rejection and omission of unrelated error properties. Diagnostics displays and saves its own errors.
+- `49d45e5` **A5 · Startup failure evidence** — Browser regression checks banner, bounded stack, rejection and omission of unrelated error properties. Diagnostics displays and saves its own errors.
 
-- **B1 · Passive game panes** — Browser regression reproduces blocked steps and checks server confirmation from both controller and keyboard with Battle visible.
+- `e1d341a` **B1 · Passive game panes** — Browser regression reproduces blocked steps and checks server confirmation from both controller and keyboard with Battle visible.
 
-- **B2 · Modal measurement cost** — Production smoke instruments the actual document query, verifies a nonzero counter during navigation and permits at most one scan over 1.25 seconds of idle play with metrics.
+- `5f6008f` **B2 · Modal measurement cost** — Production smoke instruments the actual document query, verifies a nonzero counter during navigation and permits at most one scan over 1.25 seconds of idle play with metrics.
 
-- **B3 · Login keyboard ownership** — Controller login flow asserts keyboard focus belongs to the grid and does not return to an input on Done; native LG keyboard remains a device check.
+- `df8239d` **B3 · Login keyboard ownership** — Controller login flow asserts keyboard focus belongs to the grid and does not return to an input on Done; native LG keyboard remains a device check.
 
-- **B4 · TV play layout** — Browser checks both viewports, saves screenshots, checks text size and exercises the Settings controls. Sofa readability still needs David.
+- `43713a4` **B4 · TV play layout** — Browser checks both viewports, saves screenshots, checks text size and exercises the Settings controls. Sofa readability still needs David.
 
-- **B5 · Controller selection** — Device tests cover silent entries, late appearance, same-ID handover, held buttons, fresh snapshots and disconnects. Browser setup explicitly wakes the fake pad.
+- `050e0b7` **B5 · Controller selection** — Device tests cover silent entries, late appearance, same-ID handover, held buttons, fresh snapshots and disconnects. Browser setup explicitly wakes the fake pad.
 
-- **B6 · Parse shipped HTML with JSDOM** — Gate rejected optional chaining in an inline module with a spaced closing tag. GitHub tracks this as CodeQL alert 2 on PR 427.
+- `9c7b7ee` **B6 · Parse shipped HTML with JSDOM** — Gate rejected optional chaining in an inline module with a spaced closing tag. GitHub tracks this as CodeQL alert 2 on PR 427.
 
-- **C1 · Spells with arguments** — Unit test checks parameterized spells and verifies that clicking a disabled choice leaves the slot intact.
+- `1c53439` **C1 · Spells with arguments** — Unit test checks parameterized spells and verifies that clicking a disabled choice leaves the slot intact.
 
-- **C2 · Measurements for the hardware session** — Production smoke injects axis motion and a key, captures a changed resting value, and checks features and a diagnostics exception in the saved host report.
+- `19c03ec` **C2 · Measurements for the hardware session** — Production smoke injects axis motion and a key, captures a changed resting value, and checks features and a diagnostics exception in the saved host report.
+
+- **C3 · Opt-in repeat casting** — Mapping and editor tests cover disarming and persistence. Browser smoke measures the interval between outgoing casts, receives multiple server echoes and verifies release stops casting.

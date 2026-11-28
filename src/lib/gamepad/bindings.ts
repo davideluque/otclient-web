@@ -15,3 +15,16 @@ export function loadBindings(): string[] {
 export function saveBindings(value: string[]): void {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* In-memory bindings survive this session. */ }
 }
+
+const repeatKey = 'jamera.controllerRepeat';
+export function loadRepeatSlots(): boolean[] {
+  const count = layers.length * slots.length;
+  try {
+    const values = JSON.parse(localStorage.getItem(repeatKey) ?? 'null');
+    if (Array.isArray(values) && values.length === count && values.every(v => typeof v === 'boolean')) return values;
+  } catch { /* Old profiles and unavailable storage default to edge-triggered casting. */ }
+  return Array<boolean>(count).fill(false);
+}
+export function saveRepeatSlots(values: readonly boolean[]): void {
+  try { localStorage.setItem(repeatKey,JSON.stringify(values)); } catch { /* Keep the session preference. */ }
+}

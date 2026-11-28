@@ -308,3 +308,26 @@ test('remote can leave login fields while enumerated pads are idle', async ({pag
   await page.keyboard.press('ArrowDown');
   await expect(password).not.toBeFocused();
 });
+
+test('holding an opted-in slot recasts through the shared cooldown', async ({page}) => {
+  await page.addInitScript(() => {
+    const repeat = Array(24).fill(false); repeat[0] = true;
+    localStorage.setItem('jamera.controllerRepeat',JSON.stringify(repeat));
+  });
+  await fallbackSession(page);
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await page.evaluate(() => { window.mockExuraTimes = []; });
+  const echoes = () => page.evaluate(() => window.mockReplies.messages.filter(m => m.endsWith('exura')).length);
+  await press(page,0);
+  try {
+    await expect.poll(echoes).toBeGreaterThan(0);
+    await expect.poll(echoes).toBeGreaterThan(1);
+  } finally { await press(page,0,false); }
+  const sent = await page.evaluate(() => window.mockExuraTimes);
+  expect(sent.length).toBeGreaterThanOrEqual(2);
+  // Cast takes its clock reading just before serialization and send.
+  for (let i = 1; i < sent.length; i++) expect(sent[i]-sent[i-1]).toBeGreaterThanOrEqual(999);
+  const afterRelease = await echoes();
+  await page.waitForTimeout(1200);
+  expect(await echoes()).toBe(afterRelease);
+});

@@ -55,11 +55,11 @@ function slotSpells(): Array<{ id: string; label: string; iconUrl: string | null
   });
 }
 
-export function bindCombat(client: GameClient, world: GameWorld): CombatBindingHandle {
+export function bindCombat(client: GameClient, world: GameWorld, restrictTargets = false): CombatBindingHandle {
   const protocol = client.getProtocol();
   let attacking = false;
   let currentTarget = 0;
-  let monstersOnly = false;
+  let monstersOnly = restrictTargets;
 
   const send = (packet: { toUint8Array(): Uint8Array }): boolean => {
     try {
@@ -119,7 +119,7 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
   // and the menu's Settings toggle) so they can't drift apart.
   const setAttacking = (on: boolean): void => {
     if (on === attacking) return;
-    monstersOnly = false;
+    monstersOnly = restrictTargets;
     attacking = on;
     attackBtn.textContent = attacking ? '✋' : '⚔';
     attackBtn.style.borderColor = attacking ? '#d9534f' : '#555';
@@ -133,7 +133,8 @@ export function bindCombat(client: GameClient, world: GameWorld): CombatBindingH
 
   attackBtn.addEventListener('click', () => setAttacking(!attacking));
 
-  const attackTarget = (id: number, restrictToMonsters = false): void => {
+  const attackTarget = (id: number, restrictToMonsters = restrictTargets): void => {
+    if (restrictToMonsters && !battleCandidates(world, true).some(c => c.id === id)) return;
     monstersOnly = restrictToMonsters;
     if (attacking && currentTarget === id) {
       setAttacking(false); // tap the engaged target again = stop

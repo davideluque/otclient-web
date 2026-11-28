@@ -1,3 +1,4 @@
+import type { Controller } from '../gamepad/runtime';
 import { debugConsole } from '../debugConsole';
 import { mountLoginScreen } from './loginScreen';
 import type { GameClient } from '../net/common/GameClient';
@@ -55,6 +56,17 @@ if (!root) {
 }
 
 const params = new URLSearchParams(window.location.search);
+const tvFlag = params.get('tv');
+const tvMode = tvFlag === '1' || (tvFlag !== '0' && /web0s/i.test(navigator.userAgent));
+const padMode = tvMode || params.get('gamepad') === '1';
+let controller: Controller | null = null;
+let requestedLogout = false;
+if (padMode) {
+  void import('../gamepad/runtime').then(({ mountController }) => {
+    controller = mountController(tvMode);
+    if (teardownCombat) controller.enter(teardownCombat);
+  });
+}
 const proxyUrl = resolveProxyOverride(params.get('proxy'));
 const clientVersion = parseClientVersion(params.get('clientVersion'));
 const rendererPreference = params.get('renderer') === 'webgpu' ? 'webgpu' : 'webgl';
@@ -94,6 +106,8 @@ mountLoginScreen(root, {
     return assetPipeline.ready();
   },
   onLeaveGame: () => {
+    controller?.leave(!requestedLogout);
+    requestedLogout = false;
     // Disconnect/kick: drop the per-session surfaces instead of leaving
     // a live joystick and chat floating over the re-shown login screen.
     // The atlas waiter goes too — the game can be entered before the
@@ -149,16 +163,6 @@ mountLoginScreen(root, {
   onEnterGame: (client) => {
     screenWakeLock?.destroy();
     screenWakeLock = bindScreenWakeLock();
-    // Phase 2 scaffold stops at "in game" — follow-up PRs attach the
-    // live-map renderer, chat UI, and movement input. Surface the live
-    // client on `window` only in dev builds, never in production: the
-    // GameClient instance retains the player's password (private field,
-    // but readable from any code that gets the reference) so exposing
-    // it on `window` would be a credential leak.
-    if (import.meta.env.DEV) {
-      (window as unknown as { jameraClient: typeof client }).jameraClient = client;
-      debugConsole?.info('[jamera] in_game — client attached to window.jameraClient (dev only)');
-    }
     // Baseline consumers for the full 7.6 wire vocabulary — without
     // these, the first unhandled opcode in a frame silently drops the
     // rest of it. GameWorld registers after and overrides per opcode.
@@ -185,7 +189,8 @@ mountLoginScreen(root, {
     const world = bindGameWorld(client);
     bindMovementInput(client, world);
     teardownCombat?.destroy();
-    teardownCombat = bindCombat(client, world);
+    teardownCombat = bindCombat(client, world, padMode);
+    controller?.enter(teardownCombat);
     teardownChat?.destroy();
     teardownChat = bindChat(client, document.body, { onDeathMessage: onDeath });
     teardownInventory?.destroy();
@@ -302,6 +307,10 @@ mountLoginScreen(root, {
     // lag trace) — the Settings toggle does the same thing in-game.
     if (params.get('metrics') === '1') setMetricsVisible(true);
     teardownStats = bindStats(client, document.body, [
+      ...(padMode ? [
+        { label: 'Controller spells', onSelect: () => controller?.showEditor() },
+        { label: 'Calibrate controller', onSelect: () => controller?.startCalibration() },
+      ] : []),
       { label: 'Inventory', onSelect: () => teardownInventory?.toggle() },
       { label: 'Chat', onSelect: () => teardownChat?.presentation.openFull() },
       { label: 'Battle', onSelect: () => teardownBattle?.setVisible(!teardownBattle.visible) },
@@ -334,6 +343,7 @@ mountLoginScreen(root, {
         onSelect: () => {
           try {
             client.send(client.getProtocol().actions.buildLogout());
+            requestedLogout = true;
           } catch (e) {
             debugConsole?.warn('[jamera] logout send failed:', e instanceof Error ? e.message : e);
           }
@@ -668,7 +678,7 @@ function bindMovementInput(client: GameClient, world: GameWorld): void {
   const walker = createWalkController({
     client,
     world,
-    getHeldDirection: () => joystickDir ?? keyboard.heldDirection,
+    getHeldDirection: () => controller?.blocksMovement ? null : joystickDir ?? keyboard.heldDirection ?? controller?.heldDirection ?? null,
     // Pre-walk: predict the step the packet will cause so the renderer
     // glides from the send instant instead of standing out the
     // confirmation round-trip (the level-1 step-pause-step stutter).

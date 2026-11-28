@@ -17,7 +17,8 @@
     "proxy": "npx tsx proxy/server.ts",
     "proxy:jamera": "OT_GAME_PORT=7171 npx tsx proxy/server.ts",
     "tv:build": "tsc && vite build --config vite.tv.config.ts --mode tv && node scripts/tv-bundle.mjs",
-    "tv:check": "node scripts/tv-bundle.mjs --check"
+    "tv:check": "node scripts/tv-bundle.mjs --check",
+    "tv:smoke": "npm run tv:build && TV_SMOKE=1 npm run test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

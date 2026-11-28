@@ -148,4 +148,18 @@ describe('bindCombat', () => {
     expect(combat.cast('exura')).toBe(true);
     combat.destroy();
   });
+  it('also restricts Battle and Settings attacks in a controller session', () => {
+    const { client, sent } = makeClient();
+    const player = { id: 0x10000002, x: 100, y: 99, z: 7, health: 100 };
+    const rat = { ...player, id: 0x40000001, x: 103 };
+    const binding = bindCombat(client, makeWorld([player,rat]), true);
+    binding.attackTarget(player.id);
+    expect(sent).toHaveLength(0);
+    binding.setAttacking(true);
+    expect(binding.targetId).toBe(rat.id);
+    rat.health = 0;
+    vi.advanceTimersByTime(500);
+    expect(binding.targetId).toBe(0);
+    binding.destroy();
+  });
 });
